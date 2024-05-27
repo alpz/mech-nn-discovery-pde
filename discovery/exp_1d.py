@@ -280,11 +280,11 @@ def optimize(nepoch=400):
                 #x0, steps, eps, var,xi = model(index, batch_in)
                 x0, steps, eps, var,pow, coeff = model(index, batch_in)
 
+                x_loss = (x0- batch_in).pow(2).mean()
+                #x_loss = (x0- batch_in).abs().mean()
                 #x_loss = (x0- batch_in).pow(2).mean()
-                x_loss = (x0- batch_in).abs().mean()
-                #x_loss = (x0- batch_in).pow(2).mean()
-                #loss = x_loss +  (var- batch_in).pow(2).mean()
-                loss = x_loss +  (var- batch_in).abs().mean()
+                loss = x_loss +  (var- batch_in).pow(2).mean()
+                #loss = x_loss +  (var- batch_in).abs().mean()
                 #loss = x_loss +  (var- batch_in).pow(2).mean()
                 
 
