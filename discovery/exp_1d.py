@@ -112,7 +112,7 @@ class Model(nn.Module):
 
 
         #Step size is fixed. Make this a parameter for learned step
-        self.step_size = (logit(0.1)*torch.ones(1,1,1))
+        self.step_size = (logit(0.01)*torch.ones(1,1,1))
         self.param_in = nn.Parameter(torch.randn(1,64))
 
         init_coeffs = torch.rand(1, self.n_ind_dim, 1, 2, dtype=dtype)
@@ -162,14 +162,16 @@ class Model(nn.Module):
 
         pow = xi[:, 0:1].unsqueeze(1)
         coeff = xi[:, 1:2].unsqueeze(1)
-        pow = torch.sigmoid(pow).clip(min=0.1)
+        pow = torch.sigmoid(pow)#.clip(min=0.01)
 
         var = self.net(net_iv.reshape(self.bs,-1))
         #var = var.reshape(self.bs, self.n_step_per_batch, self.n_ind_dim)
         var = var.reshape(self.bs, self.n_ind_dim, self.n_step_per_batch)
+        #var = torch.relu(var)
+        var = var.abs()
 
 
-        rhs = coeff*var.abs().pow(pow)
+        rhs = coeff*var.pow(pow)
         #create basis
         #var_basis,_ = B.create_library_tensor_batched(var, polynomial_order=2, use_trig=False, constant=True)
 
@@ -192,8 +194,10 @@ class Model(nn.Module):
 
         x0,x1,x2,eps,steps = self.ode(coeffs, rhs, init_iv, steps)
         x0 = x0.permute(0,2,1)
+        var = var.permute(0,2,1)
 
-        return x0, steps, eps, var,_xi
+        #return x0, steps, eps, var,_xi
+        return x0, steps, eps, var,pow, coeff
 
 model = Model(bs=batch_size,n_step=T, n_step_per_batch=n_step_per_batch, device=device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
@@ -273,24 +277,27 @@ def optimize(nepoch=400):
                 batch_in = batch_in.to(device)
 
                 optimizer.zero_grad()
-                x0, steps, eps, var,xi = model(index, batch_in)
+                #x0, steps, eps, var,xi = model(index, batch_in)
+                x0, steps, eps, var,pow, coeff = model(index, batch_in)
 
                 #x_loss = (x0- batch_in).pow(2).mean()
-                #x_loss = (x0- batch_in).abs().mean()
-                x_loss = (x0- batch_in).pow(2).mean()
+                x_loss = (x0- batch_in).abs().mean()
+                #x_loss = (x0- batch_in).pow(2).mean()
                 #loss = x_loss +  (var- batch_in).pow(2).mean()
-                #loss = x_loss +  (var- batch_in).abs().mean()
-                loss = x_loss +  (var- batch_in).pow(2).mean()
+                loss = x_loss +  (var- batch_in).abs().mean()
+                #loss = x_loss +  (var- batch_in).pow(2).mean()
                 
 
                 loss.backward()
                 optimizer.step()
 
 
-            xi = xi.detach().cpu().numpy()
+            #xi = xi.detach().cpu().numpy()
+            pow = pow.squeeze().item() #.detach().cpu().numpy()
+            coeff = coeff.squeeze().item()
             meps = eps.max().item()
             L.info(f'run {run_id} epoch {epoch}, loss {loss.item()} max eps {meps} xloss {x_loss} ')
-            print(f'basis\n {xi}')
+            print(f'pow, coeff\n {pow}, {coeff}')
             pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item()} max eps {meps} xloss {x_loss} ')
 
 
