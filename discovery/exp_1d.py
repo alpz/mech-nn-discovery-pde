@@ -169,7 +169,7 @@ class Model(nn.Module):
         var = var.reshape(self.bs, self.n_ind_dim, self.n_step_per_batch)
 
 
-        rhs = coeff*var.pow(pow)
+        rhs = coeff*var.abs().pow(pow)
         #create basis
         #var_basis,_ = B.create_library_tensor_batched(var, polynomial_order=2, use_trig=False, constant=True)
 
