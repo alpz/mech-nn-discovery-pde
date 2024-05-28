@@ -292,7 +292,7 @@ def train():
         optimize()
 
 
-def optimize(nepoch=400):
+def optimize(nepoch=1000):
     with tqdm(total=nepoch) as pbar:
         for epoch in range(nepoch):
             pbar.update(1)
@@ -304,11 +304,14 @@ def optimize(nepoch=400):
                 #x0, steps, eps, var,xi = model(index, batch_in)
                 x0, steps, eps, var, var_time ,alpha, beta, pow = model(batch_in)
 
-                x_loss = (x0- batch_in).pow(2).mean()
                 #x_loss = (x0- batch_in).abs().mean()
                 #x_loss = (x0- batch_in).pow(2).mean()
+                x_loss = (x0- batch_in).pow(2).mean()
+                #x_loss = (x0- batch_in).abs().mean()
                 var_loss = (var- batch_in).pow(2).mean()
+                #var_loss = (var- batch_in).abs().mean()
                 time_loss = (time- var_time).pow(2).mean()
+                #time_loss = (time- var_time).abs().mean()
                 loss = x_loss + var_loss + time_loss
                 #loss = x_loss +  (var- batch_in).abs().mean()
                 #loss = x_loss +  (var- batch_in).pow(2).mean()
