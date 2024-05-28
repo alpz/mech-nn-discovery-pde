@@ -67,7 +67,7 @@ class RiccatiDataset(Dataset):
             #return 1.6 * x **(0.4)
             #return x**2 + t
             #return np.sqrt(np.abs(3*t**2-t))*x**2
-            return np.power(np.abs(3*t**2-t),0.8)*x**2
+            return np.power(np.abs(3*t**2-t),0.8)*x**2 + t
             #return (3*t**2+t)*x**2
             #return np.sqrt(t)*x**2
 
@@ -193,7 +193,7 @@ class Model(nn.Module):
         #var = var.abs()
 
 
-        rhs = (alpha*ts + beta*ts**2).abs().pow(pow)*var**2
+        rhs = (alpha*ts + beta*ts**2).abs().pow(pow)*var**2 + ts
         #create basis
         #var_basis,_ = B.create_library_tensor_batched(var, polynomial_order=2, use_trig=False, constant=True)
 
@@ -223,7 +223,7 @@ class Model(nn.Module):
         return x0, steps, eps, var, ts,alpha, beta, pow
 
 model = Model(bs=batch_size,n_step=T, n_step_per_batch=n_step_per_batch, device=device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 
 if DBL:
     model = model.double()
