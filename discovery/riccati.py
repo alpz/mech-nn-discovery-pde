@@ -34,7 +34,7 @@ L = logger.setup(log_dir, stdout=False)
 
 DBL=True
 dtype = torch.float64 if DBL else torch.float32
-STEP = 0.01
+STEP = 0.001
 cuda=True
 T = 1000
 n_step_per_batch = T
@@ -65,11 +65,15 @@ class RiccatiDataset(Dataset):
         def f(state, t):
             x = state
             #return 1.6 * x **(0.4)
-            return x **2 + t
+            #return x**2 + t
+            #return np.sqrt(np.abs(3*t**2-t))*x**2
+            #return np.power(np.abs(3*t**2-t),0.8)*x**2
+            return (3*t**2+t)*x**2
+            #return np.sqrt(t)*x**2
 
-        state0 = [0.1]
+        state0 = [0.5]
         time_steps = np.linspace(0, self.end, self.n_step)
-        self.time_steps = time_steps
+        self.time_steps = torch.tensor(time_steps, dtype=dtype)
 
         x_train = odeint(f, state0, time_steps)
         return x_train
@@ -81,20 +85,20 @@ class RiccatiDataset(Dataset):
     def __getitem__(self, idx):
         i = idx*self.down_sample
         d=  self.x_train[i:i+self.n_step_per_batch]
-        return i, d
+        t=  self.time_steps[i:i+self.n_step_per_batch]
+        return t, d
 
 
 ds = RiccatiDataset(n_step=T,n_step_per_batch=n_step_per_batch)#.generate()
 train_loader =DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=8, drop_last=False) 
 
-#%%
 plt.plot(ds.x_train)
 plt.pause(1)
 
-#%%
 #plot train data
 #P.plot_lorenz(ds.x_train, os.path.join(log_dir, 'train.pdf'))
 
+#%%
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -113,11 +117,12 @@ class Model(nn.Module):
 
 
         #Step size is fixed. Make this a parameter for learned step
-        self.step_size = (logit(0.01)*torch.ones(1,1,1))
+        self.step_size = (logit(0.001)*torch.ones(1,1,1))
         self.param_in = nn.Parameter(torch.randn(1,64))
+        self.param_time = nn.Parameter(torch.randn(1,64))
 
-        init_coeffs = torch.rand(1, self.n_ind_dim, 1, 2, dtype=dtype)
-        self.init_coeffs = nn.Parameter(init_coeffs)
+        #init_coeffs = torch.rand(1, self.n_ind_dim, 1, 2, dtype=dtype)
+        #self.init_coeffs = nn.Parameter(init_coeffs)
         
         self.ode = ODEINDLayer(bs=bs, order=self.order, n_ind_dim=self.n_ind_dim, n_step=self.n_step_per_batch, solver_dbl=True, double_ret=True,
                                     n_iv=self.n_iv, n_iv_steps=1,  gamma=0.05, alpha=0, **kwargs)
@@ -129,6 +134,14 @@ class Model(nn.Module):
             nn.Linear(1024, 1024),
             nn.ReLU(),
             nn.Linear(1024, 2)
+        )
+
+        self.time_net = nn.Sequential(
+            nn.Linear(64, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, self.n_step_per_batch)
         )
 
         self.net = nn.Sequential(
@@ -151,28 +164,34 @@ class Model(nn.Module):
         xi = xi.reshape(1, 2)
         return xi
 
-    def forward(self, index, net_iv):
+    def get_time(self):
+        ts = self.time_net(self.param_time)
+        ts = ts.reshape(1, self.n_step_per_batch)
+        return ts
+
+    def forward(self, net_iv):
         # apply mask
         xi = self.get_xi()
+        ts = self.get_time()
         #xi = _xi
 
         #xi = self.mask*self.xi
         #xi = self.mask*xi
-        _xi = xi
         xi = xi.repeat(self.bs, 1)
+        ts = ts.repeat(self.bs, 1)
 
-        pow = xi[:, 0:1].unsqueeze(1)
-        coeff = xi[:, 1:2].unsqueeze(1)
-        pow = torch.sigmoid(pow)#.clip(min=0.01)
+        alpha = xi[:, 0:1].unsqueeze(1)
+        beta = xi[:, 1:2].unsqueeze(1)
+        ts = ts.unsqueeze(1)
 
         var = self.net(net_iv.reshape(self.bs,-1))
         #var = var.reshape(self.bs, self.n_step_per_batch, self.n_ind_dim)
         var = var.reshape(self.bs, self.n_ind_dim, self.n_step_per_batch)
         #var = torch.relu(var)
-        var = var.abs()
+        #var = var.abs()
 
 
-        rhs = coeff*var.pow(pow)
+        rhs = (alpha*ts + beta*ts**2)*var**2
         #create basis
         #var_basis,_ = B.create_library_tensor_batched(var, polynomial_order=2, use_trig=False, constant=True)
 
@@ -196,9 +215,10 @@ class Model(nn.Module):
         x0,x1,x2,eps,steps = self.ode(coeffs, rhs, init_iv, steps)
         x0 = x0.permute(0,2,1)
         var = var.permute(0,2,1)
+        ts = ts.squeeze(1)
 
         #return x0, steps, eps, var,_xi
-        return x0, steps, eps, var,pow, coeff
+        return x0, steps, eps, var, ts,alpha, beta
 
 model = Model(bs=batch_size,n_step=T, n_step_per_batch=n_step_per_batch, device=device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
@@ -274,17 +294,19 @@ def optimize(nepoch=400):
     with tqdm(total=nepoch) as pbar:
         for epoch in range(nepoch):
             pbar.update(1)
-            for i, (index, batch_in) in enumerate(train_loader):
+            for i, (time, batch_in) in enumerate(train_loader):
                 batch_in = batch_in.to(device)
 
                 optimizer.zero_grad()
                 #x0, steps, eps, var,xi = model(index, batch_in)
-                x0, steps, eps, var,pow, coeff = model(index, batch_in)
+                x0, steps, eps, var, var_time ,alpha, beta = model(batch_in)
 
                 x_loss = (x0- batch_in).pow(2).mean()
                 #x_loss = (x0- batch_in).abs().mean()
                 #x_loss = (x0- batch_in).pow(2).mean()
-                loss = x_loss +  (var- batch_in).pow(2).mean()
+                var_loss = (var- batch_in).pow(2).mean()
+                time_loss = (time- var_time).pow(2).mean()
+                loss = x_loss + var_loss + time_loss
                 #loss = x_loss +  (var- batch_in).abs().mean()
                 #loss = x_loss +  (var- batch_in).pow(2).mean()
                 
@@ -294,12 +316,12 @@ def optimize(nepoch=400):
 
 
             #xi = xi.detach().cpu().numpy()
-            pow = pow.squeeze().item() #.detach().cpu().numpy()
-            coeff = coeff.squeeze().item()
+            alpha = alpha.squeeze().item() #.detach().cpu().numpy()
+            beta = beta.squeeze().item()
             meps = eps.max().item()
-            L.info(f'run {run_id} epoch {epoch}, loss {loss.item()} max eps {meps} xloss {x_loss} ')
-            print(f'pow, coeff\n {pow}, {coeff}')
-            pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item()} max eps {meps} xloss {x_loss} ')
+            L.info(f'run {run_id} epoch {epoch}, loss {loss.item()} max eps {meps} xloss {x_loss} time_loss {time_loss} ')
+            print(f'pow, coeff\n {alpha}, {beta}')
+            pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item()} max eps {meps} xloss {x_loss} time_loss{time_loss} ')
 
 
 if __name__ == "__main__":
