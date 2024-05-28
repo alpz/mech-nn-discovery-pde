@@ -92,8 +92,8 @@ class RiccatiDataset(Dataset):
 ds = RiccatiDataset(n_step=T,n_step_per_batch=n_step_per_batch)#.generate()
 train_loader =DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=8, drop_last=False) 
 
-plt.plot(ds.x_train)
-plt.pause(1)
+#plt.plot(ds.x_train)
+#plt.pause(1)
 
 #plot train data
 #P.plot_lorenz(ds.x_train, os.path.join(log_dir, 'train.pdf'))
@@ -221,7 +221,7 @@ class Model(nn.Module):
         return x0, steps, eps, var, ts,alpha, beta
 
 model = Model(bs=batch_size,n_step=T, n_step_per_batch=n_step_per_batch, device=device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
 if DBL:
     model = model.double()
@@ -296,6 +296,7 @@ def optimize(nepoch=400):
             pbar.update(1)
             for i, (time, batch_in) in enumerate(train_loader):
                 batch_in = batch_in.to(device)
+                time = time.to(device)
 
                 optimizer.zero_grad()
                 #x0, steps, eps, var,xi = model(index, batch_in)
@@ -319,9 +320,9 @@ def optimize(nepoch=400):
             alpha = alpha.squeeze().item() #.detach().cpu().numpy()
             beta = beta.squeeze().item()
             meps = eps.max().item()
-            L.info(f'run {run_id} epoch {epoch}, loss {loss.item()} max eps {meps} xloss {x_loss} time_loss {time_loss} ')
-            print(f'pow, coeff\n {alpha}, {beta}')
-            pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item()} max eps {meps} xloss {x_loss} time_loss{time_loss} ')
+            L.info(f'run {run_id} epoch {epoch}, loss {loss.item():.3E} max eps {meps:.3E} xloss {x_loss:.3E} time_loss {time_loss:.3E}')
+            print(f'\nalpha, beta {alpha}, {beta}')
+            pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item():.3E} max eps {meps}\n xloss {x_loss:.3E} time_loss{time_loss:.3E}\n')
 
 
 if __name__ == "__main__":
