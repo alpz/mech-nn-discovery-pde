@@ -69,7 +69,7 @@ class EulerDataset(Dataset):
             #return np.sqrt(np.abs(3*t**2-t))*x**2
             #return np.power(np.abs(3*t**2-t),0.8)*x**2
             n =  0.5 + 2*x + 0.8*x**2
-            d =  1 + 2*t + 1*t**2
+            d =  1 + 2*t + 0.2*t**2
             n = np.sqrt(np.abs(n))
             d = np.sqrt(np.abs(d))
             return -n/d
@@ -96,8 +96,8 @@ class EulerDataset(Dataset):
 ds = EulerDataset(n_step=T,n_step_per_batch=n_step_per_batch)#.generate()
 train_loader =DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=8, drop_last=False) 
 
-plt.plot(ds.x_train)
-plt.pause(1)
+#plt.plot(ds.x_train)
+#plt.pause(1)
 
 #plot train data
 #P.plot_lorenz(ds.x_train, os.path.join(log_dir, 'train.pdf'))
@@ -121,7 +121,7 @@ class Model(nn.Module):
 
 
         #Step size is fixed. Make this a parameter for learned step
-        self.step_size = (logit(0.001)*torch.ones(1,1,1))
+        self.step_size = (logit(0.01)*torch.ones(1,1,1))
         self.param_in = nn.Parameter(torch.randn(1,64))
         self.param_time = nn.Parameter(torch.randn(1,64))
 
@@ -137,7 +137,7 @@ class Model(nn.Module):
             nn.ReLU(),
             nn.Linear(1024, 1024),
             nn.ReLU(),
-            nn.Linear(1024, 2)
+            nn.Linear(1024, 6)
         )
 
         self.time_net = nn.Sequential(
@@ -165,7 +165,7 @@ class Model(nn.Module):
     
     def get_xi(self):
         xi = self.param_net(self.param_in)
-        xi = xi.reshape(1, 2)
+        xi = xi.reshape(1, 6)
         return xi
 
     def get_time(self):
@@ -184,8 +184,14 @@ class Model(nn.Module):
         xi = xi.repeat(self.bs, 1)
         ts = ts.repeat(self.bs, 1)
 
-        alpha = xi[:, 0:1].unsqueeze(1)
-        beta = xi[:, 1:2].unsqueeze(1)
+        cx0 = xi[:, 0:1].unsqueeze(1)
+        cx1 = xi[:, 1:2].unsqueeze(1)
+        cx2 = xi[:, 2:3].unsqueeze(1)
+
+        ct0 = xi[:, 3:4].unsqueeze(1)
+        ct1 = xi[:, 4:5].unsqueeze(1)
+        ct2 = xi[:, 5:6].unsqueeze(1)
+
         ts = ts.unsqueeze(1)
 
         var = self.net(net_iv.reshape(self.bs,-1))
@@ -195,7 +201,9 @@ class Model(nn.Module):
         #var = var.abs()
 
 
-        rhs = (alpha*ts + beta*ts**2)*var**2
+        n_rhs = cx0 + cx1*var + cx2*var**2
+        d_rhs = ct0 + ct1*ts + ct2*ts**2
+        rhs = -n_rhs.abs().sqrt()/d_rhs.abs().sqrt()
         #create basis
         #var_basis,_ = B.create_library_tensor_batched(var, polynomial_order=2, use_trig=False, constant=True)
 
@@ -222,7 +230,7 @@ class Model(nn.Module):
         ts = ts.squeeze(1)
 
         #return x0, steps, eps, var,_xi
-        return x0, steps, eps, var, ts,alpha, beta
+        return x0, steps, eps, var, ts, xi.squeeze()
 
 model = Model(bs=batch_size,n_step=T, n_step_per_batch=n_step_per_batch, device=device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
@@ -304,7 +312,7 @@ def optimize(nepoch=400):
 
                 optimizer.zero_grad()
                 #x0, steps, eps, var,xi = model(index, batch_in)
-                x0, steps, eps, var, var_time ,alpha, beta = model(batch_in)
+                x0, steps, eps, var, var_time, xi = model(batch_in)
 
                 x_loss = (x0- batch_in).pow(2).mean()
                 #x_loss = (x0- batch_in).abs().mean()
@@ -321,11 +329,11 @@ def optimize(nepoch=400):
 
 
             #xi = xi.detach().cpu().numpy()
-            alpha = alpha.squeeze().item() #.detach().cpu().numpy()
-            beta = beta.squeeze().item()
+            #alpha = alpha.squeeze().item() #.detach().cpu().numpy()
+            #beta = beta.squeeze().item()
             meps = eps.max().item()
             L.info(f'run {run_id} epoch {epoch}, loss {loss.item():.3E} max eps {meps:.3E} xloss {x_loss:.3E} time_loss {time_loss:.3E}')
-            print(f'\nalpha, beta {alpha}, {beta}')
+            print(f'\nalpha, beta {xi}')
             pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item():.3E} max eps {meps}\n xloss {x_loss:.3E} time_loss{time_loss:.3E}\n')
 
 
