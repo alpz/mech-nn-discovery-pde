@@ -264,7 +264,7 @@ def train():
     """Optimize and threshold cycle"""
     #model.reset_params()
 
-    max_iter = 10
+    max_iter = 1
     for step in range(max_iter):
         print(f'Optimizer iteration {step}/{max_iter}')
 
@@ -292,7 +292,7 @@ def train():
         optimize()
 
 
-def optimize(nepoch=1000):
+def optimize(nepoch=2000):
     with tqdm(total=nepoch) as pbar:
         for epoch in range(nepoch):
             pbar.update(1)
@@ -328,6 +328,7 @@ def optimize(nepoch=1000):
             meps = eps.max().item()
             L.info(f'run {run_id} epoch {epoch}, loss {loss.item():.3E} max eps {meps:.3E} xloss {x_loss:.3E} time_loss {time_loss:.3E}')
             print(f'\nalpha, beta, exp: {alpha}, {beta}, {pow}')
+            L.info(f'\nalpha, beta, exp: {alpha}, {beta}, {pow}')
             pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item():.3E} max eps {meps}\n xloss {x_loss:.3E} time_loss{time_loss:.3E}\n')
 
 
