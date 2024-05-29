@@ -43,6 +43,11 @@ batch_size= 1
 threshold = 0.1
 
 
+
+#n = 0.2203+  0.6655*x + -0.3009*x**2
+#d = 0.3436+  0.1813*t +  0.1814*t**2
+
+
 class EulerDataset(Dataset):
     def __init__(self, n_step_per_batch=100, n_step=1000):
         self.n_step_per_batch=n_step_per_batch
