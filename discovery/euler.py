@@ -34,9 +34,9 @@ L = logger.setup(log_dir, stdout=False)
 
 DBL=True
 dtype = torch.float64 if DBL else torch.float32
-STEP = 0.01
+STEP = 0.001
 cuda=True
-T = 1000
+T = 2000
 n_step_per_batch = T
 batch_size= 1
 #weights less than threshold (absolute) are set to 0 after each optimization step.
@@ -126,7 +126,7 @@ class Model(nn.Module):
         #Step size is fixed. Make this a parameter for learned step
         #self.step_size = (logit(0.01)*torch.ones(1,1,1))
         #_step_size = (logit(0.01)*torch.ones(1,1,1))
-        _step_size = (logit(0.01)*torch.ones(1,1,self.n_step_per_batch-1))
+        _step_size = (logit(0.001)*torch.ones(1,1,self.n_step_per_batch-1))
         self.step_size = nn.Parameter(_step_size)
         self.param_in = nn.Parameter(torch.randn(1,64))
         self.param_time = nn.Parameter(torch.randn(1,64))
@@ -143,8 +143,8 @@ class Model(nn.Module):
             nn.ReLU(),
             nn.Linear(1024, 1024),
             nn.ReLU(),
-            #nn.Linear(1024, 1024),
-            #nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
             nn.Linear(1024, 6)
         )
 
@@ -161,8 +161,8 @@ class Model(nn.Module):
             nn.ReLU(),
             nn.Linear(1024, 1024),
             nn.ReLU(),
-            #nn.Linear(1024, 1024),
-            #nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
             nn.Linear(1024, self.n_step_per_batch*self.n_ind_dim)
         )
     
@@ -183,10 +183,11 @@ class Model(nn.Module):
         ts = ts.reshape(1, self.n_step_per_batch)
         return ts
 
-    def forward(self, net_iv):
+    def forward(self, time, net_iv):
         # apply mask
         xi = self.get_xi()
-        ts = self.get_time()
+        #ts = self.get_time()
+        ts = time.reshape(1, self.n_step_per_batch)
         #xi = _xi
 
         #xi = self.mask*self.xi
@@ -198,9 +199,9 @@ class Model(nn.Module):
         cx1 = xi[:, 1:2].unsqueeze(1)
         cx2 = xi[:, 2:3].unsqueeze(1)
 
-        ct0 = xi[:, 3:4].unsqueeze(1)
-        ct1 = xi[:, 4:5].unsqueeze(1)
-        ct2 = xi[:, 5:6].unsqueeze(1)
+        ct0 = xi[:, 3:4].unsqueeze(1)#.clip(min=0.)
+        ct1 = xi[:, 4:5].unsqueeze(1)#.clip(min=0.)
+        ct2 = xi[:, 5:6].unsqueeze(1)#.clip(min=0.)
 
         ts = ts.unsqueeze(1)
 
@@ -214,6 +215,7 @@ class Model(nn.Module):
         n_rhs = cx0 + cx1*var + cx2*var**2
         d_rhs = ct0 + ct1*ts + ct2*ts**2
         rhs = n_rhs.abs().sqrt()/d_rhs.abs().sqrt()
+        #rhs = n_rhs.clip(min=0).sqrt()/d_rhs.clip(min=1e-5).sqrt()
         rhs = -rhs
         #create basis
         #var_basis,_ = B.create_library_tensor_batched(var, polynomial_order=2, use_trig=False, constant=True)
@@ -233,7 +235,7 @@ class Model(nn.Module):
         #steps = self.step_size.repeat(self.bs, self.n_ind_dim, self.n_step_per_batch-1).type_as(net_iv)
         steps = self.step_size.repeat(self.bs, self.n_ind_dim, 1).type_as(net_iv)
 
-        steps = torch.sigmoid(steps).clip(min=0.001)
+        steps = torch.sigmoid(steps).clip(min=0.001).detach()
         #self.steps = self.steps.type_as(net_iv)
 
         x0,x1,x2,eps,steps = self.ode(coeffs, rhs, init_iv, steps)
@@ -286,7 +288,7 @@ def train():
     """Optimize and threshold cycle"""
     #model.reset_params()
 
-    max_iter = 10
+    max_iter = 1
     for step in range(max_iter):
         print(f'Optimizer iteration {step}/{max_iter}')
 
@@ -324,7 +326,7 @@ def optimize(nepoch=5000):
 
                 optimizer.zero_grad()
                 #x0, steps, eps, var,xi = model(index, batch_in)
-                x0, steps, eps, var, var_time, xi = model(batch_in)
+                x0, steps, eps, var, var_time, xi = model(time, batch_in)
 
                 x_loss = (x0- batch_in).pow(2).mean()
                 #x_loss = (x0- batch_in).abs().mean()
@@ -333,7 +335,9 @@ def optimize(nepoch=5000):
                 #var_loss = (var- batch_in).abs().mean()
                 time_loss = (time- var_time).pow(2).mean()
                 #time_loss = (time- var_time).abs().mean()
-                loss = x_loss + var_loss + time_loss
+
+                #loss = x_loss + var_loss + time_loss
+                loss = x_loss + var_loss
                 #loss = x_loss +  (var- batch_in).abs().mean()
                 #loss = x_loss +  (var- batch_in).pow(2).mean()
                 
