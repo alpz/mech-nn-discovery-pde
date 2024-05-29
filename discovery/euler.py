@@ -68,14 +68,17 @@ class EulerDataset(Dataset):
             #return x**2 + t
             #return np.sqrt(np.abs(3*t**2-t))*x**2
             #return np.power(np.abs(3*t**2-t),0.8)*x**2
+            #n =  0.5 + 2*x + 0.8*x**2
+            #d =  1 + 2*t + 0.2*t**2
+
             n =  0.5 + 2*x + 0.8*x**2
-            d =  1 + 2*t + 0.2*t**2
+            d =  1 + 0.1*t + 0.2*t**2
             n = np.sqrt(np.abs(n))
             d = np.sqrt(np.abs(d))
             return -n/d
             #return np.sqrt(t)*x**2
 
-        state0 = [1]
+        state0 = [0.5]
         time_steps = np.linspace(0, self.end, self.n_step)
         self.time_steps = torch.tensor(time_steps, dtype=dtype)
 
@@ -121,7 +124,10 @@ class Model(nn.Module):
 
 
         #Step size is fixed. Make this a parameter for learned step
-        self.step_size = (logit(0.01)*torch.ones(1,1,1))
+        #self.step_size = (logit(0.01)*torch.ones(1,1,1))
+        #_step_size = (logit(0.01)*torch.ones(1,1,1))
+        _step_size = (logit(0.01)*torch.ones(1,1,self.n_step_per_batch-1))
+        self.step_size = nn.Parameter(_step_size)
         self.param_in = nn.Parameter(torch.randn(1,64))
         self.param_time = nn.Parameter(torch.randn(1,64))
 
@@ -137,6 +143,8 @@ class Model(nn.Module):
             nn.ReLU(),
             nn.Linear(1024, 1024),
             nn.ReLU(),
+            #nn.Linear(1024, 1024),
+            #nn.ReLU(),
             nn.Linear(1024, 6)
         )
 
@@ -153,6 +161,8 @@ class Model(nn.Module):
             nn.ReLU(),
             nn.Linear(1024, 1024),
             nn.ReLU(),
+            #nn.Linear(1024, 1024),
+            #nn.ReLU(),
             nn.Linear(1024, self.n_step_per_batch*self.n_ind_dim)
         )
     
@@ -203,7 +213,8 @@ class Model(nn.Module):
 
         n_rhs = cx0 + cx1*var + cx2*var**2
         d_rhs = ct0 + ct1*ts + ct2*ts**2
-        rhs = -n_rhs.abs().sqrt()/d_rhs.abs().sqrt()
+        rhs = n_rhs.abs().sqrt()/d_rhs.abs().sqrt()
+        rhs = -rhs
         #create basis
         #var_basis,_ = B.create_library_tensor_batched(var, polynomial_order=2, use_trig=False, constant=True)
 
@@ -219,9 +230,10 @@ class Model(nn.Module):
         init_iv = var[:,:,0]
 
         #steps = self.step_size*torch.ones(self.bs, self.n_ind_dim, self.n_step_per_batch-1).type_as(net_iv)
-        steps = self.step_size.repeat(self.bs, self.n_ind_dim, self.n_step_per_batch-1).type_as(net_iv)
+        #steps = self.step_size.repeat(self.bs, self.n_ind_dim, self.n_step_per_batch-1).type_as(net_iv)
+        steps = self.step_size.repeat(self.bs, self.n_ind_dim, 1).type_as(net_iv)
 
-        steps = torch.sigmoid(steps)
+        steps = torch.sigmoid(steps).clip(min=0.001)
         #self.steps = self.steps.type_as(net_iv)
 
         x0,x1,x2,eps,steps = self.ode(coeffs, rhs, init_iv, steps)
@@ -233,7 +245,7 @@ class Model(nn.Module):
         return x0, steps, eps, var, ts, xi.squeeze()
 
 model = Model(bs=batch_size,n_step=T, n_step_per_batch=n_step_per_batch, device=device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.00005)
 
 if DBL:
     model = model.double()
@@ -302,7 +314,7 @@ def train():
         optimize()
 
 
-def optimize(nepoch=400):
+def optimize(nepoch=5000):
     with tqdm(total=nepoch) as pbar:
         for epoch in range(nepoch):
             pbar.update(1)
@@ -318,7 +330,9 @@ def optimize(nepoch=400):
                 #x_loss = (x0- batch_in).abs().mean()
                 #x_loss = (x0- batch_in).pow(2).mean()
                 var_loss = (var- batch_in).pow(2).mean()
+                #var_loss = (var- batch_in).abs().mean()
                 time_loss = (time- var_time).pow(2).mean()
+                #time_loss = (time- var_time).abs().mean()
                 loss = x_loss + var_loss + time_loss
                 #loss = x_loss +  (var- batch_in).abs().mean()
                 #loss = x_loss +  (var- batch_in).pow(2).mean()
@@ -334,6 +348,7 @@ def optimize(nepoch=400):
             meps = eps.max().item()
             L.info(f'run {run_id} epoch {epoch}, loss {loss.item():.3E} max eps {meps:.3E} xloss {x_loss:.3E} time_loss {time_loss:.3E}')
             print(f'\nalpha, beta {xi}')
+            L.info(f'\nparameters {xi}')
             pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item():.3E} max eps {meps}\n xloss {x_loss:.3E} time_loss{time_loss:.3E}\n')
 
 
