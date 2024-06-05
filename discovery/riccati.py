@@ -92,8 +92,8 @@ class RiccatiDataset(Dataset):
 ds = RiccatiDataset(n_step=T,n_step_per_batch=n_step_per_batch)#.generate()
 train_loader =DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=8, drop_last=False) 
 
-#plt.plot(ds.x_train)
-#plt.pause(1)
+plt.plot(ds.x_train)
+plt.pause(1)
 
 #plot train data
 #P.plot_lorenz(ds.x_train, os.path.join(log_dir, 'train.pdf'))
