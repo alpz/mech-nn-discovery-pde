@@ -753,6 +753,20 @@ def test():
         print(diff)
         print(diff.mean())
 
+def test_constraint():
+        n_step = 3
+        dim =1
+        #steps = 0.1*torch.ones(1,n_step-1,dim)
+        _steps = 0.01+ np.random.random(n_step-1)
+        steps = torch.tensor(_steps).reshape(1,n_step-1,1)
+
+        ode = ODESYSLP(bs=1, n_dim=dim, n_equations=1, n_auxiliary=0, n_step=n_step, step_size=0.1, order=2, n_iv=1, device='cpu', step_list=_steps)
+
+        At = ode.AG.to_dense()
+        print(At)
+
+
 if __name__=="__main__":
     #ODESYSLP().ode()
-    test()
+    #test()
+    test_constraint()
