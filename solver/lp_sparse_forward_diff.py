@@ -16,6 +16,7 @@ class ConstraintType(Enum):
     Equation = 1
     Initial = 10
     Derivative = 20
+    EPS = 30
 
 class Const(IntEnum):
     #placeholder
@@ -23,7 +24,9 @@ class Const(IntEnum):
 
 class ODESYSLP(nn.Module):
     def __init__(self, bs=1, n_step=3, n_dim=1,  n_iv=2, n_auxiliary=0, n_equations=1, step_size=0.25, order=2, 
-                 periodic_boundary=False, dtype=torch.float64, n_iv_steps=1, step_list = None, device=None):
+                 periodic_boundary=False, dtype=torch.float64, n_iv_steps=1, step_list = None, 
+                 add_eps_constraint=False, 
+                 device=None):
         super().__init__()
         
         self.n_step = n_step
@@ -43,6 +46,9 @@ class ODESYSLP(nn.Module):
         self.num_added_equation_constraints = 0
         self.num_added_initial_constraints = 0
         self.num_added_derivative_constraints = 0
+        self.num_added_eps_constraints = 0
+
+        self.add_eps_constraint=add_eps_constraint
 
         # order is diffeq order. n_order is total number of terms: y'', y', y for order 2.
         self.n_order = order+1
@@ -70,13 +76,13 @@ class ODESYSLP(nn.Module):
 
         #### sparse constraint arrays
         # constraint coefficients
-        self.value_dict = {ConstraintType.Equation: [], ConstraintType.Initial: [], ConstraintType.Derivative: []}
+        self.value_dict = {ConstraintType.Equation: [], ConstraintType.Initial: [], ConstraintType.Derivative: [], ConstraintType.EPS:[]}
         # constraint indices
-        self.row_dict = {ConstraintType.Equation: [], ConstraintType.Initial: [], ConstraintType.Derivative: []}
+        self.row_dict = {ConstraintType.Equation: [], ConstraintType.Initial: [], ConstraintType.Derivative: [], ConstraintType.EPS:[]}
         # variable indices
-        self.col_dict = {ConstraintType.Equation: [], ConstraintType.Initial: [], ConstraintType.Derivative: []}
+        self.col_dict = {ConstraintType.Equation: [], ConstraintType.Initial: [], ConstraintType.Derivative: [], ConstraintType.EPS:[]}
         # rhs values
-        self.rhs_dict = {ConstraintType.Equation: [], ConstraintType.Initial: [], ConstraintType.Derivative: []}
+        self.rhs_dict = {ConstraintType.Equation: [], ConstraintType.Initial: [], ConstraintType.Derivative: [], ConstraintType.EPS:[]}
 
         # mask values
         self.mask_value_dict = {ConstraintType.Equation: [], ConstraintType.Initial: [], ConstraintType.Derivative: []}
@@ -113,6 +119,9 @@ class ODESYSLP(nn.Module):
             constraint_index = self.num_added_initial_constraints
         elif constraint_type == ConstraintType.Derivative:
             constraint_index = self.num_added_derivative_constraints
+        elif constraint_type == ConstraintType.EPS:
+            constraint_index = self.num_added_eps_constraints
+
 
         for i,v in enumerate(var_list):
             if v == VarType.EPS:
@@ -136,6 +145,8 @@ class ODESYSLP(nn.Module):
             self.num_added_initial_constraints += 1
         elif constraint_type == ConstraintType.Derivative:
             self.num_added_derivative_constraints += 1
+        elif constraint_type == ConstraintType.EPS:
+            self.num_added_eps_constraints += 1
 
     def add_mask(self, mask_values, constraint_type):
         """ mask values for constraint """
@@ -263,11 +274,17 @@ class ODESYSLP(nn.Module):
         #backward_c(sign=-1)
 
 
+    def build_eps_constraints(self):
+        assert(self.add_eps_constraint==True)
+        self.add_constraint(var_list=[VarType.EPS], values=[1], rhs=0, constraint_type=ConstraintType.EPS)
+
     def build_constraints(self):
         
         self.build_equation_constraints()
         self.build_derivative_constraints()
         self.build_initial_constraints()
+        if self.add_eps_constraint:
+            self.build_eps_constraints()
 
         eq_A = torch.sparse_coo_tensor([self.row_dict[ConstraintType.Equation],self.col_dict[ConstraintType.Equation]],
                                        self.value_dict[ConstraintType.Equation], 
@@ -306,11 +323,20 @@ class ODESYSLP(nn.Module):
                                        #size=(self.num_added_constraints, self.num_vars), 
                                        dtype=self.dtype, device=self.device)
 
+        #may be empty if self.add_eps_constraint is False
+        eps_A = torch.sparse_coo_tensor([self.row_dict[ConstraintType.EPS],self.col_dict[ConstraintType.EPS]],
+                                       self.value_dict[ConstraintType.EPS], 
+                                       size=(self.num_added_eps_constraints, self.num_vars), 
+                                       #size=(self.num_added_constraints, self.num_vars), 
+                                       dtype=self.dtype, device=self.device)
+
 
         if self.n_iv > 0:
-            full_A = torch.cat([eq_A, initial_A, derivative_A], dim=0)
+            #full_A = torch.cat([eq_A, initial_A, derivative_A], dim=0)
+            full_A = torch.cat([eq_A, initial_A, derivative_A, eps_A], dim=0)
         else:
-            full_A = torch.cat([eq_A, derivative_A], dim=0)
+            #full_A = torch.cat([eq_A, derivative_A], dim=0)
+            full_A = torch.cat([eq_A, derivative_A, eps_A], dim=0)
 
         self.num_constraints = full_A.shape[0]
         self.build_block_diag(full_A)
@@ -333,6 +359,9 @@ class ODESYSLP(nn.Module):
         mask_A = torch.cat([mask_A]*self.bs, dim=0)
         mask_A = mask_A.coalesce()
 
+        eps_A = eps_A.unsqueeze(0)
+        eps_A = torch.cat([eps_A]*self.bs, dim=0)
+        self.eps_A = eps_A
 
         #(b, r2, c)
         if initial_A is not None:

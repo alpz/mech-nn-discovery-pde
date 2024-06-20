@@ -1,4 +1,7 @@
 import torch
+import numpy as np
+
+from solver.ode_layer import ODEINDLayerTest
 
 interval_bs = 10
 
@@ -209,3 +212,47 @@ def compute_cauchy_point(G, c, y, n_eq, n_ineq):
     
 
 ############## Test
+
+def test():
+    step_size = 0.05
+    end = 3*step_size
+    n_step = int(end/step_size)
+    order=2
+
+    steps = step_size*np.ones((n_step-1,))
+    steps = torch.tensor(steps)
+
+    #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
+    _coeffs = np.array([[1,0,1]], dtype='float32')
+    _coeffs = np.repeat(_coeffs, n_step, axis=0)
+    _coeffs = torch.tensor(_coeffs)
+
+    _rhs = torch.tensor(0.)
+    rhs = _rhs.repeat(n_step)
+
+    # initial values at time t=0. 
+    iv = torch.tensor([0,1], dtype=torch.float32)
+
+    coeffs = _coeffs.reshape(1, n_step, order+1)
+    rhs = rhs.unsqueeze(0)
+    iv = iv.unsqueeze(0)
+
+    ode = ODEINDLayerTest(bs=1,order=order,n_ind_dim=1,n_iv=2,n_step=n_step,n_iv_steps=1)
+
+    u0,u1,u2,eps,_, eq, initial, derivative, eps_tensor = ode(_coeffs, rhs, iv, steps)
+
+    #derivative.to_dense()
+
+    b = np.array([-1]*derivative.shape[-1])
+    b[0] = 1
+    b = torch.tensor(b)[None, None, ...]
+    derivative_neg = derivative*b
+    #print(derivative_neg.to_dense())
+    print(eps_tensor.to_dense())
+    print(eps_tensor.shape)
+
+    
+
+
+
+test()
