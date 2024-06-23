@@ -77,8 +77,6 @@ def get_gradient(AH, gamma, cp, y):
     return g
 
 def compute_delta_t(AH, gamma, cp, yj, pj):
-    #output shapes: batch, G-dim[0], num_intervals
-
 
     # G' = [A, H]1/gamma I [At Ht]
     AHT = AH.transpose(1,2)
@@ -217,14 +215,18 @@ def compute_cauchy_point(A, H, A_rhs, H_rhs, gamma, c, y, n_eq):
     #t_breaks shape [batch, dimension]
     #TODO remove last dims
     #reduced_breaks shape [batch, n_intervals] 
-    found = torch.zeros(y.shape[0]).type_as(y)
-    min_t = torch.zeros(y.shape[0]).type_as(y)
+    found = torch.zeros(y.shape[0], dtype=torch.bool, device=y.device)
+    opt_y = torch.zeros_like(y)
+    r = torch.arange(y.shape[0], device=y.device)
 
     for begin in range(0, max_num_intervals, interval_bs):
         end = begin + min(begin+interval_bs, max_num_intervals)
 
         #get batch of breaks [batch, dimension, interval_set]
         #batch, 1,  interval_batch
+        #ti_begin_batch= time_intervals[:, None, begin:end]
+        #ti_end_batch= time_intervals[:, None, begin+1:end+1]
+
         ti_begin_batch= time_intervals[:, None, begin:end]
         ti_end_batch= time_intervals[:, None, begin+1:end+1]
         #t_breaks: batch, N
@@ -235,6 +237,7 @@ def compute_cauchy_point(A, H, A_rhs, H_rhs, gamma, c, y, n_eq):
 
         y_j = torch.where(ti_begin_batch < t_breaks[...,None], y_j - ti_begin_batch*g_j, y_j - t_breaks[...,None]*g_j)
         p_j = torch.where(ti_begin_batch < t_breaks[...,None], -g_j, torch.zeros_like(g_j))
+
 
         #y_j shape [batch, dimension, interval_set ]
         #p_j shape [batch, dimension, interval_set ]
@@ -250,21 +253,43 @@ def compute_cauchy_point(A, H, A_rhs, H_rhs, gamma, c, y, n_eq):
         #else min not in interval
         #first interval with min
 
+        ti_begin_batch= time_intervals.squeeze(1)
+        ti_end_batch= time_intervals.squeeze(1)
+
         #min time found in this batch
         fp_gt_0 = (fp_j>0)
-        delta_t_in_int = (delta_t < (ti_end_batch - ti_begin_batch).squeeze())
+        #delta_t_in_int = (delta_t < (ti_end_batch - ti_begin_batch).squeeze(1))
+        delta_t_in_int = (delta_t < (ti_end_batch - ti_begin_batch))
 
-        batch_min_t = fp_gt_0.float()*ti_begin_batch + (1-fp_gt_0.float())*delta_t_in_int.float()*delta_t
-        #whether we found a min t in this batch fp_j > 0 or 
-        batch_found = fp_gt_0 | delta_t_in_int
+        #_batch_min_t = delta_t
+        batch_min_t = fp_gt_0.float()*0. + (1-fp_gt_0.float())*delta_t_in_int.float()*delta_t
 
         #save previous found status
         prev_found = found
+
+        #whether we found a min t in this batch fp_j > 0 or 
+        batch_found = fp_gt_0 | delta_t_in_int
+        #batch_found = torch.where((~prev_found).unsqueeze(2), fp_gt_0 | delta_t_in_int, batch_found)
+
         #update found status only if we found a min in this batch
-        found = (1-found)*batch_found
+        #found = (1-found)*batch_found + found
+        found = torch.where(found==False, batch_found.any(dim=1), found)
+
+        found_index = torch.argmax(batch_found.int(), dim=1)
+
+        times = ti_begin_batch[r, found_index].unsqueeze(1)
+
+
+        #TODO: move outside loop
+        y_j = y#[...,None]
+        g_j = g#[...,None]
+        y_j = torch.where(times < t_breaks, y_j - times*g_j, y_j - t_breaks*g_j)
+        p_j = torch.where(times < t_breaks, -g_j, torch.zeros_like(g_j))
 
         #update min t only if we hadn't a previous min
-        min_t = (1-prev_found)*found*batch_min_t
+        #min_t = (1-prev_found)*found*batch_min_t
+        _opt = y_j + batch_min_t[r, found_index] * p_j
+        opt_y = torch.where((~prev_found & found).unsqueeze(2), _opt, opt_y)
 
     #for the first interval with minimum
     #9. y = y(tj-1) + delta_t p^{j-1}
