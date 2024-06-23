@@ -19,8 +19,15 @@ def variable_roll(X, shifts):
     return torch.gather(X, 1, arange2)
 
 @torch.no_grad()
-def gradient_projection(A_in, b_in, gamma, d_in):
-    """solve dual QP using gradient projection 
+def gradient_projection(A, H, b, gamma, d):
+    """
+    Input QP:
+    min 1/2 x^t G x + x^t d
+    Given  Ax == b 
+           Hx \ge 0
+    G = gamma*I
+    
+    solve dual QP using gradient projection 
     
     min -1/2 y^t (A Ginv A^t) y + y^t (-A Ginv d - b)
     given y \ge 0
@@ -33,6 +40,7 @@ def gradient_projection(A_in, b_in, gamma, d_in):
     y: current y
     """
 
+    n_eq = A.shape[1]
     # G = A_in 1/gamma A_in^t
     # d = -A_in 1/gamma d_in - b_in
 
@@ -47,9 +55,80 @@ def gradient_projection(A_in, b_in, gamma, d_in):
 
     #4. next
 
+def get_gradient(AH, gamma, cp, y):
+    """
+    G' = [A,  H] 1/gamma*I * [At Ht]
+    c' = 1/gamma I * c + [b 0]
+    g = G'y + c
+    """
+    # Concat along row
+    
+    assert(len(y.shape)==3)
+    #g = AH.T @ y 
+    AHT = AH.transpose(1,2)
+    #g = AH.T @ y 
+    g = torch.bmm(AHT, y) 
+    #g = AH @ g
+    g = torch.bmm(AH, g)
+    g = 0.5*(1/gamma)*g 
+
+    g = g + cp
+
+    return g
+
+def compute_delta_t(AH, gamma, cp, yj, pj):
+    #output shapes: batch, G-dim[0], num_intervals
+
+
+    # G' = [A, H]1/gamma I [At Ht]
+    AHT = AH.transpose(1,2)
+    AHy = torch.bmm(AHT, yj)
+    AHp = torch.bmm(AHT, pj)
+
+    AHy = torch.bmm(AH, AHy)
+    AHp = torch.bmm(AH, AHp)
+
+    AHy = AHy/gamma
+    AHp = AHp/gamma
+
+    ## c^t y
+    #y shape: b, 1, n_interval
+    cpy = (cp*yj).sum(dim=1)
+    ##shape: b, n_interval
+    #cy = cy.squeeze(1)
+
+    ## c^t p
+    #shape: b, n_interval
+    cpp = (cp*pj).sum(dim=1)
+
+    ## f_j
+    ## c^t y + 1/2 y^tGy 
+    #shape: b,N,n_interval * b,N,n_interval
+    f_j = (yj*AHy).sum(dim=1)
+    f_j = 0.5*0.5*f_j/gamma
+    #: b,n_interval + b, 
+    f_j = cpy + f_j
+
+    ## fp_j
+    ## c^t p + 1/2 y^tGp 
+    fp_j = (yj*AHp).sum(dim=1)
+    fp_j = 0.5*fp_j/gamma
+    #: b,n_interval + b, 
+    fp_j = cpp + fp_j
+
+    ## fpp_j
+    ## p^tGp 
+    fpp_j = (pj*AHp).sum(dim=2)
+
+    # Compute minimizing delta t
+    # shape b, n_interval
+    delta_t = -fp_j/fpp_j
+    assert((delta_t >=0).all())
+
+    return delta_t, fp_j
 
 @torch.no_grad()
-def compute_cauchy_point(G, c, y, n_eq, n_ineq):
+def compute_cauchy_point(A, H, A_rhs, H_rhs, gamma, c, y, n_eq):
     """ Compute Cauchy point
     min 1/2 x^t G x + x^t c
     x \ge l
@@ -58,33 +137,47 @@ def compute_cauchy_point(G, c, y, n_eq, n_ineq):
     Assume dimension is num equality constraints + num inequality constraints in that order
     """
 
+    
+    assert(len(y.shape)==2)
+    y = y.unsqueeze(2)
+    c = c.unsqueeze(2)
+    A_rhs = A_rhs.unsqueeze(2)
+    H_rhs = H_rhs.unsqueeze(2)
     N = y.shape[1]
+
+    AH = torch.cat([A, H], dim=1)
+    rhs = torch.cat([A_rhs, H_rhs], dim=1)
+
+
+    #c' = 1/gamma I * c + [b 0]
+    cp = torch.bmm(AH, c)
+    cp = cp+rhs
+    cp = cp/gamma
+    cp = -cp
+
     #TODO add equality constraints
 
     #1. Compute gradient 
-
-    g = G@y + c
+    #g = G@y + c
+    g = get_gradient(AH, gamma, cp, y)
 
     #2. Compute breaks for each coordinate i.
     # t_i = (yi - ui)/gi if gi < 0 ui < inf. for this problem ui is always inf.
     # t_i = (y_i - li)/gi if gi>0, li > -inf. for this problem li is always 0.
     # t_i = inf otherwise.
 
-    # TODO fix for unbounded below
+    # Only lower bound is valid for inequalities \lambda >= 0
     t_rhs_2 = y/g
     t_breaks = torch.where((g>0), t_rhs_2, torch.inf)
+    # break at inf whenever g==0.
+    t_breaks = t_breaks.nan_to_num(nan=torch.inf, posinf=torch.inf, neginf=torch.inf)
+
     #Set inf for equality constraints
     t_breaks[:, :n_eq] = torch.inf
+    t_breaks = t_breaks.squeeze(2)
 
     ############
     # remove duplicate breaks and inf breaks. roll to move them at the end.
-    num_zero = torch.isclose(t_breaks, torch.tensor([0.])).int().sum(dim=-1).long()
-    num_inf = torch.isinf(t_breaks).int().sum(dim=-1)
-
-    #TODO handle zero infs
-    num_intervals = t_breaks.shape[0] - num_zero - num_inf + 1
-
-    max_num_intervals = num_intervals.max()
 
     #3. Get sorted and unique breaks. 0<t1<t2 ... <tn
     # For this specific problem, only 0's and infs can be duplicates.
@@ -93,12 +186,17 @@ def compute_cauchy_point(G, c, y, n_eq, n_ineq):
     # roll tensor (each row) by number of 0s -1
     # use the max number of intervals (over rows) for the number of intervals.
 
-    sorted_t_breaks,_ = torch.sort(t_breaks, dim=-1)
+    sorted_t_breaks,_ = torch.sort(t_breaks, dim=1)
 
-    t_breaks_rolled = variable_roll(sorted_ts, num_zero)
+    #TODO check for other duplicates
+    #First index of max element for each example. infs may be repeated.
+    num_intervals = sorted_t_breaks.argmax(dim=1)
+    max_num_intervals = num_intervals.max()
 
-    #TODO: add intial 0.
-    time_intervals = t_breaks_rolled
+    #t_breaks_rolled = variable_roll(sorted_ts, num_zero)
+    #add intial 0.
+    zz = torch.zeros(sorted_t_breaks.shape[0:2])
+    time_intervals = torch.cat([zz, sorted_t_breaks], dim=1)
     #############
 
     #TODO add zero column
@@ -123,7 +221,7 @@ def compute_cauchy_point(G, c, y, n_eq, n_ineq):
     min_t = torch.zeros(y.shape[0]).type_as(y)
 
     for begin in range(0, max_num_intervals, interval_bs):
-        end = begin + max(begin+interval_bs, max_num_intervals)
+        end = begin + min(begin+interval_bs, max_num_intervals)
 
         #get batch of breaks [batch, dimension, interval_set]
         #batch, 1,  interval_batch
@@ -132,8 +230,8 @@ def compute_cauchy_point(G, c, y, n_eq, n_ineq):
         #t_breaks: batch, N
         
         #g, y shape [batch, N]
-        y_j = y[...,None]
-        g_j = g[...,None]
+        y_j = y#[...,None]
+        g_j = g#[...,None]
 
         y_j = torch.where(ti_begin_batch < t_breaks[...,None], y_j - ti_begin_batch*g_j, y_j - t_breaks[...,None]*g_j)
         p_j = torch.where(ti_begin_batch < t_breaks[...,None], -g_j, torch.zeros_like(g_j))
@@ -141,47 +239,10 @@ def compute_cauchy_point(G, c, y, n_eq, n_ineq):
         #y_j shape [batch, dimension, interval_set ]
         #p_j shape [batch, dimension, interval_set ]
 
+
         #y(t) for each t in t_list
 
-        #output shapes: batch, G-dim[0], num_intervals
-        Gy = torch.bmm(G, y_j)
-        Gp = torch.bmm(G, p_j)
-
-        ## c^t y
-        cy = c.unsqueeze(1)
-        #yhape: b, 1, n_interval
-        cy = torch.bmm(cy, y_j)
-        #shape: b, n_interval
-        cy = cy.squeeze(1)
-
-        ## c^t p
-        cp = c.unsqueeze(1)
-        #shape: b, 1, n_interval
-        cp = torch.bmm(cp, p_j)
-        #shape: b, n_interval
-        cp = cp.squeeze(1)
-
-        ## f_j
-        ## c^t y + 1/2 y^tGy 
-        #shape: b,N,n_interval * b,N,n_interval
-        f_j = 0.5* (y*Gy).sum(dim=2)
-        #: b,n_interval + b, 
-        f_j = cy + f_j
-
-        ## fp_j
-        ## c^t p + 1/2 y^tGp 
-        fp_j = (y*Gp).sum(dim=2)
-        #: b,n_interval + b, 
-        fp_j = cp + fp_j
-
-        ## fpp_j
-        ## p^tGp 
-        fpp_j = (p_j*Gp).sum(dim=2)
-
-        # Compute minimizing delta t
-        # shape b, n_interval
-        delta_t = -fp_j/fpp_j
-        assert((delta_t >=0).all())
+        delta_t, fp_j = compute_delta_t(AH, gamma, cp, y_j, p_j)
 
         #check if minimum is in one of intervals
         #if fp_j > 0 -> min at begin
@@ -248,11 +309,23 @@ def test():
     b = torch.tensor(b)[None, None, ...]
     derivative_neg = derivative*b
     #print(derivative_neg.to_dense())
-    print(eps_tensor.to_dense())
-    print(eps_tensor.shape)
-
     
+    A = torch.cat([eq, initial], dim=1)
+    H = torch.cat([derivative, derivative_neg, eps_tensor], dim=1)
 
+    print(A.shape)
+    print(H.shape)
+
+    A_rhs = torch.cat([rhs, iv], dim=1)
+    H_rhs = torch.zeros(H.shape[0:2]).type_as(rhs)
+
+    print(A_rhs.shape)
+    print(H_rhs.shape)
+
+    c = torch.cat([A_rhs, H_rhs], dim=1)
+    y_init = torch.rand_like(c).double()
+
+    compute_cauchy_point(A, H, A_rhs, H_rhs, 0.1, c, y_init, A.shape[1])
 
 
 test()
