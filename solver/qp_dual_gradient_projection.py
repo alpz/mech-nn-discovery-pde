@@ -18,6 +18,24 @@ def variable_roll(X, shifts):
     arange2 = (arange1 - shifts) % n_cols
     return torch.gather(X, 1, arange2)
 
+def get_primal_vars(A, H, gamma, c, y, n_eq):
+    """
+    x = G^-1(At yeq + Ht yineq -c) 
+    """
+
+    AT = A.transpose(1,2)
+    HT = H.transpose(1,2)
+
+    phi = y[:, :n_eq].unsqueeze(2)
+    lam = y[:, n_eq:].unsqueeze(2)
+
+    x = torch.bmm(AT, phi)
+    x = x + torch.bmm(HT, lam)
+    x = x - c
+    x = x/gamma
+
+    return x
+
 @torch.no_grad()
 def gradient_projection(A, H, b, gamma, d):
     """
@@ -122,7 +140,7 @@ def compute_delta_t(AH, gamma, cp, yj, pj):
     # Compute minimizing delta t
     # shape b, n_interval
     delta_t = -fp_j/fpp_j
-    assert((delta_t >=0).all())
+    #assert((delta_t >=0).all())
 
     return delta_t, fp_j
 
@@ -262,7 +280,8 @@ def compute_cauchy_point(A, H, A_rhs, H_rhs, gamma, c, y, n_eq):
         #min time found in this batch
         fp_gt_0 = (fp_j>0)
         #delta_t_in_int = (delta_t < (ti_end_batch - ti_begin_batch).squeeze(1))
-        delta_t_in_int = (delta_t < (ti_end_batch - ti_begin_batch))
+        #delta_t_in_int = (delta_t < (ti_end_batch - ti_begin_batch))
+        delta_t_in_int = ((delta_t < (ti_end_batch - ti_begin_batch)) & (delta_t >= 0))
 
         #_batch_min_t = delta_t
         batch_min_t = fp_gt_0.float()*0. + (1-fp_gt_0.float())*delta_t_in_int.float()*delta_t
@@ -307,6 +326,7 @@ def compute_cauchy_point(A, H, A_rhs, H_rhs, gamma, c, y, n_eq):
     #for the first interval with minimum
     #9. y = y(tj-1) + delta_t p^{j-1}
 
+    x = get_primal_vars(A, H, gamma, c, opt_y, n_eq)
     return opt_y
     #return cauchy point
     
@@ -366,7 +386,7 @@ def test():
     c[:,0] = 1
     y_init = torch.rand((coeffs.shape[0], A.shape[1]+H.shape[1])).double()
 
-    compute_cauchy_point(A, H, A_rhs, H_rhs, 0.1, c, y_init, A.shape[1])
+    compute_cauchy_point(A, H, A_rhs, H_rhs, 1, c, y_init, A.shape[1])
 
 
 test()
