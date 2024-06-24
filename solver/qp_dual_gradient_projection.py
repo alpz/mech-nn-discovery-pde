@@ -116,7 +116,7 @@ def compute_delta_t(AH, gamma, cp, yj, pj):
 
     ## fpp_j
     ## p^tGp 
-    fpp_j = (pj*AHp).sum(dim=2)
+    fpp_j = (pj*AHp).sum(dim=1)
 
     # Compute minimizing delta t
     # shape b, n_interval
@@ -216,7 +216,9 @@ def compute_cauchy_point(A, H, A_rhs, H_rhs, gamma, c, y, n_eq):
     #TODO remove last dims
     #reduced_breaks shape [batch, n_intervals] 
     found = torch.zeros(y.shape[0], dtype=torch.bool, device=y.device)
-    opt_y = torch.zeros_like(y)
+    opt_y = torch.zeros_like(y.squeeze(2))
+    #opt_init_times = torch.zeros_like(y)
+    #opt_delta = torch.zeros_like(y)
     r = torch.arange(y.shape[0], device=y.device)
 
     for begin in range(0, max_num_intervals, interval_bs):
@@ -253,8 +255,8 @@ def compute_cauchy_point(A, H, A_rhs, H_rhs, gamma, c, y, n_eq):
         #else min not in interval
         #first interval with min
 
-        ti_begin_batch= time_intervals.squeeze(1)
-        ti_end_batch= time_intervals.squeeze(1)
+        ti_begin_batch= ti_begin_batch.squeeze(1)
+        ti_end_batch= ti_end_batch.squeeze(1)
 
         #min time found in this batch
         fp_gt_0 = (fp_j>0)
@@ -275,25 +277,36 @@ def compute_cauchy_point(A, H, A_rhs, H_rhs, gamma, c, y, n_eq):
         #found = (1-found)*batch_found + found
         found = torch.where(found==False, batch_found.any(dim=1), found)
 
+        #index of first time inteval
         found_index = torch.argmax(batch_found.int(), dim=1)
-
-        times = ti_begin_batch[r, found_index].unsqueeze(1)
+        #time for which opt is found
+        batch_opt_init_times = ti_begin_batch[r, found_index].unsqueeze(1)
+        batch_opt_delta_t = batch_min_t[r, found_index]
 
 
         #TODO: move outside loop
-        y_j = y#[...,None]
-        g_j = g#[...,None]
-        y_j = torch.where(times < t_breaks, y_j - times*g_j, y_j - t_breaks*g_j)
-        p_j = torch.where(times < t_breaks, -g_j, torch.zeros_like(g_j))
+        #Compute y and p for optimal interval
+        y_j = y.squeeze(2)#[...,None]
+        g_j = g.squeeze(2)#[...,None]
+        y_j = torch.where(batch_opt_init_times < t_breaks, y_j - batch_opt_init_times*g_j, y_j - t_breaks*g_j)
+        p_j = torch.where(batch_opt_init_times < t_breaks, -g_j, torch.zeros_like(g_j))
 
         #update min t only if we hadn't a previous min
-        #min_t = (1-prev_found)*found*batch_min_t
-        _opt = y_j + batch_min_t[r, found_index] * p_j
-        opt_y = torch.where((~prev_found & found).unsqueeze(2), _opt, opt_y)
+        #Compute new Cauchy point given optimal delta t
+        _opt = y_j + batch_opt_delta_t * p_j
+        #Update only ones for which optimal interval was found
+        opt_y = torch.where((~prev_found & found).unsqueeze(1), _opt, opt_y)
+
+        #opt_init_times = torch.where((~prev_found & found).unsqueeze(2), batch_opt_init_times, opt_init_times)
+        #opt_delta_t = torch.where((~prev_found & found).unsqueeze(2), batch_opt_delta_t, opt_delta_t)
+
+        if found.all():
+            break
 
     #for the first interval with minimum
     #9. y = y(tj-1) + delta_t p^{j-1}
 
+    return opt_y
     #return cauchy point
     
 
@@ -347,8 +360,10 @@ def test():
     print(A_rhs.shape)
     print(H_rhs.shape)
 
-    c = torch.cat([A_rhs, H_rhs], dim=1)
-    y_init = torch.rand_like(c).double()
+    #c = torch.cat([A_rhs, H_rhs], dim=1)
+    c = torch.zeros((1,A.shape[2]), device=coeffs.device).double()
+    c[:,0] = 1
+    y_init = torch.rand((coeffs.shape[0], A.shape[1]+H.shape[1])).double()
 
     compute_cauchy_point(A, H, A_rhs, H_rhs, 0.1, c, y_init, A.shape[1])
 
