@@ -70,7 +70,7 @@ def get_gradient(AH, gamma, cp, y):
     g = torch.bmm(AHT, y) 
     #g = AH @ g
     g = torch.bmm(AH, g)
-    g = 0.5*(1/gamma)*g 
+    g = (1/gamma)*g 
 
     g = g + cp
 
@@ -103,20 +103,21 @@ def compute_delta_t(AH, gamma, cp, yj, pj):
     ## c^t y + 1/2 y^tGy 
     #shape: b,N,n_interval * b,N,n_interval
     f_j = (yj*AHy).sum(dim=1)
-    f_j = 0.5*0.5*f_j/gamma
+    f_j = 0.5*f_j/gamma
     #: b,n_interval + b, 
     f_j = cpy + f_j
 
     ## fp_j
     ## c^t p + 1/2 y^tGp 
     fp_j = (yj*AHp).sum(dim=1)
-    fp_j = 0.5*fp_j/gamma
+    fp_j = fp_j/gamma
     #: b,n_interval + b, 
     fp_j = cpp + fp_j
 
     ## fpp_j
     ## p^tGp 
     fpp_j = (pj*AHp).sum(dim=1)
+    fpp_j = fpp_j/gamma
 
     # Compute minimizing delta t
     # shape b, n_interval
@@ -147,10 +148,10 @@ def compute_cauchy_point(A, H, A_rhs, H_rhs, gamma, c, y, n_eq):
     rhs = torch.cat([A_rhs, H_rhs], dim=1)
 
 
-    #c' = 1/gamma I * c + [b 0]
+    #c' = -(1/gamma I * c + [b 0])
     cp = torch.bmm(AH, c)
-    cp = cp+rhs
     cp = cp/gamma
+    cp = cp+rhs
     cp = -cp
 
     #TODO add equality constraints
@@ -189,11 +190,11 @@ def compute_cauchy_point(A, H, A_rhs, H_rhs, gamma, c, y, n_eq):
     #TODO check for other duplicates
     #First index of max element for each example. infs may be repeated.
     num_intervals = sorted_t_breaks.argmax(dim=1)
-    max_num_intervals = num_intervals.max()
+    max_num_intervals = num_intervals.max()+1
 
     #t_breaks_rolled = variable_roll(sorted_ts, num_zero)
     #add intial 0.
-    zz = torch.zeros(sorted_t_breaks.shape[0:2])
+    zz = torch.zeros((sorted_t_breaks.shape[0],1), device=sorted_t_breaks.device)
     time_intervals = torch.cat([zz, sorted_t_breaks], dim=1)
     #############
 
@@ -222,7 +223,7 @@ def compute_cauchy_point(A, H, A_rhs, H_rhs, gamma, c, y, n_eq):
     r = torch.arange(y.shape[0], device=y.device)
 
     for begin in range(0, max_num_intervals, interval_bs):
-        end = begin + min(begin+interval_bs, max_num_intervals)
+        end = min(begin+interval_bs, max_num_intervals)
 
         #get batch of breaks [batch, dimension, interval_set]
         #batch, 1,  interval_batch
