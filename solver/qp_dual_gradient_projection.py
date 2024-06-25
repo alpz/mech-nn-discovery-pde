@@ -386,7 +386,7 @@ def test():
     c[:,0] = 1
     y_init = torch.rand((coeffs.shape[0], A.shape[1]+H.shape[1])).double()
 
-    compute_cauchy_point(A, H, A_rhs, H_rhs, 1, c, y_init, A.shape[1])
+    compute_cauchy_point(A, H, A_rhs, H_rhs, 0.1, c, y_init, A.shape[1])
 
 
 test()
