@@ -37,7 +37,7 @@ def get_primal_vars(A, H, gamma, c, y, n_eq):
     return x
 
 @torch.no_grad()
-def gradient_projection(A, H, b, gamma, d):
+def gradient_projection(A, H, A_rhs, H_rhs, gamma, c, n_eq):
     """
     Input QP:
     min 1/2 x^t G x + x^t d
@@ -58,7 +58,16 @@ def gradient_projection(A, H, b, gamma, d):
     y: current y
     """
 
-    n_eq = A.shape[1]
+    # (batch, num constraints)
+    y_init = torch.rand((A.shape[0], A.shape[1]+H.shape[1])).double()
+    y = y_init
+
+    for i in range(10000):
+        y = compute_cauchy_point(A, H, A_rhs, H_rhs, gamma, c, y, n_eq)
+
+
+    x = get_primal_vars(A, H, gamma, c.unsqueeze(2), y, n_eq)
+    return y
     # G = A_in 1/gamma A_in^t
     # d = -A_in 1/gamma d_in - b_in
 
@@ -121,21 +130,21 @@ def compute_delta_t(AH, gamma, cp, yj, pj):
     ## c^t y + 1/2 y^tGy 
     #shape: b,N,n_interval * b,N,n_interval
     f_j = (yj*AHy).sum(dim=1)
-    f_j = 0.5*f_j/gamma
+    f_j = 0.5*f_j
     #: b,n_interval + b, 
     f_j = cpy + f_j
 
     ## fp_j
     ## c^t p + 1/2 y^tGp 
     fp_j = (yj*AHp).sum(dim=1)
-    fp_j = fp_j/gamma
+    #fp_j = fp_j
     #: b,n_interval + b, 
     fp_j = cpp + fp_j
 
     ## fpp_j
     ## p^tGp 
     fpp_j = (pj*AHp).sum(dim=1)
-    fpp_j = fpp_j/gamma
+    fpp_j = fpp_j
 
     # Compute minimizing delta t
     # shape b, n_interval
@@ -326,7 +335,6 @@ def compute_cauchy_point(A, H, A_rhs, H_rhs, gamma, c, y, n_eq):
     #for the first interval with minimum
     #9. y = y(tj-1) + delta_t p^{j-1}
 
-    x = get_primal_vars(A, H, gamma, c, opt_y, n_eq)
     return opt_y
     #return cauchy point
     
@@ -334,8 +342,9 @@ def compute_cauchy_point(A, H, A_rhs, H_rhs, gamma, c, y, n_eq):
 ############## Test
 
 def test():
-    step_size = 0.05
+    step_size = 0.01
     end = 3*step_size
+    #end = 50*step_size
     n_step = int(end/step_size)
     order=2
 
@@ -384,9 +393,9 @@ def test():
     #c = torch.cat([A_rhs, H_rhs], dim=1)
     c = torch.zeros((1,A.shape[2]), device=coeffs.device).double()
     c[:,0] = 1
-    y_init = torch.rand((coeffs.shape[0], A.shape[1]+H.shape[1])).double()
 
-    compute_cauchy_point(A, H, A_rhs, H_rhs, 0.1, c, y_init, A.shape[1])
+    #compute_cauchy_point(A, H, A_rhs, H_rhs, 0.1, c, A.shape[1])
+    gradient_projection(A, H, A_rhs, H_rhs, 0.1, c, A.shape[1])
 
 
 test()
