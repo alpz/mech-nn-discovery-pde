@@ -58,7 +58,7 @@ def gradient_projection(A, H, A_rhs, H_rhs, gamma, c, n_eq):
     y: current y
     """
 
-    gamma=0.1
+    #gamma=0.1
     # (batch, num constraints)
     #y_init = torch.rand((A.shape[0], A.shape[1]+H.shape[1])).double()
     y_init = torch.zeros((A.shape[0], A.shape[1]+H.shape[1])).double()
@@ -349,16 +349,16 @@ def compute_cauchy_point(A, H, A_rhs, H_rhs, gamma, c, y, n_eq):
 def test():
     step_size = 0.1
     #end = 3*step_size
-    end = 50*step_size
+    end = 40*step_size
     n_step = int(end/step_size)
-    order=2
+    order=3
 
     steps = step_size*np.ones((n_step-1,))
     steps = torch.tensor(steps)
 
     #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
     #_coeffs = np.array([[0,1,0,1]], dtype='float32')
-    _coeffs = np.array([[1,0,1]], dtype='float32')
+    _coeffs = np.array([[0, 1,0,1]], dtype='float32')
     _coeffs = np.repeat(_coeffs, n_step, axis=0)
     _coeffs = torch.tensor(_coeffs)
 
@@ -398,10 +398,10 @@ def test():
 
     #c = torch.cat([A_rhs, H_rhs], dim=1)
     c = torch.zeros((1,A.shape[2]), device=coeffs.device).double()
-    c[:,0] = 100
+    c[:,0] = 1
 
     #compute_cauchy_point(A, H, A_rhs, H_rhs, 0.1, c, A.shape[1])
-    gradient_projection(A, H, A_rhs, H_rhs, 0.5, c, A.shape[1])
+    gradient_projection(A, H, A_rhs, H_rhs, 0.0001, c, A.shape[1])
 
 
 test()
