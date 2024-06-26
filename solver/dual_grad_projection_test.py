@@ -304,6 +304,6 @@ def test_osqp():
     res = m.solve()
     #lambdaphi=np.zeros(A.shape[1]+H.shape[1])
     #x = (quadraticdual(lambdaphi,d,G,E,e,C,c))
-    print(x)
+    print(res.x)
 
 test_osqp()
