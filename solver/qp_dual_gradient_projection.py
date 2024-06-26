@@ -58,15 +58,18 @@ def gradient_projection(A, H, A_rhs, H_rhs, gamma, c, n_eq):
     y: current y
     """
 
+    gamma=0.1
     # (batch, num constraints)
-    y_init = torch.rand((A.shape[0], A.shape[1]+H.shape[1])).double()
+    #y_init = torch.rand((A.shape[0], A.shape[1]+H.shape[1])).double()
+    y_init = torch.zeros((A.shape[0], A.shape[1]+H.shape[1])).double()
     y = y_init
 
-    for i in range(10000):
+    for i in range(1000):
         y = compute_cauchy_point(A, H, A_rhs, H_rhs, gamma, c, y, n_eq)
 
 
     x = get_primal_vars(A, H, gamma, c.unsqueeze(2), y, n_eq)
+    print(x)
     return y
     # G = A_in 1/gamma A_in^t
     # d = -A_in 1/gamma d_in - b_in
@@ -79,6 +82,7 @@ def gradient_projection(A, H, A_rhs, H_rhs, gamma, c, n_eq):
     #2.5 optional. apply subspace reduction
 
     #3. check kkt
+    #break when projection cannot proceed. Either break is at 0 or gradient is 0.
 
     #4. next
 
@@ -151,7 +155,7 @@ def compute_delta_t(AH, gamma, cp, yj, pj):
     delta_t = -fp_j/fpp_j
     #assert((delta_t >=0).all())
 
-    return delta_t, fp_j
+    return delta_t, fp_j, fpp_j
 
 @torch.no_grad()
 def compute_cauchy_point(A, H, A_rhs, H_rhs, gamma, c, y, n_eq):
@@ -275,8 +279,9 @@ def compute_cauchy_point(A, H, A_rhs, H_rhs, gamma, c, y, n_eq):
 
         #y(t) for each t in t_list
 
-        delta_t, fp_j = compute_delta_t(AH, gamma, cp, y_j, p_j)
+        delta_t, fp_j, fpp_j = compute_delta_t(AH, gamma, cp, y_j, p_j)
 
+        assert((fpp_j >= 0).all())
         #check if minimum is in one of intervals
         #if fp_j > 0 -> min at begin
         #else if delta_t < t_break[i+1]-t_break[i] -> min at t[i] + delta_t
@@ -287,13 +292,13 @@ def compute_cauchy_point(A, H, A_rhs, H_rhs, gamma, c, y, n_eq):
         ti_end_batch= ti_end_batch.squeeze(1)
 
         #min time found in this batch
-        fp_gt_0 = (fp_j>0)
+        fp_gt_0 = (fp_j>=0)
         #delta_t_in_int = (delta_t < (ti_end_batch - ti_begin_batch).squeeze(1))
         #delta_t_in_int = (delta_t < (ti_end_batch - ti_begin_batch))
         delta_t_in_int = ((delta_t < (ti_end_batch - ti_begin_batch)) & (delta_t >= 0))
 
         #_batch_min_t = delta_t
-        batch_min_t = fp_gt_0.float()*0. + (1-fp_gt_0.float())*delta_t_in_int.float()*delta_t
+        batch_min_t = fp_gt_0.double()*0. + (1-fp_gt_0.double())*delta_t_in_int.double()*delta_t
 
         #save previous found status
         prev_found = found
@@ -342,9 +347,9 @@ def compute_cauchy_point(A, H, A_rhs, H_rhs, gamma, c, y, n_eq):
 ############## Test
 
 def test():
-    step_size = 0.01
-    end = 3*step_size
-    #end = 50*step_size
+    step_size = 0.1
+    #end = 3*step_size
+    end = 50*step_size
     n_step = int(end/step_size)
     order=2
 
@@ -352,6 +357,7 @@ def test():
     steps = torch.tensor(steps)
 
     #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
+    #_coeffs = np.array([[0,1,0,1]], dtype='float32')
     _coeffs = np.array([[1,0,1]], dtype='float32')
     _coeffs = np.repeat(_coeffs, n_step, axis=0)
     _coeffs = torch.tensor(_coeffs)
@@ -392,10 +398,10 @@ def test():
 
     #c = torch.cat([A_rhs, H_rhs], dim=1)
     c = torch.zeros((1,A.shape[2]), device=coeffs.device).double()
-    c[:,0] = 1
+    c[:,0] = 100
 
     #compute_cauchy_point(A, H, A_rhs, H_rhs, 0.1, c, A.shape[1])
-    gradient_projection(A, H, A_rhs, H_rhs, 0.1, c, A.shape[1])
+    gradient_projection(A, H, A_rhs, H_rhs, 0.5, c, A.shape[1])
 
 
 test()
