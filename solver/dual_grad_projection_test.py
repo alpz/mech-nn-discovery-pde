@@ -324,7 +324,7 @@ def test_osqp():
 def test_osqp_dual_relaxation():
     step_size = 0.1
     #end = 3*step_size
-    end = 50*step_size
+    end = 200*step_size
     n_step = int(end/step_size)
     order=2
 
