@@ -217,14 +217,14 @@ def test_osqp():
     #end = 3*step_size
     end = 400*step_size
     n_step = int(end/step_size)
-    order=2
+    order=3
 
     steps = step_size*np.ones((n_step-1,))
     steps = torch.tensor(steps)
 
     #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
     #_coeffs = np.array([[0,1,0,1]], dtype='float32')
-    _coeffs = np.array([[1,0,1]], dtype='float32')
+    _coeffs = np.array([[1,0,1,0]], dtype='float32')
     _coeffs = np.repeat(_coeffs, n_step, axis=0)
     _coeffs = torch.tensor(_coeffs)
 
@@ -264,7 +264,7 @@ def test_osqp():
 
     #c = torch.cat([A_rhs, H_rhs], dim=1)
     c = torch.zeros((1,A.shape[2]), device=coeffs.device).double()
-    c[:,0] = 10
+    c[:,0] = 1
 
     gamma = 0.1
 

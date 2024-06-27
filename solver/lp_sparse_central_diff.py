@@ -469,7 +469,7 @@ class ODESYSLP(nn.Module):
 
         #shape: b, n_steps-1, 4
         #values = torch.cat([ones, -sum_inv, zeros, sum_inv ], dim=-1)
-        values = torch.stack([ones, -sum_inv*mult, zeros, sum_inv*mult, -ones*mult ], dim=-1)
+        values = torch.stack([-ones, -sum_inv*mult, zeros, sum_inv*mult, -ones*mult ], dim=-1)
 
         #repeat n_order-1 times
         #top-level only. no repeat
