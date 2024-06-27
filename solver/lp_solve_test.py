@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 def test_lp():
     step_size = 0.1
     #end = 3*step_size
-    end = 3*step_size
+    end = 10*step_size
     n_step = int(end/step_size)
     order=2
 

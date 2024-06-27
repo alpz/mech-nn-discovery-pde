@@ -1,7 +1,10 @@
+# %%
 import torch
 import numpy as np
 
 from solver.ode_layer import ODEINDLayerTest
+
+import matplotlib.pyplot as plt
 
 interval_bs = 10
 
@@ -69,8 +72,8 @@ def gradient_projection(A, H, A_rhs, H_rhs, gamma, c, n_eq):
 
 
     x = get_primal_vars(A, H, gamma, c.unsqueeze(2), y, n_eq)
-    print(x)
-    return y
+    #return y
+    return x
     # G = A_in 1/gamma A_in^t
     # d = -A_in 1/gamma d_in - b_in
 
@@ -351,14 +354,14 @@ def test():
     #end = 3*step_size
     end = 40*step_size
     n_step = int(end/step_size)
-    order=3
+    order=2
 
     steps = step_size*np.ones((n_step-1,))
     steps = torch.tensor(steps)
 
     #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
     #_coeffs = np.array([[0,1,0,1]], dtype='float32')
-    _coeffs = np.array([[0, 1,0,1]], dtype='float32')
+    _coeffs = np.array([[1,0,1]], dtype='float32')
     _coeffs = np.repeat(_coeffs, n_step, axis=0)
     _coeffs = torch.tensor(_coeffs)
 
@@ -401,7 +404,34 @@ def test():
     c[:,0] = 1
 
     #compute_cauchy_point(A, H, A_rhs, H_rhs, 0.1, c, A.shape[1])
-    gradient_projection(A, H, A_rhs, H_rhs, 0.0001, c, A.shape[1])
+    x = gradient_projection(A, H, A_rhs, H_rhs, 0.1, c, A.shape[1])
+
+    u = x[0,1:].squeeze()
+    u = u.reshape(n_step, order+1)
+    #shape: batch, step, vars, order
+    #u = u.permute(0,2,1,3)
+
+    u0 = u[:,0]
+    u1 = u[:,1]
+    #u2 = u[:,:,:,2]
+    return x[0], u0, u1
 
 
-test()
+#test_osqp()
+# %%
+#eps, u0, u1 = test_osqp_dual_relaxation()
+eps, u0, u1 = test()
+print(eps)
+
+#test_py()
+
+# %%
+f, axis = plt.subplots(1,2, figsize=(16,3))
+axis[0].plot(u0.squeeze())
+axis[1].plot(u1.squeeze())
+#axis[2].plot(u2.squeeze())
+# %%
+u0
+
+# %%
+eps

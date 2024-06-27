@@ -196,7 +196,7 @@ class ODESYSLP(nn.Module):
                         h = self.step_size
                         self.add_constraint(var_list = [ VarType.EPS, (step-1, dim, var_order-1), (step, dim, var_order-1), (step+1,dim, var_order-1), (step,dim, var_order)], 
                                         #values= [ 1,            -0.5/h,                0,                    0.5/h,                -1], 
-                                        values= [ -1,            -0.5/h,                0,                    0.5/h,                -1], 
+                                        values= [ 1,            -0.5/h,                0,                    0.5/h,                -1], 
                                         rhs=0, constraint_type=ConstraintType.Derivative)
         
         #forward constraints

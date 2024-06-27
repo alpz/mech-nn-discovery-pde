@@ -12,6 +12,8 @@ from solver.ode_layer import ODEINDLayerTest
 
 import matplotlib.pyplot as plt
 
+numpy.set_printoptions(linewidth=200, precision=3)
+
 def quadraticdual(lambdaphi,d,G,E,e,C,c):
     n=len(d)
     j=len(c)
@@ -212,10 +214,21 @@ def test_py():
     x = (quadraticdual(lambdaphi,d,G,E,e,C,c))
     print(x)
 
+    y = x
+    u = x[1:]
+    u = u.reshape(n_step, order+1)
+    #shape: batch, step, vars, order
+    #u = u.permute(0,2,1,3)
+
+    u0 = u[:,0]
+    u1 = u[:,1]
+    #u2 = u[:,:,:,2]
+    return x[0], u0, u1
+
 def test_osqp():
     step_size = 0.1
     #end = 3*step_size
-    end = 100*step_size
+    end = 10*step_size
     n_step = int(end/step_size)
     order=2
 
@@ -266,7 +279,7 @@ def test_osqp():
     c = torch.zeros((1,A.shape[2]), device=coeffs.device).double()
     c[:,0] = 1
 
-    gamma = 0.01
+    gamma = 0.001
 
     A = torch.cat([A,H], dim=1)
     l = torch.cat([A_rhs, H_rhs], dim=1)
@@ -298,8 +311,8 @@ def test_osqp():
     A_s = SPS.coo_matrix((values, (indices[0], indices[1]) ), shape = shape)
     #P = gamma*SPS.eye(A_s.shape[1])
 
-    ones = gamma*np.ones(A_s.shape[1])
-    #ones[0] = 0.0001
+    ones = 0*gamma*np.ones(A_s.shape[1])
+    ones[1:] = 0
     #P = gamma*SPS.eye(A_s.shape[1])
     P = SPS.diags(ones)
 
@@ -313,6 +326,8 @@ def test_osqp():
     res = m.solve()
     #lambdaphi=np.zeros(A.shape[1]+H.shape[1])
     #x = (quadraticdual(lambdaphi,d,G,E,e,C,c))
+
+    print(A_s.toarray()[-5:, 0:20])
     print(res.x)
 
     y = res.x
@@ -329,7 +344,7 @@ def test_osqp():
 def test_osqp_dual_relaxation():
     step_size = 0.1
     #end = 3*step_size
-    end = 500*step_size
+    end = 3*step_size
     n_step = int(end/step_size)
     order=2
 
@@ -367,6 +382,7 @@ def test_osqp_dual_relaxation():
     A = torch.cat([eq, initial], dim=1)
     H = torch.cat([derivative, derivative_neg, eps_tensor], dim=1)
     #H = torch.cat([derivative, derivative_neg], dim=1)
+    #H = torch.cat([derivative, derivative_neg], dim=1)
     #H = torch.cat([derivative], dim=1)
 
     print(A.shape)
@@ -382,8 +398,8 @@ def test_osqp_dual_relaxation():
     c = torch.zeros((1,A.shape[2]), device=coeffs.device).double()
     c[:,0] = 1
 
-    gamma = 0.1
-    eps_gamma = 0.001
+    gamma = 0.01
+    #eps_gamma = 0.1
 
     #A = a_rhs -> A>=a_rhs, A<=a_rhs -> -A>=-a_rhs, H \ge 0
 
@@ -442,6 +458,8 @@ def test_osqp_dual_relaxation():
     A_s = A_s.tocsc()
     P = P.tocsc()
 
+    print(A_s.T.toarray()[-5:, 0:20])
+
     m = osqp.OSQP()
     m.setup(P=P, q=q, A=A_s, l=l, u=u)
     res = m.solve()
@@ -464,6 +482,7 @@ def test_osqp_dual_relaxation():
 # %%
 #eps, u0, u1 = test_osqp_dual_relaxation()
 eps, u0, u1 = test_osqp()
+#eps, u0, u1 = test_py()
 print(eps)
 
 #test_py()
