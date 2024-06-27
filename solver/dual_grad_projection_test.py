@@ -215,16 +215,16 @@ def test_py():
 def test_osqp():
     step_size = 0.1
     #end = 3*step_size
-    end = 400*step_size
+    end = 100*step_size
     n_step = int(end/step_size)
-    order=3
+    order=2
 
     steps = step_size*np.ones((n_step-1,))
     steps = torch.tensor(steps)
 
     #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
     #_coeffs = np.array([[0,1,0,1]], dtype='float32')
-    _coeffs = np.array([[1,0,1,0]], dtype='float32')
+    _coeffs = np.array([[1,0,1]], dtype='float32')
     _coeffs = np.repeat(_coeffs, n_step, axis=0)
     _coeffs = torch.tensor(_coeffs)
 
@@ -266,7 +266,7 @@ def test_osqp():
     c = torch.zeros((1,A.shape[2]), device=coeffs.device).double()
     c[:,0] = 1
 
-    gamma = 0.1
+    gamma = 0.01
 
     A = torch.cat([A,H], dim=1)
     l = torch.cat([A_rhs, H_rhs], dim=1)
@@ -327,7 +327,7 @@ def test_osqp():
     return y[0], u0, u1
 
 def test_osqp_dual_relaxation():
-    step_size = 0.001
+    step_size = 0.1
     #end = 3*step_size
     end = 500*step_size
     n_step = int(end/step_size)
@@ -380,7 +380,7 @@ def test_osqp_dual_relaxation():
 
     #c = torch.cat([A_rhs, H_rhs], dim=1)
     c = torch.zeros((1,A.shape[2]), device=coeffs.device).double()
-    c[:,0] = 100
+    c[:,0] = 1
 
     gamma = 0.1
     eps_gamma = 0.001
@@ -435,7 +435,7 @@ def test_osqp_dual_relaxation():
 
     A_s = SPS.coo_matrix((values, (indices[0], indices[1]) ), shape = shape)
     ones = gamma*np.ones(A_s.shape[1])
-    ones[-1] = eps_gamma
+    #ones[-1] = eps_gamma
     #P = gamma*SPS.eye(A_s.shape[1])
     P = SPS.diags(ones)
 
