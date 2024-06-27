@@ -217,6 +217,7 @@ class ODEINDLayerTest(nn.Module):
             steps = steps.double()
 
         derivative_constraints = self.ode.build_derivative_tensor_test(steps)
+        #derivative_constraints = self.ode.build_derivative_tensor(steps)
         eq_constraints = self.ode.build_equation_tensor(coeffs)
 
         #x = self.qpf(coeffs, rhs, iv_rhs, derivative_constraints)

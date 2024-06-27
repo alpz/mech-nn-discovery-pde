@@ -211,7 +211,7 @@ class ODESYSLP(nn.Module):
 
                         #epsilon
                         var_list.append(VarType.EPS)
-                        val_list.append(1)
+                        val_list.append(-1)
 
                         for j in range(i,self.n_order):
                             #h = self.step_size**(j)
@@ -268,7 +268,7 @@ class ODESYSLP(nn.Module):
         #print('adding central')
         #for i in range(1, self.n_order):
             #central_c(var_order=i)
-        #central_c()
+        central_c()
 
         backward_c(sign=1)
         #backward_c(sign=-1)
@@ -469,7 +469,7 @@ class ODESYSLP(nn.Module):
 
         #shape: b, n_steps-1, 4
         #values = torch.cat([ones, -sum_inv, zeros, sum_inv ], dim=-1)
-        values = torch.stack([ones, -sum_inv*mult, zeros, sum_inv*mult, -ones*mult ], dim=-1)
+        values = torch.stack([-ones, -sum_inv*mult, zeros, sum_inv*mult, -ones*mult ], dim=-1)
 
         #repeat n_order-1 times
         #top-level only. no repeat
@@ -565,13 +565,13 @@ class ODESYSLP(nn.Module):
 
         fv = self.build_forward_values(steps)
 
-        #cv = self.build_central_values(steps)
+        cv = self.build_central_values(steps)
 
         bv = self.build_backward_values(steps)
 
-        #built_values = torch.cat([fv,cv,bv], dim=-1)
+        built_values = torch.cat([fv,cv,bv], dim=-1)
         #built_values = torch.cat([fv,cv], dim=-1)
-        built_values = torch.cat([fv,bv], dim=-1)
+        #built_values = torch.cat([fv,bv], dim=-1)
 
         return built_values
 
