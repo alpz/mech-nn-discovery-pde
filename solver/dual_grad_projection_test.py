@@ -215,7 +215,7 @@ def test_py():
 def test_osqp():
     step_size = 0.1
     #end = 3*step_size
-    end = 10*step_size
+    end = 100*step_size
     n_step = int(end/step_size)
     order=2
 
@@ -333,7 +333,7 @@ def test_osqp_dual_relaxation():
 
     #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
     #_coeffs = np.array([[0,1,0,1]], dtype='float32')
-    _coeffs = np.array([[1,0,1]], dtype='float32')
+    _coeffs = np.array([[1,0,1]], dtype='float64')
     _coeffs = np.repeat(_coeffs, n_step, axis=0)
     _coeffs = torch.tensor(_coeffs)
 
@@ -361,6 +361,8 @@ def test_osqp_dual_relaxation():
     
     A = torch.cat([eq, initial], dim=1)
     H = torch.cat([derivative, derivative_neg, eps_tensor], dim=1)
+    #H = torch.cat([derivative, derivative_neg], dim=1)
+    #H = torch.cat([derivative], dim=1)
 
     print(A.shape)
     print(H.shape)
@@ -373,29 +375,38 @@ def test_osqp_dual_relaxation():
 
     #c = torch.cat([A_rhs, H_rhs], dim=1)
     c = torch.zeros((1,A.shape[2]), device=coeffs.device).double()
-    c[:,0] = 1
+    c[:,0] = 10
 
     gamma = 0.1
+    eps_gamma = 0.01
 
     #A = a_rhs -> A>=a_rhs, A<=a_rhs -> -A>=-a_rhs, H \ge 0
 
     # A>= A_rhs
     # H>= 0
-    C = torch.cat([A,-A, H], dim=1)
+    #C = torch.cat([A,-A, H], dim=1)
+    C = torch.cat([A, H], dim=1)
     CT = C.transpose(1,2)
-    eye = torch.sparse.spdiags(torch.ones(CT.shape[2]), torch.tensor(0), (CT.shape[2], CT.shape[2]))
-    CTX = torch.cat([CT, eye.unsqueeze(0)], dim=1)
 
-    rhs_x = torch.zeros(CT.shape[2])
+    #eye = torch.sparse.spdiags(torch.ones(CT.shape[2]), torch.tensor(0), (CT.shape[2], CT.shape[2]))
+    eye_H = torch.sparse.spdiags(torch.ones(H.shape[1]), torch.tensor(0), (H.shape[1], H.shape[1]))
+    zero_A = torch.sparse_coo_tensor([[],[]], [], (H.shape[1], A.shape[1]))
+    var_constraints = torch.cat([zero_A, eye_H], dim=1)
+    #CTX = torch.cat([CT, eye.unsqueeze(0)], dim=1)
+    CTX = torch.cat([CT, var_constraints.unsqueeze(0)], dim=1)
+
+    #rhs_x = torch.zeros(CT.shape[2])
+    rhs_x = torch.zeros(H.shape[1])
     rhs = torch.cat([c[0], rhs_x], dim=0)
 
     rhs_x_u = torch.ones_like(rhs_x)*torch.inf
     rhs_u = torch.cat([c[0], rhs_x_u])
     #Take dual 
     
-    rhs_dual = torch.cat([A_rhs,-A_rhs, H_rhs], dim=1)
+    #rhs_dual = torch.cat([A_rhs,-A_rhs, H_rhs], dim=1)
+    rhs_dual = torch.cat([A_rhs, H_rhs], dim=1)
 
-    q = rhs_dual
+    q = -rhs_dual
 
     A = CTX[0]
     l = rhs#[0]
@@ -418,6 +429,8 @@ def test_osqp_dual_relaxation():
     shape = list(A.shape)
 
     A_s = SPS.coo_matrix((values, (indices[0], indices[1]) ), shape = shape)
+    #ones = gamma*np.ones(A_s.shape[1])
+    #ones[-1] = eps_gamma
     P = gamma*SPS.eye(A_s.shape[1])
 
     A_s = A_s.tocsc()
@@ -456,5 +469,8 @@ axis[1].plot(u1.squeeze())
 #axis[2].plot(u2.squeeze())
 # %%
 u0
+
+# %%
+eps
 
 # %%
