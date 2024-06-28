@@ -352,7 +352,7 @@ def compute_cauchy_point(A, H, A_rhs, H_rhs, gamma, c, y, n_eq):
 def test():
     step_size = 0.1
     #end = 3*step_size
-    end = 40*step_size
+    end = 50*step_size
     n_step = int(end/step_size)
     order=2
 
@@ -404,7 +404,7 @@ def test():
     c[:,0] = 1
 
     #compute_cauchy_point(A, H, A_rhs, H_rhs, 0.1, c, A.shape[1])
-    x = gradient_projection(A, H, A_rhs, H_rhs, 0.1, c, A.shape[1])
+    x = gradient_projection(A, H, A_rhs, H_rhs, 0.01, c, A.shape[1])
 
     u = x[0,1:].squeeze()
     u = u.reshape(n_step, order+1)
@@ -416,6 +416,107 @@ def test():
     #u2 = u[:,:,:,2]
     return x[0], u0, u1
 
+def test_dual_relaxation():
+    step_size = 0.1
+    #end = 3*step_size
+    end = 40*step_size
+    n_step = int(end/step_size)
+    order=2
+
+    steps = step_size*np.ones((n_step-1,))
+    steps = torch.tensor(steps)
+
+    #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
+    #_coeffs = np.array([[0,1,0,1]], dtype='float32')
+    _coeffs = np.array([[1,0,1]], dtype='float64')
+    _coeffs = np.repeat(_coeffs, n_step, axis=0)
+    _coeffs = torch.tensor(_coeffs)
+
+    _rhs = torch.tensor(0.)
+    rhs = _rhs.repeat(n_step)
+
+    # initial values at time t=0. 
+    iv = torch.tensor([0,1], dtype=torch.float32)
+
+    coeffs = _coeffs.reshape(1, n_step, order+1)
+    rhs = rhs.unsqueeze(0)
+    iv = iv.unsqueeze(0)
+
+    ode = ODEINDLayerTest(bs=1,order=order,n_ind_dim=1,n_iv=2,n_step=n_step,n_iv_steps=1)
+
+    u0,u1,u2,eps,_, eq, initial, derivative, eps_tensor = ode(_coeffs, rhs, iv, steps)
+
+    #derivative.to_dense()
+
+    b = np.array([-1]*derivative.shape[-1])
+    b[0] = 1
+    b = torch.tensor(b)[None, None, ...]
+    derivative_neg = derivative*b
+    #print(derivative_neg.to_dense())
+    
+    A = torch.cat([eq, initial], dim=1)
+    H = torch.cat([derivative, derivative_neg, eps_tensor], dim=1)
+    #H = torch.cat([derivative, derivative_neg], dim=1)
+    #H = torch.cat([derivative, derivative_neg], dim=1)
+    #H = torch.cat([derivative], dim=1)
+
+    print(A.shape)
+    print(H.shape)
+
+    A_rhs = torch.cat([rhs, iv], dim=1)
+    H_rhs = torch.zeros(H.shape[0:2]).type_as(rhs)
+
+    print(A_rhs.shape)
+    print(H_rhs.shape)
+
+    #c = torch.cat([A_rhs, H_rhs], dim=1)
+    c = torch.zeros((1,A.shape[2]), device=coeffs.device).double()
+    c[:,0] = 100
+
+    gamma =0 # 0.001
+    #eps_gamma = 0.1
+
+    #A = a_rhs -> A>=a_rhs, A<=a_rhs -> -A>=-a_rhs, H \ge 0
+
+    # A>= A_rhs
+    # H>= 0
+    #C = torch.cat([A,-A, H], dim=1)
+    C = torch.cat([A, H], dim=1)
+    CT = C.transpose(1,2)
+
+    #eye = torch.sparse.spdiags(torch.ones(CT.shape[2]), torch.tensor(0), (CT.shape[2], CT.shape[2]))
+    eye_H = torch.sparse.spdiags(torch.ones(H.shape[1]), torch.tensor(0), (H.shape[1], H.shape[1]))
+    zero_A = torch.sparse_coo_tensor([[],[]], [], (H.shape[1], A.shape[1]))
+    var_constraints = torch.cat([zero_A, eye_H], dim=1)
+    #CTX = torch.cat([CT, eye.unsqueeze(0)], dim=1)
+    CTX = torch.cat([CT, var_constraints.unsqueeze(0)], dim=1)
+
+    #rhs_x = torch.zeros(CT.shape[2])
+    rhs_x = torch.zeros(H.shape[1])
+    rhs = torch.cat([c[0], rhs_x], dim=0)
+
+    rhs_x_u = torch.ones_like(rhs_x)*torch.inf
+    rhs_u = torch.cat([c[0], rhs_x_u])
+    #Take dual 
+    
+    #rhs_dual = torch.cat([A_rhs,-A_rhs, H_rhs], dim=1)
+    rhs_dual = torch.cat([A_rhs, H_rhs], dim=1)
+
+    q = -rhs_dual
+
+
+    x = gradient_projection(A, H, A_rhs, H_rhs, 0.01, c, A.shape[1])
+
+    y = res.y[:n_step*(order+1)+1]
+    u = y[1:]
+    u = u.reshape(n_step, order+1)
+    #shape: batch, step, vars, order
+    #u = u.permute(0,2,1,3)
+
+    u0 = u[:,0]
+    u1 = u[:,1]
+    #u2 = u[:,:,:,2]
+    return y[0], u0, u1
 
 #test_osqp()
 # %%

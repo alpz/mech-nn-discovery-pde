@@ -17,16 +17,16 @@ import matplotlib.pyplot as plt
 def test_lp():
     step_size = 0.1
     #end = 3*step_size
-    end = 10*step_size
+    end = 500*step_size
     n_step = int(end/step_size)
-    order=2
+    order=3
 
     steps = step_size*np.ones((n_step-1,))
     steps = torch.tensor(steps)
 
     #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
     #_coeffs = np.array([[0,1,0,1]], dtype='float32')
-    _coeffs = np.array([[1,0,1]], dtype='float32')
+    _coeffs = np.array([[1,0,1,0]], dtype='float32')
     _coeffs = np.repeat(_coeffs, n_step, axis=0)
     _coeffs = torch.tensor(_coeffs)
 

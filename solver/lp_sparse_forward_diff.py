@@ -196,7 +196,7 @@ class ODESYSLP(nn.Module):
                         h = self.step_size
                         self.add_constraint(var_list = [ VarType.EPS, (step-1, dim, var_order-1), (step, dim, var_order-1), (step+1,dim, var_order-1), (step,dim, var_order)], 
                                         #values= [ 1,            -0.5/h,                0,                    0.5/h,                -1], 
-                                        values= [ 1,            -0.5/h,                0,                    0.5/h,                -1], 
+                                        values= [ -1,            -0.5/h,                0,                    0.5/h,                -1], 
                                         rhs=0, constraint_type=ConstraintType.Derivative)
         
         #forward constraints
@@ -211,7 +211,7 @@ class ODESYSLP(nn.Module):
 
                         #epsilon
                         var_list.append(VarType.EPS)
-                        val_list.append(1)
+                        val_list.append(-1)
 
                         for j in range(i,self.n_order):
                             #h = self.step_size**(j)
@@ -242,7 +242,7 @@ class ODESYSLP(nn.Module):
                     #for i in range(1):
                         #epsilon
                         var_list.append(VarType.EPS)
-                        val_list.append(1)
+                        val_list.append(-1)
 
                         for j in range(i,self.n_order):
                             #h = (-self.step_size)**(j)
