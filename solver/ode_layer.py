@@ -194,7 +194,7 @@ class ODEINDLayerTest(nn.Module):
 
         self.ode = ODESYSLP(bs=bs*self.n_ind_dim, n_dim=self.n_dim, n_equations=self.n_equations, n_auxiliary=0, n_step=self.n_step, step_size=self.step_size, order=self.order,
                          n_iv=self.n_iv, n_iv_steps=self.n_iv_steps, dtype=dtype, 
-                         add_eps_constraint=True, device=self.device)
+                         add_eps_constraint=False, device=self.device)
 
 
         self.qpf = QPFunctionSys(self.ode, n_step=self.n_step, order=self.order, n_iv=self.n_iv, gamma=gamma, alpha=alpha, double_ret=double_ret)

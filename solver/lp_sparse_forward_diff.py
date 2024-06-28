@@ -69,7 +69,8 @@ class ODESYSLP(nn.Module):
 
         # total number of qp variables
         #self.num_vars = self.n_step*self.n_order+1
-        self.num_vars = self.n_system_vars*self.n_step*self.n_order+1
+        #self.num_vars = self.n_system_vars*self.n_step*self.n_order+1
+        self.num_vars = self.n_system_vars*self.n_step*self.n_order
         # Variables except eps. Used for raveling
         #self.multi_index_shape = (self.n_step, self.n_dim*self.n_auxiliary, self.n_order)
         self.multi_index_shape = (self.n_step, self.n_system_vars, self.n_order)
@@ -102,7 +103,8 @@ class ODESYSLP(nn.Module):
             return 0
 
         # 0 is epsilon, step, grad_index
-        offset = 1
+        #offset = 1
+        offset = 0
 
         #index = self.get_coefficient_index(mesh_index, grad_index)
         out_index = np.ravel_multi_index(index, self.multi_index_shape, order='C')
@@ -125,6 +127,7 @@ class ODESYSLP(nn.Module):
 
         for i,v in enumerate(var_list):
             if v == VarType.EPS:
+                continue
                 var_index = self.get_variable_index_from_multiindex(None, var_type=VarType.EPS)
                 #var_index = self.get_variable_index(None, None, var_type=VarType.EPS)
             else:
@@ -301,9 +304,9 @@ class ODESYSLP(nn.Module):
         ones = np.ones(eq_rows.shape[0])
         #mask_values = np.concatenate([ones, -1*ones])
         mask_values = ones #np.concatenate([ones, ones])
-        mask_A = torch.sparse_coo_tensor([eq_rows,eq_columns-1],mask_values, 
-                                         size=(self.num_added_equation_constraints, self.num_vars-1), 
-                                         dtype=self.dtype, device=self.device)
+        #mask_A = torch.sparse_coo_tensor([eq_rows,eq_columns-1],mask_values, 
+        #                                 size=(self.num_added_equation_constraints, self.num_vars-1), 
+        #                                 dtype=self.dtype, device=self.device)
 
 
         if self.n_iv > 0:
@@ -346,7 +349,7 @@ class ODESYSLP(nn.Module):
         #self.derivative_lb = -dub
 
 
-        self.set_row_col_sorted_indices()
+        #self.set_row_col_sorted_indices()
 
 
         #Add batch dim
@@ -355,9 +358,9 @@ class ODESYSLP(nn.Module):
         eq_A = torch.cat([eq_A]*self.bs, dim=0)
         eq_A = eq_A.coalesce()
         
-        mask_A = mask_A.unsqueeze(0)
-        mask_A = torch.cat([mask_A]*self.bs, dim=0)
-        mask_A = mask_A.coalesce()
+        #mask_A = mask_A.unsqueeze(0)
+        #mask_A = torch.cat([mask_A]*self.bs, dim=0)
+        #mask_A = mask_A.coalesce()
 
         eps_A = eps_A.unsqueeze(0)
         eps_A = torch.cat([eps_A]*self.bs, dim=0)
