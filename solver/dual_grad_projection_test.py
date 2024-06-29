@@ -480,7 +480,7 @@ def test_osqp_dual_relaxation():
     return y[0], u0, u1
 
 
-def test_osqp_primal_equality():
+def test_primal_equality():
     step_size = 0.1
     #end = 3*step_size
     end = 600*step_size
@@ -657,7 +657,7 @@ def test_osqp_primal_equality():
 #test_osqp()
 # %%
 #eps, u0, u1 = test_osqp_dual_relaxation()
-eps, u0, u1 = test_osqp_primal_equality()
+eps, u0, u1 = test_primal_equality()
 #eps, u0, u1 = test_osqp()
 #eps, u0, u1 = test_py()
 print(eps)
