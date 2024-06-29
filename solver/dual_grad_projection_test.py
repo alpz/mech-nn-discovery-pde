@@ -483,7 +483,7 @@ def test_osqp_dual_relaxation():
 def test_primal_equality():
     step_size = 0.1
     #end = 3*step_size
-    end = 600*step_size
+    end = 200*step_size
     n_step = int(end/step_size)
     order=2
 
@@ -564,7 +564,7 @@ def test_primal_equality():
     l = torch.cat([A_rhs, H_rhs], dim=0)
     u = l
     P_diag = torch.ones(num_eps)
-    P_zeros = torch.zeros(num_var) #+ 1e-10
+    P_zeros = torch.zeros(num_var)  +1e-5
     P_diag = torch.cat([P_diag, P_zeros])
 
     P= torch.sparse.spdiags(P_diag, torch.tensor(0), (num_eps+num_var, num_eps+num_var))
@@ -616,9 +616,9 @@ def test_primal_equality():
     #eq_rhs = eq_rhs[...,np.newaxis]
     #xl = ii@eq_rhs
 
-    #xl,info = SPSLG.gmres(ZZ2, eq_rhs)
-    xl,info = SPSLG.lgmres(ZZ2, eq_rhs)
-    #xl,info = SPSLG.cg(ZZ2, eq_rhs)
+    xl,info = SPSLG.gmres(ZZ2, eq_rhs, atol=1e-8)
+    #xl,info = SPSLG.lgmres(ZZ2, eq_rhs, atol=1e-8)
+    #xl,info = SPSLG.bicg(ZZ2, eq_rhs)
     #xl,info = SPSLG.qmr(ZZ2, eq_rhs)
     #xl,info = SPSLG.gcrotmk(ZZ2, eq_rhs)
 
