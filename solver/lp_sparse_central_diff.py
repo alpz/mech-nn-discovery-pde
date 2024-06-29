@@ -268,7 +268,7 @@ class ODESYSLP(nn.Module):
         #print('adding central')
         #for i in range(1, self.n_order):
             #central_c(var_order=i)
-        #central_c()
+        central_c()
 
         backward_c(sign=1)
         #backward_c(sign=-1)

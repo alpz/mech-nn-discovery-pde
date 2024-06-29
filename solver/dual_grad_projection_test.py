@@ -7,6 +7,7 @@ import torch
 import osqp
 import scipy
 import scipy.sparse as SPS
+import scipy.sparse.linalg as SPSLG
 
 from solver.ode_layer import ODEINDLayerTest
 
@@ -539,7 +540,7 @@ def test_osqp_primal_equality():
     H = torch.cat([eps_H, H], dim=1)
     
     print(A.shape)
-    print(H.shape)
+    print("H ", H.shape)
 
     A_rhs = torch.cat([rhs, iv], dim=0)
     H_rhs = torch.zeros(H.shape[0]).type_as(rhs)
@@ -563,7 +564,7 @@ def test_osqp_primal_equality():
     l = torch.cat([A_rhs, H_rhs], dim=0)
     u = l
     P_diag = torch.ones(num_eps)
-    P_zeros = torch.zeros(num_var)
+    P_zeros = torch.zeros(num_var) #+ 1e-10
     P_diag = torch.cat([P_diag, P_zeros])
 
     P= torch.sparse.spdiags(P_diag, torch.tensor(0), (num_eps+num_var, num_eps+num_var))
@@ -597,6 +598,34 @@ def test_osqp_primal_equality():
     shape = list(P.shape)
     P_s = SPS.coo_matrix((values, (indices[0], indices[1]) ), shape = shape)
 
+
+    An = A_s.toarray()
+    Pn = P_s.toarray()
+
+    U = np.concatenate([Pn, -An.T], axis=1)
+    D = np.concatenate([An,np.zeros((An.shape[0], An.T.shape[1])) ], axis=1)
+
+    #eq_rhs = np.concatenate([-q, l], axis=0)
+    eq_rhs = np.concatenate([q, -l], axis=0)
+
+    #ZZ = np.concatenate([U,D], axis=0)
+
+
+    ZZ2 = SPS.bmat([[P_s, A_s.T],[A_s, None]])
+    #ii = np.linalg.inv(ZZ)
+    #eq_rhs = eq_rhs[...,np.newaxis]
+    #xl = ii@eq_rhs
+
+    #xl,info = SPSLG.gmres(ZZ2, eq_rhs)
+    xl,info = SPSLG.lgmres(ZZ2, eq_rhs)
+    #xl,info = SPSLG.cg(ZZ2, eq_rhs)
+    #xl,info = SPSLG.qmr(ZZ2, eq_rhs)
+    #xl,info = SPSLG.gcrotmk(ZZ2, eq_rhs)
+
+    sol = -xl[:num_eps+num_var]
+    #return None, 
+    #r = ZZ @ii
+    #d = np.diagonal(r)
     #ones = gamma*np.ones(A_s.shape[1])
     ##ones[-1] = eps_gamma
     ##P = gamma*SPS.eye(A_s.shape[1])
@@ -607,15 +636,14 @@ def test_osqp_primal_equality():
 
     #print(A_s.T.toarray()[-5:, 0:20])
 
-    m = osqp.OSQP()
-    m.setup(P=P_s, q=q, A=A_s, l=l, u=u)
-    res = m.solve()
-    ##lambdaphi=np.zeros(A.shape[1]+H.shape[1])
-    ##x = (quadraticdual(lambdaphi,d,G,E,e,C,c))
-    print(res.x)
+    #m = osqp.OSQP()
+    #m.setup(P=P_s, q=q, A=A_s, l=l, u=u)
+    #res = m.solve()
+    #print(res.x)
+    #sol = res.x
 
-    eps = res.x[:num_eps]
-    u = res.x[num_eps:num_eps+n_step*(order+1)]
+    eps = sol[:num_eps]
+    u = sol[num_eps:num_eps+n_step*(order+1)]
     #u = y[1:]
     u = u.reshape(n_step, order+1)
     ##shape: batch, step, vars, order
