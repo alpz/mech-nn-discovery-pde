@@ -197,48 +197,41 @@ class ODESYSLP(nn.Module):
                         #top-level only
                     var_order = self.n_order-1 
                     h = self.step_size
-                    if step !=1 and step !=self.n_step-2:
-                        #self.add_constraint(var_list = [ VarType.EPS, (step-1, dim, var_order-1), (step, dim, var_order-1), (step+1,dim, var_order-1), (step,dim, var_order)], 
-                        #                #values= [ 1,            -0.5/h,                0,                    0.5/h,                -1], 
-                        #                #values= [ -1,            -0.5/h,                0,                    0.5/h,                -1], 
-                        #                values= [ -1,            -0.5/h,                0,                    0.5/h,                -1], 
-                        #                #values= [ -1,            -0.5,                0,                    0.5,                -1*h], 
-                        #                rhs=0, constraint_type=ConstraintType.Derivative)
-
+                    #if step !=1 and step !=self.n_step-2:
+                    if False:
                         self.add_constraint(var_list = 
                                         [ VarType.EPS,(step-2, dim, var_order-2), (step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2), (step+2,dim, var_order-2),(step,dim, var_order)], 
-                                        #values= [ 1,            -0.5/h,                0,                    0.5/h,                -1], 
-                                        #values= [ -1,            -0.5/h,                0,                    0.5/h,                -1], 
-                                        #values= [ -1,            1/h**2,                -2/h**2,                    1/h**2,                -1], 
-                                        #values= [ -1,            1/h,                -2/h,                    1/h,                -1*h], 
-                                        #values= [ -1,            -0.5,                0,                    0.5,                -1*h], 
                                         values= [ -1,  -1/(12*h**2),  4/(3*h**2), -5/(2*h**2), 4/(3*h**2) , -1/(12*h**2), -1], 
                                         rhs=0, constraint_type=ConstraintType.Derivative)
 
                         self.add_constraint(var_list = 
-                                        #[ VarType.EPS, (step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2), (step,dim, 1)], 
-                                        #values= [ 1,            -0.5/h,                0,                    0.5/h,                -1], 
                                         [ VarType.EPS,(step-2, dim, var_order-2), (step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2), (step+2,dim, var_order-2),(step,dim, 1)], 
-
-                                        #values= [ -1,            1/(12*h),     -2/(3*h),  0,           2/(3*h),                    -1/(12*h),                -1*h], 
                                         values= [ -1,            1/(12*h),     -2/(3*h),  0,           2/(3*h),                    -1/(12*h),                -1], 
-                                        #values= [ -1,            -0.5,                0,                    0.5,                -1*h], 
-                                        #values= [ -1,            -0.5,                0,                    0.5,                -1*h], 
                                         rhs=0, constraint_type=ConstraintType.Derivative)
 
                         #if step ==1 or step ==self.n_step-1:
                     else:
+
                             self.add_constraint(var_list = 
-                                            [ VarType.EPS,(step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2),(step,dim, var_order)], 
-                                            values= [ -1,  1/(h**2),  -2/(h**2), 1/(h**2), -1], 
+                                            #[ VarType.EPS,(step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2),(step,dim, var_order)], 
+                                            [ VarType.EPS,(step-1, dim, 0), (step, dim, 0), (step+1,dim, 0),(step,dim, 2)], 
+                                            values= [ -1*h,  1/(h**2),  -2/(h**2), 1/(h**2), -1], 
                                             #values= [ -1,  1,  -2, 1, -1*h**2], 
                                             rhs=0, constraint_type=ConstraintType.Derivative)
 
                             self.add_constraint(var_list = 
-                                            [ VarType.EPS,(step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2), (step,dim, 1)], 
-                                            values= [ -1,            -0.5/h,                0,                    0.5/h,                -1], 
+                                            #[ VarType.EPS,(step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2), (step,dim, 1)], 
+                                            [ VarType.EPS,(step-1, dim, 0), (step, dim, 0), (step+1,dim, 0), (step,dim, 1)], 
+                                            values= [ -1*h,            -0.5/h,                0,                    0.5/h,                -1], 
                                             #values= [ -1,   -0.5*h,   0,  0.5*h,  -1*h**2], 
                                             rhs=0, constraint_type=ConstraintType.Derivative)
+
+                            #self.add_constraint(var_list = 
+                            #                #[ VarType.EPS,(step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2), (step,dim, 1)], 
+                            #                [ VarType.EPS,(step-1, dim, 1), (step, dim, 1), (step+1,dim, 1), (step,dim, 2)], 
+                            #                values= [ -1/h,            -0.5/h,                0,                    0.5/h,                -1], 
+                            #                #values= [ -1,   -0.5*h,   0,  0.5*h,  -1*h**2], 
+                            #                rhs=0, constraint_type=ConstraintType.Derivative)
 
         
         #forward constraints

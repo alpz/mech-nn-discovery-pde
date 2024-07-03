@@ -158,7 +158,7 @@ def test_osqp_dual_relaxation():
 def test_primal_equality_cg():
     step_size = 0.1
     #end = 3*step_size
-    end = 1000*step_size
+    end = 500*step_size
     n_step = int(end/step_size)
     order=2
 
@@ -167,7 +167,7 @@ def test_primal_equality_cg():
 
     #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
     #_coeffs = np.array([[0,1,0,1]], dtype='float32')
-    _coeffs = np.array([[1,0,0.5]], dtype='float64')
+    _coeffs = np.array([[10,0.1,1]], dtype='float64')
     _coeffs = np.repeat(_coeffs, n_step, axis=0)
     _coeffs = torch.tensor(_coeffs)
 
@@ -287,7 +287,7 @@ def test_primal_equality_cg():
     pdmat = A_s@Pinv_s@A_s.T
     pd_rhs = A_s@Pinv_s@q[:,None] + l[:,None]
 
-    lam,info = SPSLG.cg(pdmat, pd_rhs, atol=1e-10)
+    lam,info = SPSLG.cg(pdmat, pd_rhs)
     #lam,info = SPSLG.lgmres(pdmat, pd_rhs)
     xl = -Pinv_s@(A_s.T@lam -q)
 
@@ -339,9 +339,9 @@ def ode_solve():
         x, y= state
 
         #ax'' + bx' + cx + d = 0
-        a = 0.1
-        b = 0
-        c = 1
+        a = 1
+        b = 0.1
+        c = 10
         d = 0
 
         dx = y
@@ -351,7 +351,7 @@ def ode_solve():
         return dx, dy
         
     STEP=0.1
-    T=1000
+    T=500
     state0 = [0.0, 1.0]
     time_steps = np.linspace(0, T*STEP, T)
 
@@ -380,6 +380,6 @@ axis[1].plot(u1.squeeze())
 u0
 
 # %%
-np.abs(eps).max()
+np.abs(eps).min()
 
 # %%

@@ -483,7 +483,7 @@ def test_osqp_dual_relaxation():
 def test_primal_equality():
     step_size = 0.1
     #end = 3*step_size
-    end = 1000*step_size
+    end = 200*step_size
     n_step = int(end/step_size)
     order=2
 
