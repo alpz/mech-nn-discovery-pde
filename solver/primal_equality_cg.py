@@ -158,7 +158,7 @@ def test_osqp_dual_relaxation():
 def test_primal_equality_cg():
     step_size = 0.1
     #end = 3*step_size
-    end = 500*step_size
+    end = 1000*step_size
     n_step = int(end/step_size)
     order=2
 
@@ -167,7 +167,7 @@ def test_primal_equality_cg():
 
     #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
     #_coeffs = np.array([[0,1,0,1]], dtype='float32')
-    _coeffs = np.array([[10,0.1,1]], dtype='float64')
+    _coeffs = np.array([[1,0.0,0.1]], dtype='float64')
     _coeffs = np.repeat(_coeffs, n_step, axis=0)
     _coeffs = torch.tensor(_coeffs)
 
@@ -238,7 +238,7 @@ def test_primal_equality_cg():
     C = torch.cat([A, H], dim=0)
     l = torch.cat([A_rhs, H_rhs], dim=0)
     u = l
-    P_diag = torch.ones(num_eps)
+    P_diag = torch.ones(num_eps)*1
     P_zeros = torch.zeros(num_var) +1e-10
     P_diag = torch.cat([P_diag, P_zeros])
 
@@ -380,6 +380,6 @@ axis[1].plot(u1.squeeze())
 u0
 
 # %%
-np.abs(eps).min()
+np.abs(eps).max()
 
 # %%
