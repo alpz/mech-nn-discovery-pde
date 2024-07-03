@@ -8,6 +8,7 @@ import osqp
 import scipy
 import scipy.sparse as SPS
 import scipy.sparse.linalg as SPSLG
+from scipy.integrate import odeint
 
 from solver.ode_layer import ODEINDLayerTest
 
@@ -157,7 +158,7 @@ def test_osqp_dual_relaxation():
 def test_primal_equality_cg():
     step_size = 0.1
     #end = 3*step_size
-    end = 100*step_size
+    end = 1000*step_size
     n_step = int(end/step_size)
     order=2
 
@@ -166,7 +167,7 @@ def test_primal_equality_cg():
 
     #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
     #_coeffs = np.array([[0,1,0,1]], dtype='float32')
-    _coeffs = np.array([[1,0,1]], dtype='float64')
+    _coeffs = np.array([[1,0,0.5]], dtype='float64')
     _coeffs = np.repeat(_coeffs, n_step, axis=0)
     _coeffs = torch.tensor(_coeffs)
 
@@ -238,7 +239,7 @@ def test_primal_equality_cg():
     l = torch.cat([A_rhs, H_rhs], dim=0)
     u = l
     P_diag = torch.ones(num_eps)
-    P_zeros = torch.zeros(num_var) +1e-5
+    P_zeros = torch.zeros(num_var) +1e-10
     P_diag = torch.cat([P_diag, P_zeros])
 
     P= torch.sparse.spdiags(P_diag, torch.tensor(0), (num_eps+num_var, num_eps+num_var))
@@ -286,8 +287,9 @@ def test_primal_equality_cg():
     pdmat = A_s@Pinv_s@A_s.T
     pd_rhs = A_s@Pinv_s@q[:,None] + l[:,None]
 
-    lam,info = SPSLG.cg(pdmat, pd_rhs)
-    xl = Pinv_s@(A_s.T@lam -q)
+    lam,info = SPSLG.cg(pdmat, pd_rhs, atol=1e-10)
+    #lam,info = SPSLG.lgmres(pdmat, pd_rhs)
+    xl = -Pinv_s@(A_s.T@lam -q)
 
     #ZZ2 = SPS.bmat([[P_s, A_s.T],[A_s, None]])
     #ii = np.linalg.inv(ZZ)
@@ -332,13 +334,40 @@ def test_primal_equality_cg():
     ##u2 = u[:,:,:,2]
     return eps, u0, u1
 
+def ode_solve():
+    def f(state, t):
+        x, y= state
+
+        #ax'' + bx' + cx + d = 0
+        a = 0.1
+        b = 0
+        c = 1
+        d = 0
+
+        dx = y
+        dy = -b*y -c*x -d
+        dy = dy/a
+
+        return dx, dy
+        
+    STEP=0.1
+    T=1000
+    state0 = [0.0, 1.0]
+    time_steps = np.linspace(0, T*STEP, T)
+
+    x_sim = odeint(f, state0, time_steps)
+    return x_sim
+
 #test_osqp()
 # %%
 #eps, u0, u1 = test_osqp_dual_relaxation()
 eps, u0, u1 = test_primal_equality_cg()
 #eps, u0, u1 = test_osqp()
 #eps, u0, u1 = test_py()
-print(eps)
+#res = ode_solve()
+#u0 = res[:, 0]
+#u1 = res[:, 1]
+#print(eps)
 
 #test_py()
 
@@ -351,6 +380,6 @@ axis[1].plot(u1.squeeze())
 u0
 
 # %%
-eps
+np.abs(eps).max()
 
 # %%

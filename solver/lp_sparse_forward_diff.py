@@ -195,12 +195,51 @@ class ODESYSLP(nn.Module):
                 for dim in range(self.n_system_vars):
                     #for var_order in range(1, self.n_order):
                         #top-level only
-                        var_order = self.n_order-1
-                        h = self.step_size
-                        self.add_constraint(var_list = [ VarType.EPS, (step-1, dim, var_order-1), (step, dim, var_order-1), (step+1,dim, var_order-1), (step,dim, var_order)], 
+                    var_order = self.n_order-1 
+                    h = self.step_size
+                    if step !=1 and step !=self.n_step-2:
+                        #self.add_constraint(var_list = [ VarType.EPS, (step-1, dim, var_order-1), (step, dim, var_order-1), (step+1,dim, var_order-1), (step,dim, var_order)], 
+                        #                #values= [ 1,            -0.5/h,                0,                    0.5/h,                -1], 
+                        #                #values= [ -1,            -0.5/h,                0,                    0.5/h,                -1], 
+                        #                values= [ -1,            -0.5/h,                0,                    0.5/h,                -1], 
+                        #                #values= [ -1,            -0.5,                0,                    0.5,                -1*h], 
+                        #                rhs=0, constraint_type=ConstraintType.Derivative)
+
+                        self.add_constraint(var_list = 
+                                        [ VarType.EPS,(step-2, dim, var_order-2), (step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2), (step+2,dim, var_order-2),(step,dim, var_order)], 
                                         #values= [ 1,            -0.5/h,                0,                    0.5/h,                -1], 
-                                        values= [ -1,            -0.5/h,                0,                    0.5/h,                -1], 
+                                        #values= [ -1,            -0.5/h,                0,                    0.5/h,                -1], 
+                                        #values= [ -1,            1/h**2,                -2/h**2,                    1/h**2,                -1], 
+                                        #values= [ -1,            1/h,                -2/h,                    1/h,                -1*h], 
+                                        #values= [ -1,            -0.5,                0,                    0.5,                -1*h], 
+                                        values= [ -1,  -1/(12*h**2),  4/(3*h**2), -5/(2*h**2), 4/(3*h**2) , -1/(12*h**2), -1], 
                                         rhs=0, constraint_type=ConstraintType.Derivative)
+
+                        self.add_constraint(var_list = 
+                                        #[ VarType.EPS, (step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2), (step,dim, 1)], 
+                                        #values= [ 1,            -0.5/h,                0,                    0.5/h,                -1], 
+                                        [ VarType.EPS,(step-2, dim, var_order-2), (step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2), (step+2,dim, var_order-2),(step,dim, 1)], 
+
+                                        #values= [ -1,            1/(12*h),     -2/(3*h),  0,           2/(3*h),                    -1/(12*h),                -1*h], 
+                                        values= [ -1,            1/(12*h),     -2/(3*h),  0,           2/(3*h),                    -1/(12*h),                -1], 
+                                        #values= [ -1,            -0.5,                0,                    0.5,                -1*h], 
+                                        #values= [ -1,            -0.5,                0,                    0.5,                -1*h], 
+                                        rhs=0, constraint_type=ConstraintType.Derivative)
+
+                        #if step ==1 or step ==self.n_step-1:
+                    else:
+                            self.add_constraint(var_list = 
+                                            [ VarType.EPS,(step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2),(step,dim, var_order)], 
+                                            values= [ -1,  1/(h**2),  -2/(h**2), 1/(h**2), -1], 
+                                            #values= [ -1,  1,  -2, 1, -1*h**2], 
+                                            rhs=0, constraint_type=ConstraintType.Derivative)
+
+                            self.add_constraint(var_list = 
+                                            [ VarType.EPS,(step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2), (step,dim, 1)], 
+                                            values= [ -1,            -0.5/h,                0,                    0.5/h,                -1], 
+                                            #values= [ -1,   -0.5*h,   0,  0.5*h,  -1*h**2], 
+                                            rhs=0, constraint_type=ConstraintType.Derivative)
+
         
         #forward constraints
         def forward_c(sign=1):
@@ -208,7 +247,8 @@ class ODESYSLP(nn.Module):
                 for dim in range(self.n_system_vars):
                     #TODO handle corners for derivatives
                     #for i in range(1):
-                    for i in range(self.n_order-1):
+                    #for i in range(self.n_order-1):
+                    for i in range(1):
                         var_list = []
                         val_list = []
 
@@ -239,7 +279,8 @@ class ODESYSLP(nn.Module):
             #for step in reversed(range(1,self.n_step)):
             for step in range(1,self.n_step):
                 for dim in range(self.n_system_vars):
-                    for i in range(self.n_order-1):
+                    #for i in range(self.n_order-1):
+                    for i in range(1):
                         var_list = []
                         val_list = []
                     #for i in range(1):
