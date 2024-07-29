@@ -17,6 +17,11 @@ import matplotlib.pyplot as plt
 
 numpy.set_printoptions(linewidth=200, precision=3)
 
+siters = 0
+def nonlocal_iterate(arr):
+    #nonlocal siters
+    global siters
+    siters+=1
 
 def test_osqp_dual_relaxation():
     step_size = 0.1
@@ -159,7 +164,7 @@ def test_osqp_dual_relaxation():
 def test_primal_equality_cg():
     step_size = 0.1
     #end = 3*step_size
-    end = 500*step_size
+    end = 100*step_size
     n_step = int(end/step_size)
     order=2
 
@@ -169,8 +174,8 @@ def test_primal_equality_cg():
     #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
     #_coeffs = np.array([[0,1,0,1]], dtype='float32')
 
-    #_coeffs = np.array([[1,0.0,1]], dtype='float64')
-    _coeffs = np.array([[10,0.1,0.1]], dtype='float64')
+    _coeffs = np.array([[10,0.0,1]], dtype='float64')
+    #_coeffs = np.array([[20,0.1,0.1]], dtype='float64')
     #_coeffs = np.array([[10,0.1,0.1]], dtype='float64')
     #_coeffs = np.array([[-0.1,0.1, 10]], dtype='float64')
     _coeffs = np.repeat(_coeffs, n_step, axis=0)
@@ -292,7 +297,20 @@ def test_primal_equality_cg():
     pdmat = A_s@Pinv_s@A_s.T
     pd_rhs = A_s@Pinv_s@q[:,None] + l[:,None]
 
-    lam,info = SPSLG.cg(pdmat, pd_rhs)
+    dd = pdmat.diagonal()
+    ddmat = SPS.spdiags(dd, np.array([0]), dd.shape[0], dd.shape[0])
+
+    #tr = SPS.tril(pdmat, k=-1) + ddmat
+    #tr = SPS.tril(pdmat, k=-1) + ddmat
+    #tr = SPSLG.inv(tr)
+    #cc = SPSLG.spilu(pdmat)
+
+
+    lam,info = SPSLG.cg(pdmat, pd_rhs, callback=nonlocal_iterate)
+    #lam,info = SPSLG.cg(pdmat, pd_rhs, M=ddmat, callback=nonlocal_iterate)
+    #lam,info = SPSLG.cg(pdmat, pd_rhs, M=tr, callback=nonlocal_iterate)
+    #lam,info = SPSLG.cg(pdmat, pd_rhs, M=cc, callback=nonlocal_iterate)
+    print( 'cg info', info, siters)
     #lam,info = SPSLG.lgmres(pdmat, pd_rhs)
     xl = -Pinv_s@(A_s.T@lam -q)
 
@@ -350,10 +368,10 @@ def test_primal_equality_cg_torch():
     steps = torch.tensor(steps)
 
     #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
-    #_coeffs = np.array([[0,1,0,1]], dtype='float32')
+    _coeffs = np.array([[1,0,1]], dtype='float32')
 
-    #_coeffs = np.array([[1,0.0,1]], dtype='float64')
-    _coeffs = np.array([[10,0.1,0.1]], dtype='float64')
+    #_coeffs = np.array([[10,0.0,1]], dtype='float64')
+    #_coeffs = np.array([[20,0.1,0.1]], dtype='float64')
     #_coeffs = np.array([[10,0.1,0.1]], dtype='float64')
     #_coeffs = np.array([[-0.1,0.1, 10]], dtype='float64')
     _coeffs = np.repeat(_coeffs, n_step, axis=0)
@@ -483,7 +501,8 @@ def test_primal_equality_cg_torch():
     rhs = rhs.squeeze(2) + l
 
     #lam,info = SPSLG.cg(pdmat, pd_rhs)
-    lam, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=500)
+    lam, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=8000)
+    print('torch cg info ', info)
     #lam,info = SPSLG.lgmres(pdmat, pd_rhs)
     #xl = -Pinv_s@(A_s.T@lam -q)
 

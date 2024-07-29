@@ -2,7 +2,8 @@ import sys
 
 import torch.nn as nn
 import torch
-from solver.lp_sparse_forward_diff import ODESYSLP #as ODELP_sys
+#from solver.lp_sparse_forward_diff import ODESYSLP #as ODELP_sys
+from solver.lp_sparse_central_diff import ODESYSLP #as ODELP_sys
 from torch.nn.parameter import Parameter
 import numpy as np
 

@@ -3,6 +3,33 @@ Inequality constraints
 
 Central difference works with eps with negative sign -eps + ..., check.
 
+    #[ VarType.EPS,(step-1, dim, 0), (step, dim, 0), (step+1,dim, 0),(step,dim, 2)], 
+    #values= [ -1*h**3,  1,  -2, 1, -1*h**2], 
+
+    #[ VarType.EPS,(step-1, dim, 0), (step, dim, 0), (step+1,dim, 0), (step,dim, 1)], 
+    #values= [ -1*h**2,            -0.5,                0,                    0.5,                -1*h], 
+
+##########
+
+1    1       1
+s1   0     s3  X = [0 1 0]
+s1^2 0      s3^2
+
+
+s1*x1 = 1 - s3*x3
+x1 = (1- s3*x3)/s1
+
+s1^2 x1 = -s3^2* x3
+x1 = -s3^2/s1^2 * x3
+
+s1* (-s3^2/s1^2)*x3 +s3*x3 = 1
+(-s3^2/s1 + s3)*x3 = 1
+(-s3^2 + s1*s3)/s1 * x3 = 1
+##########
 
 TODO
+central diff layer
+central differences with variable step
+multiple eps
 
+central diff + grad

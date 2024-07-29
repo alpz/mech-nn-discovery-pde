@@ -20,19 +20,24 @@ def batch_mat_vec(As, x):
 
     x = x.unsqueeze(2)
     x = torch.bmm(At, x)
+    Atp = x.squeeze(2)
 
     x = x.squeeze(2)
     x = Pinv_diag*x
+    GAtp = x
 
     x = x.unsqueeze(2)
     x = torch.bmm(A, x)
     x = x.squeeze(2)
 
-    return x
+    pAAtp = (Atp*GAtp).sum(dim=1)
 
 
+    return x, pAAtp
 
-def cg_matvec(As, b, x0=None, tol=1e-12, maxiter=None, M=None, callback=None, atol=None):
+
+@torch.no_grad()
+def cg_matvec(As, b, x0=None, tol=1e-5, maxiter=None, M=None, callback=None, atol=None):
     #A, M, x, b = _make_system(A, M, x0, b)
     #matvec = A.matvec
     #psolve = M.matvec
@@ -67,7 +72,7 @@ def cg_matvec(As, b, x0=None, tol=1e-12, maxiter=None, M=None, callback=None, at
     x = torch.zeros_like(b)
     #r = b - torch.bmm(A,x)#.reshape(b.shape)
     #r = b - block_mv(A,x)#.reshape(b.shape)
-    r = b - batch_mat_vec(As,x)#.reshape(b.shape)
+    r = b - batch_mat_vec(As,x)[0]#.reshape(b.shape)
     iters = 0
     rho = 0
     #ipdb.set_trace()
@@ -89,9 +94,10 @@ def cg_matvec(As, b, x0=None, tol=1e-12, maxiter=None, M=None, callback=None, at
         #q = torch.bmm(A, p)
         #q = bmm_fix(A, p)
         #q = block_mv(A, p)
-        q = batch_mat_vec(As, p)
+        q, pAAtp = batch_mat_vec(As, p)
         #alpha = rho / cublas.dotc(p, q)
-        alpha = rho / (p*q).sum(dim=1)
+        #alpha = rho / (p*q).sum(dim=1)
+        alpha = rho / pAAtp
 
         alpha = torch.nan_to_num(alpha, nan=0.0, posinf=0.0, neginf=0.0)
         alpha = alpha*cont_mask
@@ -107,14 +113,14 @@ def cg_matvec(As, b, x0=None, tol=1e-12, maxiter=None, M=None, callback=None, at
         resid = torch.linalg.vector_norm(r, dim=1)
         res_mask = (resid > atol).float()
         cont_mask = cont_mask*res_mask
-        #if resid.max() <= atol:
-        #    break
+        if resid.max() <= atol:
+            break
 
     info = 0
-    #if iters == maxiter and not (resid.max() <= atol):
-    #    info = iters
+    if iters == maxiter and not (resid.max() <= atol):
+        info = iters
 
-    return x, info
+    return x, (info, iters, resid.max().data)
     
 
 def cg_block(A, b, x0=None, tol=1e-12, maxiter=None, M=None, callback=None,

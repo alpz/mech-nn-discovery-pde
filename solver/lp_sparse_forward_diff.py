@@ -216,7 +216,8 @@ class ODESYSLP(nn.Module):
                                             #[ VarType.EPS,(step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2),(step,dim, var_order)], 
                                             [ VarType.EPS,(step-1, dim, 0), (step, dim, 0), (step+1,dim, 0),(step,dim, 2)], 
                                             #values= [ -1*h,  1/(h**2),  -2/(h**2), 1/(h**2), -1], 
-                                            values= [ -1*h**3,  1,  -2, 1, -1*h**2], 
+                                            #values= [ -1*h**3,  1,  -2, 1, -1*h**2], 
+                                            values= [ -1*h**2,  1,  -2, 1, -1*h**2], 
                                             #values= [ -1,  1,  -2, 1, -1*h**2], 
                                             rhs=0, constraint_type=ConstraintType.Derivative)
 
@@ -224,7 +225,8 @@ class ODESYSLP(nn.Module):
                                             #[ VarType.EPS,(step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2), (step,dim, 1)], 
                                             [ VarType.EPS,(step-1, dim, 0), (step, dim, 0), (step+1,dim, 0), (step,dim, 1)], 
                                             #values= [ -1*h,            -0.5/h,                0,                    0.5/h,                -1], 
-                                            values= [ -1*h**2,            -0.5,                0,                    0.5,                -1*h], 
+                                            #values= [ -1*h**2,            -0.5,                0,                    0.5,                -1*h], 
+                                            values= [ -1*h,            -0.5,                0,                    0.5,                -1*h], 
                                             #values= [ -1,   -0.5*h,   0,  0.5*h,  -1*h**2], 
                                             rhs=0, constraint_type=ConstraintType.Derivative)
 
