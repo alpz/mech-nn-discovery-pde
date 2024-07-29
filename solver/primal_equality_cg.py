@@ -358,9 +358,9 @@ def test_primal_equality_cg():
     return eps, u0, u1
 
 def test_primal_equality_cg_torch():
-    step_size = 0.1
+    step_size = 0.25
     #end = 3*step_size
-    end = 500*step_size
+    end = 400*step_size
     n_step = int(end/step_size)
     order=2
 
@@ -368,11 +368,11 @@ def test_primal_equality_cg_torch():
     steps = torch.tensor(steps)
 
     #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
-    _coeffs = np.array([[1,0,1]], dtype='float32')
+    #_coeffs = np.array([[1,0,1]], dtype='float32')
 
     #_coeffs = np.array([[10,0.0,1]], dtype='float64')
-    #_coeffs = np.array([[20,0.1,0.1]], dtype='float64')
-    #_coeffs = np.array([[10,0.1,0.1]], dtype='float64')
+    #_coeffs = np.array([[2,0.1,0.1]], dtype='float64')
+    _coeffs = np.array([[10,0.1,0.1]], dtype='float64')
     #_coeffs = np.array([[-0.1,0.1, 10]], dtype='float64')
     _coeffs = np.repeat(_coeffs, n_step, axis=0)
     _coeffs = torch.tensor(_coeffs)
@@ -387,7 +387,7 @@ def test_primal_equality_cg_torch():
     rhs = rhs.unsqueeze(0)
     iv = iv.unsqueeze(0)
 
-    ode = ODEINDLayerTest(bs=1,order=order,n_ind_dim=1,n_iv=2,n_step=n_step,n_iv_steps=1)
+    ode = ODEINDLayerTest(bs=1,order=order,n_ind_dim=1,n_iv=2,n_step=n_step,n_iv_steps=1, step_size=step_size)
 
     u0,u1,u2,eps,_, eq, initial, derivative, eps_tensor = ode(_coeffs, rhs, iv, steps)
 

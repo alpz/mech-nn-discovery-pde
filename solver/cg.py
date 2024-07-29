@@ -70,6 +70,7 @@ def cg_matvec(As, b, x0=None, tol=1e-5, maxiter=None, M=None, callback=None, ato
     #r = b - matvec(x)
     #b = b.unsqueeze(-1)
     x = torch.zeros_like(b)
+    #x = torch.rand_like(b)
     #r = b - torch.bmm(A,x)#.reshape(b.shape)
     #r = b - block_mv(A,x)#.reshape(b.shape)
     r = b - batch_mat_vec(As,x)[0]#.reshape(b.shape)
@@ -94,10 +95,10 @@ def cg_matvec(As, b, x0=None, tol=1e-5, maxiter=None, M=None, callback=None, ato
         #q = torch.bmm(A, p)
         #q = bmm_fix(A, p)
         #q = block_mv(A, p)
-        q, pAAtp = batch_mat_vec(As, p)
+        q, ptAAtp = batch_mat_vec(As, p)
         #alpha = rho / cublas.dotc(p, q)
         #alpha = rho / (p*q).sum(dim=1)
-        alpha = rho / pAAtp
+        alpha = rho / ptAAtp
 
         alpha = torch.nan_to_num(alpha, nan=0.0, posinf=0.0, neginf=0.0)
         alpha = alpha*cont_mask
