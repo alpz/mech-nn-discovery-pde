@@ -358,9 +358,9 @@ def test_primal_equality_cg():
     return eps, u0, u1
 
 def test_primal_equality_cg_torch():
-    step_size = 0.25
+    step_size = 0.1
     #end = 3*step_size
-    end = 400*step_size
+    end = 500*step_size
     n_step = int(end/step_size)
     order=2
 
@@ -370,9 +370,9 @@ def test_primal_equality_cg_torch():
     #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
     #_coeffs = np.array([[1,0,1]], dtype='float32')
 
-    #_coeffs = np.array([[10,0.0,1]], dtype='float64')
+    _coeffs = np.array([[10,0.0,1]], dtype='float64')
     #_coeffs = np.array([[2,0.1,0.1]], dtype='float64')
-    _coeffs = np.array([[10,0.1,0.1]], dtype='float64')
+    #_coeffs = np.array([[10,0.1,0.1]], dtype='float64')
     #_coeffs = np.array([[-0.1,0.1, 10]], dtype='float64')
     _coeffs = np.repeat(_coeffs, n_step, axis=0)
     _coeffs = torch.tensor(_coeffs)
@@ -501,7 +501,7 @@ def test_primal_equality_cg_torch():
     rhs = rhs.squeeze(2) + l
 
     #lam,info = SPSLG.cg(pdmat, pd_rhs)
-    lam, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=8000)
+    lam, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=15000)
     print('torch cg info ', info)
     #lam,info = SPSLG.lgmres(pdmat, pd_rhs)
     #xl = -Pinv_s@(A_s.T@lam -q)
@@ -553,6 +553,7 @@ def ode_solve():
     return x_sim
 
 #test_osqp()
+
 # %%
 #eps, u0, u1 = test_osqp_dual_relaxation()
 #eps, u0, u1 = test_primal_equality_cg()
