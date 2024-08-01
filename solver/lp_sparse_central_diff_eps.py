@@ -442,7 +442,7 @@ class ODESYSLP(nn.Module):
         self.A_block_shape = A_block.shape
         #self.AtA_block_shape = AtA_block.shape
     
-    def get_row_col_sorted_indices(self, row, col, exclude_eps=True):
+    def get_row_col_sorted_indices(self, row, col, num_constraints):
         """ Compute indices sorted by row and column and repeats. Useful for sparse outer product when computing constraint derivatives"""
         indices = np.stack([row, col], axis=0)
 
@@ -450,12 +450,12 @@ class ODESYSLP(nn.Module):
         column_sorted = indices[:, indices[1,:].argsort()]
 
         #todo use bincount to include zero counts
-        _, row_counts = np.unique(row_sorted[0], return_counts=True)
-        _, column_counts = np.unique(column_sorted[1], return_counts=True)
+        #_, row_counts = np.unique(row_sorted[0], return_counts=True)
+        #_, column_counts = np.unique(column_sorted[1], return_counts=True)
 
-        #row_counts = np.bincount(row_sorted[0], minlength=self.num_constraints)
-        #total_vars = self.num_vars + self.num_added_eps_vars
-        #column_counts = np.bincount(column_sorted[1], minlength=total_vars)
+        row_counts = np.bincount(row_sorted[0], minlength=num_constraints)
+        total_vars = self.num_vars + self.num_added_eps_vars
+        column_counts = np.bincount(column_sorted[1], minlength=total_vars)
         #ipdb.set_trace()
 
         row_count = row.shape[0]
@@ -479,7 +479,7 @@ class ODESYSLP(nn.Module):
         ############## derivative indices sorted and counted
         derivative_rows = np.array(self.row_dict[ConstraintType.Derivative])
         derivative_columns = np.array(self.col_dict[ConstraintType.Derivative])
-        row_sorted, column_sorted, row_counts, column_counts = self.get_row_col_sorted_indices(derivative_rows, derivative_columns)
+        row_sorted, column_sorted, row_counts, column_counts = self.get_row_col_sorted_indices(derivative_rows, derivative_columns, self.num_added_derivative_constraints)
         
 
         self.derivative_row_sorted = torch.tensor(row_sorted)
@@ -492,7 +492,7 @@ class ODESYSLP(nn.Module):
         ###############equation indices sorted and counted
         eq_rows = np.array(self.row_dict[ConstraintType.Equation])
         eq_columns = np.array(self.col_dict[ConstraintType.Equation])
-        row_sorted, column_sorted, row_counts, column_counts = self.get_row_col_sorted_indices(eq_rows, eq_columns)
+        row_sorted, column_sorted, row_counts, column_counts = self.get_row_col_sorted_indices(eq_rows, eq_columns, self.num_added_equation_constraints)
 
         self.eq_row_sorted = torch.tensor(row_sorted)
         self.eq_column_sorted = torch.tensor(column_sorted)
@@ -799,7 +799,7 @@ class ODESYSLP(nn.Module):
         #copy x across columns. copy y across rows
         y = y[:, 0:self.num_added_equation_constraints]
         #y = y[:, 1:self.num_vars]
-        x = x[:, 0:self.num_vars]
+        x = x[:, 0:self.num_vars+self.num_added_eps_vars]
 
         #x = x.reshape(b, -1, 1)
         #y = y.reshape(b, 1, -1)
@@ -823,14 +823,14 @@ class ODESYSLP(nn.Module):
 
         X = torch.sparse_coo_tensor(self.eq_row_sorted, x_repeat, 
                                        #size=(self.num_added_derivative_constraints, self.num_vars), 
-                                       size=(self.bs, self.num_added_equation_constraints, 
-                                            total_vars),
+                                       #size=(self.bs, self.num_added_equation_constraints, 
+                                       #     total_vars),
                                        dtype=self.dtype, device=x.device)
 
         Y = torch.sparse_coo_tensor(self.eq_column_sorted, y_repeat, 
                                        #size=(self.num_added_derivative_constraints, self.num_vars), 
-                                       size=(self.bs, self.num_added_equation_constraints, 
-                                            total_vars),
+                                       #size=(self.bs, self.num_added_equation_constraints, 
+                                       #     total_vars),
                                        dtype=self.dtype, device=x.device)
 
 
