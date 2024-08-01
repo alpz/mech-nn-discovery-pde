@@ -311,6 +311,8 @@ class ODEINDLayerTestEPS(nn.Module):
         ##shape: batch, step, vars (== 1), order
         u = self.ode.get_solution_reshaped(x)
 
+        eps = x[:, self.ode.num_vars:].abs().max(dim=1)[0]
+
         #u = u.reshape(self.bs, self.n_ind_dim, self.n_step, self.order+1)
         ##shape: batch, step, vars, order
         ##u = u.permute(0,2,1,3)
@@ -320,5 +322,6 @@ class ODEINDLayerTestEPS(nn.Module):
         u2 = u[:,:,:,2]
         
         #return u0, u1, u2, eps, steps, eq_constraints, self.ode.initial_A,  derivative_constraints, self.ode.eps_A 
+        return u0, u1, u2, eps, steps#, eq_constraints, self.ode.initial_A,  derivative_constraints, self.ode.eps_A 
         #return None, None, None, None, None, eq_constraints, self.ode.initial_A,  derivative_constraints, self.ode.eps_A 
-        return None, None, None, None, None,  At, ub
+        #return None, None, None, None, None,  At, ub

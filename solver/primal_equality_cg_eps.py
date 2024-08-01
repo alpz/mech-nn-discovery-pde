@@ -27,7 +27,7 @@ def nonlocal_iterate(arr):
 def test_primal_equality_cg_torch():
     step_size = 0.1
     #end = 3*step_size
-    end = 50*step_size
+    end = 100*step_size
     n_step = int(end/step_size)
     order=2
 
@@ -74,7 +74,6 @@ def test_primal_equality_cg_torch():
     P= torch.sparse.spdiags(P_diag, torch.tensor(0), (num_eps+num_var, num_eps+num_var))
 
     print(C.shape)
-    print(C.to_dense())
 
     A = C#.unsqueeze(0)
     At = C.transpose(1,2)#.unsqueeze(0)
@@ -89,7 +88,7 @@ def test_primal_equality_cg_torch():
     rhs = rhs.squeeze(2) + l
 
     #lam,info = SPSLG.cg(pdmat, pd_rhs)
-    lam, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=15000)
+    lam, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=2000)
     print('torch cg info ', info)
     #lam,info = SPSLG.lgmres(pdmat, pd_rhs)
     #xl = -Pinv_s@(A_s.T@lam -q)

@@ -96,7 +96,7 @@ class ODESYSLP(nn.Module):
     def get_solution_reshaped(self, x):
         """remove eps and reshape solution"""
         #x = x[:, 1:]
-        x = x[:, self.num_vars]
+        x = x[:, :self.num_vars]
         x = x.reshape(-1, *self.multi_index_shape)
         return x
 

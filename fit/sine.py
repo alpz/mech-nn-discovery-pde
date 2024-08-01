@@ -2,7 +2,8 @@
 import torch.nn as nn
 import torch
 
-from solver.ode_layer import ODEINDLayer
+#from solver.ode_layer import ODEINDLayer
+from solver.ode_layer import ODEINDLayerTestEPS #as ODEINDLayer
 from torch.nn.parameter import Parameter
 import numpy as np
 
@@ -63,6 +64,7 @@ class Method(pl.LightningModule):
         eps, u0, u1,u2,steps = self()
         
         loss = (u0-y).pow(2).sum()
+        eps = eps.max()
         
         self.log('train_loss', loss, prog_bar=True, logger=True)
         self.log('eps', eps, prog_bar=True, logger=True)
@@ -116,7 +118,7 @@ class Sine(nn.Module):
         self.steps = torch.logit(self.step_size*torch.ones(1,self.n_step-1,self.n_dim))
         self.steps = nn.Parameter(self.steps)
 
-        self.ode = ODEINDLayer(bs=bs, order=self.order, n_ind_dim=self.n_dim, n_iv=self.n_iv, n_step=self.n_step, n_iv_steps=1)
+        self.ode = ODEINDLayerTestEPS(bs=bs, order=self.order, n_ind_dim=self.n_dim, n_iv=self.n_iv, n_step=self.n_step, n_iv_steps=1)
 
         
     def forward(self, check=False):
@@ -126,6 +128,8 @@ class Sine(nn.Module):
         
         if self.n_iv > 0:
             iv_rhs = iv_rhs.unsqueeze(0).repeat(self.bs,1, 1)
+        else:
+            iv_rhs = torch.tensor([])
 
         steps = torch.sigmoid(self.steps)
         steps = steps.repeat(self.bs,1, 1).double()

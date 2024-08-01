@@ -10,9 +10,12 @@ import scipy.linalg as spl
 import scipy.sparse as SP
 import torch.linalg as TLA
 
+from solver.cg import cg_matvec
+
 
 import solver.cg as cg
 from config import ODEConfig as config
+import ipdb
 
 
 def block_mv(A, x):
@@ -69,70 +72,47 @@ def QPFunction(ode, n_iv, order, n_step=10, gamma=1, alpha=1, double_ret=True):
             #bs = coeffs.shape[0]
             bs = rhs.shape[0]
             #ode.build_ode(coeffs, rhs, iv_rhs, derivative_A)
-            At, ub = ode.fill_block_constraints_torch(eq_A, rhs, iv_rhs, derivative_A)
-            #ode.build_ode(coeffs, rhs, iv_rhs, None)
-            #dtype = torch.float32
+            #At, ub = ode.fill_block_constraints_torch(eq_A, rhs, iv_rhs, derivative_A)
+            A, A_rhs = ode.fill_constraints_torch(eq_A, rhs, iv_rhs, derivative_A)
+            At = A.transpose(1,2)
+
+
+            num_eps = ode.num_added_eps_vars
+            num_var = ode.num_vars
+            #u = l
+            P_diag = torch.ones(num_eps).type_as(rhs)*1e8
+            P_zeros = torch.zeros(num_var).type_as(rhs) +1e-8
+            P_diag = torch.cat([P_zeros, P_diag])
+            P_diag_inv = 1/P_diag
+            P_diag_inv = P_diag_inv.unsqueeze(0)
+
+            c = torch.zeros(num_var+num_eps, device=A.device).type_as(rhs)
+            rhs = c
+            rhs = P_diag_inv*rhs
+            rhs = torch.bmm(A, rhs.unsqueeze(2))
+            #TODO rhs is zero upto here. remove the above
+            rhs = rhs.squeeze(2) + A_rhs
+
+            lam, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=2000)
+            #print('torch cg info ', info)
+            #lam,info = SPSLG.lgmres(pdmat, pd_rhs)
+            #xl = -Pinv_s@(A_s.T@lam -q)
+
+            #xl = -Pinv_s@(A_s.T@lam -c)
+            x = lam.unsqueeze(2)
+            x = torch.bmm(At, x)
+            x = -P_diag_inv*(x.squeeze(2) - c)
             
-
-            #A = ode.A
-            #ub = ode.ub
-
-            #ipdb.set_trace()
-
-            c = torch.zeros(bs, ode.num_vars).type_as(rhs)
-            #print("c ", c.dtype, c.shape, At.shape)
-            #minimize gamma*eps^2 +alpha*eps
-            c[:,0] = alpha
-            
-            b = c
-            c = ub.type_as(rhs)
-
-            #A to csr
-            #A  split 
-            #value_list = []
-            #At = ode.AG#.to_dense()
-            #print(At.shape)
-
-            A = At.t()
-            #AAt = torch.sparse.mm(At.t(), At)
-            AAt = torch.sparse.mm(A, At)
-            #AAt_list = []
-            #for i in range(bs):
-            #i=0
-            #AAti = At[i].t()@At[i]
-            #AAti = AAti.unsqueeze(0)
-            #AAti = [(At[i].t()@At[i]).unsqueeze(0) for i in range(bs)]
-            #AAti = torch.cat(AAti, dim=0)
-            #AAt_sp = tensor_to_cpsp(AAti)
-            #    AAt_list.append(AAt_sp)
-            #rows = AAti.crow_indices().detach().cpu().numpy()
-            #cols = AAti.col_indices().detach().cpu().numpy()
-
-            #shape = AAti.shape
-            #indices = AAti._indices()
-            #rows = indices[0].cpu().numpy()
-            #cols = indices[1].cpu().numpy()
-            #values = AAti._values().cpu().numpy()
-
-            #AAt_sp = SP.coo_matrix((values, (rows,cols)), shape=shape)
-            #AAt_sp = tensor_to_sp(AAti)
-            #AAt_sp = tensor_to_cpsp(AAti)
-
-            #x,y = solve_kkt_sparse_qr(A,c, -b, gamma, QPFunctionFn.QRSolver, values)
-            #x,y = solve_kkt_indirect(A,AAt_sp,c, -b, gamma)
-            #x,y = solve_kkt_indirect(A,AAt_sp,c, -b, gamma)
-            x,y = solve_kkt_indirect_cg(A,AAt,c, -b, gamma)
-            
-            
-            ctx.save_for_backward(A, AAt, x, y)
+            ctx.save_for_backward(A, P_diag_inv, x, lam)
             
             if not double_ret:
-                y = y.float()
-            return y
+                x = x.float()
+            return x
         
         @staticmethod
         def backward(ctx, dl_dzhat):
-            A,AAt, _x, _y = ctx.saved_tensors
+            A,P_diag_inv, _x, _y = ctx.saved_tensors
+            At = A.transpose(1,2)
             #n = A.shape[1]
             #m = A.shape[2]
             #At = A.transpose(1,2)
@@ -140,16 +120,28 @@ def QPFunction(ode, n_iv, order, n_step=10, gamma=1, alpha=1, double_ret=True):
             bs = dl_dzhat.shape[0]
             m = ode.num_constraints
 
-            z = torch.zeros(bs, m).type_as(_x)
+            #z = torch.zeros(bs, m, device=dl_dzhat.device).type_as(_x)
+            rhs = -dl_dzhat #torch.cat([-dl_dzhat, z], dim=-1)
 
+            rhs = -dl_dzhat
+            rhs = P_diag_inv*rhs
+            rhs = torch.bmm(A, rhs.unsqueeze(2))
+            #TODO rhs is zero upto here. remove the above
+            rhs = rhs.squeeze(2) 
+
+            dnu, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=2000)
+
+            dx = dnu.unsqueeze(2)
+            dx = torch.bmm(At, dx)
+            dx = P_diag_inv*(dx.squeeze(2)- -dl_dzhat ) 
             #AAt_sp = tensor_to_sp(AAti)
             #AAt_sp = tensor_to_cpsp(AAti)
             #_dx,_dnu = solve_kkt2(A,L, z, -dl_dzhat, gamma)
             #_dx,_dnu = solve_kkt_sparse_qr(A,z, -dl_dzhat, gamma, QPFunctionFn.QRSolver, values)
             #_dx,_dnu = solve_kkt_indirect_cp(A,AAt_sp,z, -dl_dzhat, gamma)
-            _dx,_dnu = solve_kkt_indirect_cg(A, AAt, z, -dl_dzhat, gamma)
+            #_dx,_dnu = solve_kkt_indirect_cg(A, AAt, z, -dl_dzhat, gamma)
             
-            _dx, _dnu = -_dx,-_dnu
+            _dx, _dnu = dx, dnu
 
             #take row, col indices
             #dx = _dx[:,0:n_step].reshape(bs, n_step,1)
