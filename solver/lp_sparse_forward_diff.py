@@ -69,8 +69,7 @@ class ODESYSLP(nn.Module):
 
         # total number of qp variables
         #self.num_vars = self.n_step*self.n_order+1
-        #self.num_vars = self.n_system_vars*self.n_step*self.n_order+1
-        self.num_vars = self.n_system_vars*self.n_step*self.n_order
+        self.num_vars = self.n_system_vars*self.n_step*self.n_order+1
         # Variables except eps. Used for raveling
         #self.multi_index_shape = (self.n_step, self.n_dim*self.n_auxiliary, self.n_order)
         self.multi_index_shape = (self.n_step, self.n_system_vars, self.n_order)
@@ -103,8 +102,7 @@ class ODESYSLP(nn.Module):
             return 0
 
         # 0 is epsilon, step, grad_index
-        #offset = 1
-        offset = 0
+        offset = 1
 
         #index = self.get_coefficient_index(mesh_index, grad_index)
         out_index = np.ravel_multi_index(index, self.multi_index_shape, order='C')
@@ -127,7 +125,6 @@ class ODESYSLP(nn.Module):
 
         for i,v in enumerate(var_list):
             if v == VarType.EPS:
-                continue
                 var_index = self.get_variable_index_from_multiindex(None, var_type=VarType.EPS)
                 #var_index = self.get_variable_index(None, None, var_type=VarType.EPS)
             else:
@@ -195,48 +192,12 @@ class ODESYSLP(nn.Module):
                 for dim in range(self.n_system_vars):
                     #for var_order in range(1, self.n_order):
                         #top-level only
-                    var_order = self.n_order-1 
-                    h = self.step_size
-                    #if step !=1 and step !=self.n_step-2:
-                    if False:
-                        self.add_constraint(var_list = 
-                                        [ VarType.EPS,(step-2, dim, var_order-2), (step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2), (step+2,dim, var_order-2),(step,dim, var_order)], 
-                                        values= [ -1,  -1/(12*h**2),  4/(3*h**2), -5/(2*h**2), 4/(3*h**2) , -1/(12*h**2), -1], 
+                        var_order = self.n_order-1
+                        h = self.step_size
+                        self.add_constraint(var_list = [ VarType.EPS, (step-1, dim, var_order-1), (step, dim, var_order-1), (step+1,dim, var_order-1), (step,dim, var_order)], 
+                                        #values= [ 1,            -0.5/h,                0,                    0.5/h,                -1], 
+                                        values= [ 1,            -0.5/h,                0,                    0.5/h,                -1], 
                                         rhs=0, constraint_type=ConstraintType.Derivative)
-
-                        self.add_constraint(var_list = 
-                                        [ VarType.EPS,(step-2, dim, var_order-2), (step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2), (step+2,dim, var_order-2),(step,dim, 1)], 
-                                        values= [ -1,            1/(12*h),     -2/(3*h),  0,           2/(3*h),                    -1/(12*h),                -1], 
-                                        rhs=0, constraint_type=ConstraintType.Derivative)
-
-                        #if step ==1 or step ==self.n_step-1:
-                    else:
-
-                            self.add_constraint(var_list = 
-                                            #[ VarType.EPS,(step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2),(step,dim, var_order)], 
-                                            [ VarType.EPS,(step-1, dim, 0), (step, dim, 0), (step+1,dim, 0),(step,dim, 2)], 
-                                            #values= [ -1*h,  1/(h**2),  -2/(h**2), 1/(h**2), -1], 
-                                            #values= [ -1*h**3,  1,  -2, 1, -1*h**2], 
-                                            values= [ -1*h**2,  1,  -2, 1, -1*h**2], 
-                                            #values= [ -1,  1,  -2, 1, -1*h**2], 
-                                            rhs=0, constraint_type=ConstraintType.Derivative)
-
-                            self.add_constraint(var_list = 
-                                            #[ VarType.EPS,(step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2), (step,dim, 1)], 
-                                            [ VarType.EPS,(step-1, dim, 0), (step, dim, 0), (step+1,dim, 0), (step,dim, 1)], 
-                                            #values= [ -1*h,            -0.5/h,                0,                    0.5/h,                -1], 
-                                            #values= [ -1*h**2,            -0.5,                0,                    0.5,                -1*h], 
-                                            values= [ -1*h,            -0.5,                0,                    0.5,                -1*h], 
-                                            #values= [ -1,   -0.5*h,   0,  0.5*h,  -1*h**2], 
-                                            rhs=0, constraint_type=ConstraintType.Derivative)
-
-                            #self.add_constraint(var_list = 
-                            #                #[ VarType.EPS,(step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2), (step,dim, 1)], 
-                            #                [ VarType.EPS,(step-1, dim, 1), (step, dim, 1), (step+1,dim, 1), (step,dim, 2)], 
-                            #                values= [ -1/h,            -0.5/h,                0,                    0.5/h,                -1], 
-                            #                #values= [ -1,   -0.5*h,   0,  0.5*h,  -1*h**2], 
-                            #                rhs=0, constraint_type=ConstraintType.Derivative)
-
         
         #forward constraints
         def forward_c(sign=1):
@@ -244,14 +205,13 @@ class ODESYSLP(nn.Module):
                 for dim in range(self.n_system_vars):
                     #TODO handle corners for derivatives
                     #for i in range(1):
-                    #for i in range(self.n_order-1):
-                    for i in range(1):
+                    for i in range(self.n_order-1):
                         var_list = []
                         val_list = []
 
                         #epsilon
                         var_list.append(VarType.EPS)
-                        val_list.append(-1)
+                        val_list.append(1)
 
                         for j in range(i,self.n_order):
                             #h = self.step_size**(j)
@@ -276,14 +236,13 @@ class ODESYSLP(nn.Module):
             #for step in reversed(range(1,self.n_step)):
             for step in range(1,self.n_step):
                 for dim in range(self.n_system_vars):
-                    #for i in range(self.n_order-1):
-                    for i in range(1):
+                    for i in range(self.n_order-1):
                         var_list = []
                         val_list = []
                     #for i in range(1):
                         #epsilon
                         var_list.append(VarType.EPS)
-                        val_list.append(-1)
+                        val_list.append(1)
 
                         for j in range(i,self.n_order):
                             #h = (-self.step_size)**(j)
@@ -342,9 +301,9 @@ class ODESYSLP(nn.Module):
         ones = np.ones(eq_rows.shape[0])
         #mask_values = np.concatenate([ones, -1*ones])
         mask_values = ones #np.concatenate([ones, ones])
-        #mask_A = torch.sparse_coo_tensor([eq_rows,eq_columns-1],mask_values, 
-        #                                 size=(self.num_added_equation_constraints, self.num_vars-1), 
-        #                                 dtype=self.dtype, device=self.device)
+        mask_A = torch.sparse_coo_tensor([eq_rows,eq_columns-1],mask_values, 
+                                         size=(self.num_added_equation_constraints, self.num_vars-1), 
+                                         dtype=self.dtype, device=self.device)
 
 
         if self.n_iv > 0:
@@ -387,7 +346,7 @@ class ODESYSLP(nn.Module):
         #self.derivative_lb = -dub
 
 
-        #self.set_row_col_sorted_indices()
+        self.set_row_col_sorted_indices()
 
 
         #Add batch dim
@@ -396,9 +355,9 @@ class ODESYSLP(nn.Module):
         eq_A = torch.cat([eq_A]*self.bs, dim=0)
         eq_A = eq_A.coalesce()
         
-        #mask_A = mask_A.unsqueeze(0)
-        #mask_A = torch.cat([mask_A]*self.bs, dim=0)
-        #mask_A = mask_A.coalesce()
+        mask_A = mask_A.unsqueeze(0)
+        mask_A = torch.cat([mask_A]*self.bs, dim=0)
+        mask_A = mask_A.coalesce()
 
         eps_A = eps_A.unsqueeze(0)
         eps_A = torch.cat([eps_A]*self.bs, dim=0)
@@ -606,13 +565,13 @@ class ODESYSLP(nn.Module):
 
         fv = self.build_forward_values(steps)
 
-        #cv = self.build_central_values(steps)
+        cv = self.build_central_values(steps)
 
         bv = self.build_backward_values(steps)
 
-        #built_values = torch.cat([fv,cv,bv], dim=-1)
+        built_values = torch.cat([fv,cv,bv], dim=-1)
         #built_values = torch.cat([fv,cv], dim=-1)
-        built_values = torch.cat([fv,bv], dim=-1)
+        #built_values = torch.cat([fv,bv], dim=-1)
 
         return built_values
 
