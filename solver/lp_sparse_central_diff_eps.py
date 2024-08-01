@@ -453,6 +453,11 @@ class ODESYSLP(nn.Module):
         _, row_counts = np.unique(row_sorted[0], return_counts=True)
         _, column_counts = np.unique(column_sorted[1], return_counts=True)
 
+        #row_counts = np.bincount(row_sorted[0], minlength=self.num_constraints)
+        #total_vars = self.num_vars + self.num_added_eps_vars
+        #column_counts = np.bincount(column_sorted[1], minlength=total_vars)
+        #ipdb.set_trace()
+
         row_count = row.shape[0]
         #add batch dimension
         batch_dim = torch.arange(self.bs).repeat_interleave(repeats=row_count).unsqueeze(0)
@@ -741,16 +746,16 @@ class ODESYSLP(nn.Module):
         
         self.fill_constraints_torch(coeffs, rhs, iv_rhs, derivative_A)
     
-    def sparse_grad_derivative_constraint(self, x, y):
+    def sparse_grad_derivative_constraint(self, _x, _y):
         """ sparse x y' for derivative constraint"""
         #dx = _dx[:,0:n_step].reshape(bs, n_step,1)
         #dA = dx*nu.reshape(bs, 1,num_coeffs)
         #correct x, y shapes
 
-        b = x.shape[0]
+        b = _x.shape[0]
         #copy x across columns. copy y across rows
-        x = x[:, self.num_added_equation_constraints+self.num_added_initial_constraints: self.num_added_equation_constraints+self.num_added_initial_constraints+self.num_added_derivative_constraints]
-        y = y[:, :self.num_vars]
+        y = _y[:, self.num_added_equation_constraints+self.num_added_initial_constraints: self.num_added_equation_constraints+self.num_added_initial_constraints+self.num_added_derivative_constraints]
+        x = _x[:, :self.num_vars+self.num_added_eps_vars]
 
         #x = x.reshape(b, -1, 1)
         #y = y.reshape(b, 1, -1)
@@ -764,8 +769,8 @@ class ODESYSLP(nn.Module):
         self.derivative_row_counts = self.derivative_row_counts.to(x.device)
         self.derivative_column_counts = self.derivative_column_counts.to(x.device)
 
-        x_repeat = torch.repeat_interleave(x, self.derivative_row_counts, dim=-1)
-        y_repeat = torch.repeat_interleave(y, self.derivative_column_counts, dim=-1)
+        y_repeat = torch.repeat_interleave(y, self.derivative_row_counts, dim=-1)
+        x_repeat = torch.repeat_interleave(x, self.derivative_column_counts, dim=-1)
 
         x_repeat = x_repeat.reshape(-1)
         y_repeat = y_repeat.reshape(-1)
@@ -792,9 +797,9 @@ class ODESYSLP(nn.Module):
 
         b = x.shape[0]
         #copy x across columns. copy y across rows
-        x = x[:, 0:self.num_added_equation_constraints]
+        y = y[:, 0:self.num_added_equation_constraints]
         #y = y[:, 1:self.num_vars]
-        y = y[:, 0:self.num_vars]
+        x = x[:, 0:self.num_vars]
 
         #x = x.reshape(b, -1, 1)
         #y = y.reshape(b, 1, -1)
@@ -808,23 +813,29 @@ class ODESYSLP(nn.Module):
         self.eq_row_counts = self.eq_row_counts.to(x.device)
         self.eq_column_counts = self.eq_column_counts.to(x.device)
 
-        x_repeat = torch.repeat_interleave(x, self.eq_row_counts, dim=-1)
-        y_repeat = torch.repeat_interleave(y, self.eq_column_counts, dim=-1)
+        y_repeat = torch.repeat_interleave(y, self.eq_row_counts, dim=-1)
+        x_repeat = torch.repeat_interleave(x, self.eq_column_counts, dim=-1)
 
         x_repeat = x_repeat.reshape(-1)
         y_repeat = y_repeat.reshape(-1)
 
+        total_vars = self.num_vars + self.num_added_eps_vars
+
         X = torch.sparse_coo_tensor(self.eq_row_sorted, x_repeat, 
                                        #size=(self.num_added_derivative_constraints, self.num_vars), 
+                                       size=(self.bs, self.num_added_equation_constraints, 
+                                            total_vars),
                                        dtype=self.dtype, device=x.device)
 
         Y = torch.sparse_coo_tensor(self.eq_column_sorted, y_repeat, 
                                        #size=(self.num_added_derivative_constraints, self.num_vars), 
+                                       size=(self.bs, self.num_added_equation_constraints, 
+                                            total_vars),
                                        dtype=self.dtype, device=x.device)
 
-        #ipdb.set_trace()
 
         dD = X*Y
+        #ipdb.set_trace()
 
         return dD
 
