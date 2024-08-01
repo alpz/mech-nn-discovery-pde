@@ -2,8 +2,8 @@
 import torch.nn as nn
 import torch
 
-#from solver.ode_layer import ODEINDLayer
-from solver.ode_layer import ODEINDLayerTestEPS #as ODEINDLayer
+from solver.ode_layer import ODEINDLayer
+#from solver.ode_layer import ODEINDLayerTestEPS as ODEINDLayer
 from torch.nn.parameter import Parameter
 import numpy as np
 
@@ -118,7 +118,8 @@ class Sine(nn.Module):
         self.steps = torch.logit(self.step_size*torch.ones(1,self.n_step-1,self.n_dim))
         self.steps = nn.Parameter(self.steps)
 
-        self.ode = ODEINDLayerTestEPS(bs=bs, order=self.order, n_ind_dim=self.n_dim, n_iv=self.n_iv, n_step=self.n_step, n_iv_steps=1)
+        #self.ode = ODEINDLayerTestEPS(bs=bs, order=self.order, n_ind_dim=self.n_dim, n_iv=self.n_iv, n_step=self.n_step, n_iv_steps=1)
+        self.ode = ODEINDLayer(bs=bs, order=self.order, n_ind_dim=self.n_dim, n_iv=self.n_iv, n_step=self.n_step, n_iv_steps=1)
 
         
     def forward(self, check=False):
