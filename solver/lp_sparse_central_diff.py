@@ -218,7 +218,8 @@ class ODESYSLP(nn.Module):
                                         #values= [ -1*h,  1/(h**2),  -2/(h**2), 1/(h**2), -1], 
                                         #values= [ -1*h**2,  1,  -2, 1, -1*h**2], 
                                         #values= [ -1*h**2,  1,  -2, 1, -1*h**2], 
-                                        values= [ -1*h,  1,  -2, 1, -1*h**2], 
+                                        #values= [ -1*h,  1,  -2, 1, -1*h**2], 
+                                        values= [ -1,  1/h,  -2/h, 1/h, -1*h], 
                                         #values= [ -1/h,  1/h**2,  -2/h**2, 1/h**2, -1], 
                                         #values= [ -1,  1,  -2, 1, -1*h**2], 
                                         rhs=0, constraint_type=ConstraintType.Derivative)
