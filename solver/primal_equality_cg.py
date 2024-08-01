@@ -360,7 +360,7 @@ def test_primal_equality_cg():
 def test_primal_equality_cg_torch():
     step_size = 0.1
     #end = 3*step_size
-    end = 500*step_size
+    end = 3*step_size
     n_step = int(end/step_size)
     order=2
 
@@ -368,10 +368,10 @@ def test_primal_equality_cg_torch():
     steps = torch.tensor(steps)
 
     #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
-    #_coeffs = np.array([[1,0,1]], dtype='float32')
+    _coeffs = np.array([[1,0,1]], dtype='float32')
 
-    _coeffs = np.array([[10,0.0,1]], dtype='float64')
-    #_coeffs = np.array([[2,0.1,0.1]], dtype='float64')
+    #_coeffs = np.array([[10,0.0,1]], dtype='float64')
+    #_coeffs = np.array([[10,0.1,0.1]], dtype='float64')
     #_coeffs = np.array([[10,0.1,0.1]], dtype='float64')
     #_coeffs = np.array([[-0.1,0.1, 10]], dtype='float64')
     _coeffs = np.repeat(_coeffs, n_step, axis=0)
@@ -487,6 +487,7 @@ def test_primal_equality_cg_torch():
     #ZZ = np.concatenate([U,D], axis=0)
 
     #pdmat = A_s@Pinv_s@A_s.T
+    print(C.to_dense())
 
     A = C.unsqueeze(0)
     At = C.T.unsqueeze(0)

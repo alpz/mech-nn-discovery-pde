@@ -71,6 +71,7 @@ class ODESYSLP(nn.Module):
         # total number of qp variables
         #self.num_vars = self.n_step*self.n_order+1
         #self.num_vars = self.n_system_vars*self.n_step*self.n_order+1
+        #number of variables excluding eps variables
         self.num_vars = self.n_system_vars*self.n_step*self.n_order
         # Variables except eps. Used for raveling
         #self.multi_index_shape = (self.n_step, self.n_dim*self.n_auxiliary, self.n_order)
@@ -320,50 +321,53 @@ class ODESYSLP(nn.Module):
         self.build_initial_constraints()
         #if self.add_eps_constraint:
         #    self.build_eps_constraints()
+        total_vars = self.num_vars + self.num_added_eps_vars
 
         eq_A = torch.sparse_coo_tensor([self.row_dict[ConstraintType.Equation],self.col_dict[ConstraintType.Equation]],
                                        self.value_dict[ConstraintType.Equation], 
-                                       size=(self.num_added_equation_constraints, self.num_vars), 
+                                       size=(self.num_added_equation_constraints, total_vars), 
                                        #size=(self.num_added_constraints, self.num_vars), 
                                        dtype=self.dtype, device=self.device)
         
         #mask
 
-        eq_rows = np.array(self.row_dict[ConstraintType.Equation])
-        eq_columns = np.array(self.col_dict[ConstraintType.Equation])
+        #eq_rows = np.array(self.row_dict[ConstraintType.Equation])
+        #eq_columns = np.array(self.col_dict[ConstraintType.Equation])
 
         #ones = np.ones(eq_rows.shape[0]//2)
-        ones = np.ones(eq_rows.shape[0])
+        #ones = np.ones(eq_rows.shape[0])
         #mask_values = np.concatenate([ones, -1*ones])
-        mask_values = ones #np.concatenate([ones, ones])
+        #mask_values = ones #np.concatenate([ones, ones])
         #mask_A = torch.sparse_coo_tensor([eq_rows,eq_columns-1],mask_values, 
         #                                 size=(self.num_added_equation_constraints, self.num_vars-1), 
         #                                 dtype=self.dtype, device=self.device)
 
 
-        if self.n_iv > 0:
-            initial_A = torch.sparse_coo_tensor([self.row_dict[ConstraintType.Initial],self.col_dict[ConstraintType.Initial]],
+       #if self.n_iv > 0:
+        initial_A = torch.sparse_coo_tensor([self.row_dict[ConstraintType.Initial],self.col_dict[ConstraintType.Initial]],
                                        self.value_dict[ConstraintType.Initial], 
-                                       size=(self.num_added_initial_constraints, self.num_vars), 
+                                       size=(self.num_added_initial_constraints, total_vars), 
                                        dtype=self.dtype, device=self.device)
-        else:
-            initial_A =None
+        #else:
+        #    initial_A =None
 
 
         #print('d vals', len(self.row_dict[ConstraintType.Derivative]))
         derivative_A = torch.sparse_coo_tensor([self.row_dict[ConstraintType.Derivative],self.col_dict[ConstraintType.Derivative]],
                                        self.value_dict[ConstraintType.Derivative], 
                                        #built_values.squeeze(),
-                                       size=(self.num_added_derivative_constraints, self.num_vars), 
+                                       #size=(self.num_added_derivative_constraints, self.num_vars), 
+                                       size=(self.num_added_derivative_constraints, total_vars), 
                                        #size=(self.num_added_constraints, self.num_vars), 
                                        dtype=self.dtype, device=self.device)
 
         #may be empty if self.add_eps_constraint is False
-        eps_A = torch.sparse_coo_tensor([self.row_dict[ConstraintType.EPS],self.col_dict[ConstraintType.EPS]],
-                                       self.value_dict[ConstraintType.EPS], 
-                                       size=(self.num_added_eps_constraints, self.num_vars), 
-                                       #size=(self.num_added_constraints, self.num_vars), 
-                                       dtype=self.dtype, device=self.device)
+        #eps_A = torch.sparse_coo_tensor([self.row_dict[ConstraintType.EPS],self.col_dict[ConstraintType.EPS]],
+        #                               self.value_dict[ConstraintType.EPS], 
+        #                               #size=(self.num_added_eps_constraints, self.num_vars), 
+        #                               size=(self.num_added_eps_constraints, total_vars), 
+        #                               #size=(self.num_added_constraints, self.num_vars), 
+        #                               dtype=self.dtype, device=self.device)
 
 
         full_A = torch.cat([eq_A, initial_A, derivative_A], dim=0)
@@ -389,20 +393,20 @@ class ODESYSLP(nn.Module):
         #(b, r1, c)
         eq_A = eq_A.unsqueeze(0)
         eq_A = torch.cat([eq_A]*self.bs, dim=0)
-        eq_A = eq_A.coalesce()
+        #eq_A = eq_A.coalesce()
         
         #mask_A = mask_A.unsqueeze(0)
         #mask_A = torch.cat([mask_A]*self.bs, dim=0)
         #mask_A = mask_A.coalesce()
 
-        eps_A = eps_A.unsqueeze(0)
-        eps_A = torch.cat([eps_A]*self.bs, dim=0)
-        self.eps_A = eps_A
+        #eps_A = eps_A.unsqueeze(0)
+        #eps_A = torch.cat([eps_A]*self.bs, dim=0)
+        #self.eps_A = eps_A
 
         #(b, r2, c)
-        if initial_A is not None:
-            initial_A = initial_A.unsqueeze(0)
-            initial_A = torch.cat([initial_A]*self.bs, dim=0)
+        #if initial_A is not None:
+        initial_A = initial_A.unsqueeze(0)
+        initial_A = torch.cat([initial_A]*self.bs, dim=0)
 
         #(b, r3, c)
         derivative_A = derivative_A.unsqueeze(0)
@@ -510,12 +514,13 @@ class ODESYSLP(nn.Module):
         #values = torch.cat([ones, -sum_inv, zeros, sum_inv ], dim=-1)
         #values = torch.stack([-ones, -sum_inv*mult, zeros, sum_inv*mult, -ones*mult ], dim=-1)
         #first derivative
-        #TODO fix coefficients
-        mult = (csteps + psteps)/2
+        #TODO fix coefficients. fix multiplier according to order
+        mult = (csteps + psteps)#/2
         values_list.extend([-ones, -0.5*ones, zeros, 0.5*ones, -ones*mult ])
         if self.n_order > 2:
             #second derivative
-            values_list.extend([-ones*mult, 1*ones, -2*ones, 1*ones, -ones*mult**2 ])
+            #values_list.extend([-ones*mult, 1*ones, -2*ones, 1*ones, -ones*mult**2 ])
+            values_list.extend([-ones, 1*ones, -2*ones, 1*ones, -ones*mult**2 ])
 
         #values = torch.stack([-ones, -sum_inv*mult, zeros, sum_inv*mult, -ones*mult ], dim=-1)
         values = torch.stack(values_list, dim=-1)
@@ -629,7 +634,7 @@ class ODESYSLP(nn.Module):
         eq_values = eq_values.reshape(-1)
 
         eq_indices = self.eq_A._indices()
-        G = torch.sparse_coo_tensor(eq_indices, eq_values, dtype=self.dtype, device=eq_values.device)
+        G = torch.sparse_coo_tensor(eq_indices, eq_values, self.eq_A.shape, dtype=self.dtype, device=eq_values.device, )
 
         return G
     
@@ -688,40 +693,44 @@ class ODESYSLP(nn.Module):
         bs = eq_rhs.shape[0]
 
         # (b, *)
-        self.constraint_rhs = eq_rhs
-        self.initial_rhs = iv_rhs
+        #self.constraint_rhs = eq_rhs
+        #self.initial_rhs = iv_rhs
 
-        self.derivative_rhs = self.derivative_rhs.type_as(eq_rhs)
+        #self.derivative_rhs = self.derivative_rhs.type_as(eq_rhs)
 
         #ipdb.set_trace()
 
 
-        if derivative_A is None:
-            G = self.derivative_A
-        else:
-            G = derivative_A
-            #print(G.to_dense())
-        #G = G.type_as(constraint_A)
+        #if derivative_A is None:
+        #    G = self.derivative_A
+        #else:
+        #    G = derivative_A
+        #    #print(G.to_dense())
+        ##G = G.type_as(constraint_A)
 
-        if self.initial_A is not None:
-            initial_A = self.initial_A.type_as(G)
+        #if self.initial_A is not None:
 
-        #print(self.constraint_A.shape, initial_A.shape, G.shape, flush=True)
-        if self.initial_A is not None:
-            self.AG = torch.cat([eq_A, initial_A, G], dim=1)
-        else:
-            self.AG = torch.cat([eq_A, G], dim=1)
+        ##print(self.constraint_A.shape, initial_A.shape, G.shape, flush=True)
+        #if self.initial_A is not None:
+        #    self.AG = torch.cat([eq_A, initial_A, G], dim=1)
+        #else:
+        #    self.AG = torch.cat([eq_A, G], dim=1)
         #self.AG = torch.cat([constraint_A, G], dim=1)
         #print('AG ', self.AG.shape, flush=True)
 
-        self.num_constraints = self.AG.shape[1]
+        #self.num_constraints = self.AG.shape[1]
         #self.ub = torch.cat([self.constraint_rhs, self.boundary_rhs, self.derivative_ub], axis=1)
+        initial_A = self.initial_A.type_as(eq_A)
+        AG = torch.cat([eq_A, initial_A, derivative_A], dim=1)
+        rhs = torch.cat([eq_rhs, iv_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
 
-        if self.initial_A is not None:
-            self.ub = torch.cat([self.constraint_rhs, self.initial_rhs, self.derivative_rhs], axis=1)
-        else:
-            self.ub = torch.cat([self.constraint_rhs, self.derivative_rhs], axis=1)
-        #print('ub ', self.ub.shape, flush=True)
+        #if self.initial_A is not None:
+        #    self.ub = torch.cat([self.constraint_rhs, self.initial_rhs, self.derivative_rhs], axis=1)
+        #else:
+        #    self.ub = torch.cat([self.constraint_rhs, self.derivative_rhs], axis=1)
+        ##print('ub ', self.ub.shape, flush=True)
+
+        return AG, rhs
 
     def build_ode(self, coeffs, rhs, iv_rhs, derivative_A):
         order = self.n_order
@@ -784,7 +793,8 @@ class ODESYSLP(nn.Module):
         b = x.shape[0]
         #copy x across columns. copy y across rows
         x = x[:, 0:self.num_added_equation_constraints]
-        y = y[:, 1:self.num_vars]
+        #y = y[:, 1:self.num_vars]
+        y = y[:, 0:self.num_vars]
 
         #x = x.reshape(b, -1, 1)
         #y = y.reshape(b, 1, -1)
