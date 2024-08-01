@@ -302,22 +302,22 @@ class ODEINDLayerTestEPS(nn.Module):
         eq_A = self.ode.build_equation_tensor(coeffs)
 
 
-        At, ub = self.ode.fill_constraints_torch(eq_A, rhs, iv_rhs, derivative_A)
+        #At, ub = self.ode.fill_constraints_torch(eq_A, rhs, iv_rhs, derivative_A)
         #x = self.qpf(coeffs, rhs, iv_rhs, derivative_constraints)
-        #x = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints)
+        x = self.qpf(eq_A, rhs, iv_rhs, derivative_A)
 
         #eps = x[:,0]
 
         ##shape: batch, step, vars (== 1), order
-        #u = self.ode.get_solution_reshaped(x)
+        u = self.ode.get_solution_reshaped(x)
 
         #u = u.reshape(self.bs, self.n_ind_dim, self.n_step, self.order+1)
         ##shape: batch, step, vars, order
         ##u = u.permute(0,2,1,3)
 
-        #u0 = u[:,:,:,0]
-        #u1 = u[:,:,:,1]
-        #u2 = u[:,:,:,2]
+        u0 = u[:,:,:,0]
+        u1 = u[:,:,:,1]
+        u2 = u[:,:,:,2]
         
         #return u0, u1, u2, eps, steps, eq_constraints, self.ode.initial_A,  derivative_constraints, self.ode.eps_A 
         #return None, None, None, None, None, eq_constraints, self.ode.initial_A,  derivative_constraints, self.ode.eps_A 

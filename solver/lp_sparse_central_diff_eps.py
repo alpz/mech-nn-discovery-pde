@@ -515,12 +515,12 @@ class ODESYSLP(nn.Module):
         #values = torch.stack([-ones, -sum_inv*mult, zeros, sum_inv*mult, -ones*mult ], dim=-1)
         #first derivative
         #TODO fix coefficients. fix multiplier according to order
-        mult = (csteps + psteps)#/2
+        mult = (csteps + psteps)/2
         values_list.extend([-ones, -0.5*ones, zeros, 0.5*ones, -ones*mult ])
         if self.n_order > 2:
             #second derivative
             #values_list.extend([-ones*mult, 1*ones, -2*ones, 1*ones, -ones*mult**2 ])
-            values_list.extend([-ones, 1*ones, -2*ones, 1*ones, -ones*mult**2 ])
+            values_list.extend([-ones*mult, 1*ones, -2*ones, 1*ones, -ones*mult**2 ])
 
         #values = torch.stack([-ones, -sum_inv*mult, zeros, sum_inv*mult, -ones*mult ], dim=-1)
         values = torch.stack(values_list, dim=-1)
