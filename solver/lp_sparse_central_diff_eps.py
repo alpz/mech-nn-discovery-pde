@@ -121,7 +121,7 @@ class ODESYSLP(nn.Module):
         #add new eps var after the equation variables
         offset = self.num_vars
         index = offset + self.num_added_eps_vars
-        self.num_added_eps_vars += 1
+        self.num_added_eps_vars = self.num_added_eps_vars+ 1
 
         return index
 
@@ -163,8 +163,10 @@ class ODESYSLP(nn.Module):
             self.num_added_initial_constraints += 1
         elif constraint_type == ConstraintType.Derivative:
             self.num_added_derivative_constraints += 1
-        elif constraint_type == ConstraintType.EPS:
-            self.num_added_eps_constraints += 1
+        #elif constraint_type == ConstraintType.EPS:
+        #    self.num_added_eps_constraints += 1
+        else:
+            raise ValueError('unknown constraint')
 
     def add_mask(self, mask_values, constraint_type):
         """ mask values for constraint """
@@ -197,6 +199,8 @@ class ODESYSLP(nn.Module):
                     for order in range(self.n_order):
                         var_list.append((step,dim,order))
                         val_list.append(Const.PH)
+                    var_list.append(VarType.EPS)
+                    val_list.append(-1)
 
                 self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Equation)
 
@@ -298,11 +302,12 @@ class ODESYSLP(nn.Module):
 
 
         forward_c(sign=1)
-        backward_c(sign=1)
         #forward_c(sign=-1)
 
         #derivatives
         central_c()
+
+        backward_c(sign=1)
         #print('adding central')
         #for i in range(1, self.n_order):
             #central_c(var_order=i)
@@ -386,7 +391,7 @@ class ODESYSLP(nn.Module):
         #self.derivative_lb = -dub
 
 
-        self.set_row_col_sorted_indices()
+        #self.set_row_col_sorted_indices()
 
 
         #Add batch dim
@@ -521,11 +526,15 @@ class ODESYSLP(nn.Module):
         #first derivative
         #TODO fix coefficients. fix multiplier according to order
         mult = (csteps + psteps)/2
-        values_list.extend([-ones, -0.5*ones, zeros, 0.5*ones, -ones*mult ])
+        values_list.extend([ones, -0.5*ones, zeros, 0.5*ones, -ones*mult ])
+        #values_list.extend([-ones, -0.5*ones/mult, zeros, 0.5*ones/mult, -ones ])
         if self.n_order > 2:
             #second derivative
             #values_list.extend([-ones*mult, 1*ones, -2*ones, 1*ones, -ones*mult**2 ])
+            #values_list.extend([-ones*mult, 1*ones, -2*ones, 1*ones, -ones*mult**2 ])
             values_list.extend([-ones*mult, 1*ones, -2*ones, 1*ones, -ones*mult**2 ])
+            #values_list.extend([-ones, 1*ones, -2*ones, 1*ones, -ones*mult**2 ])
+            #values_list.extend([-ones, 1*ones/mult**2, -2*ones/mult**2, 1*ones/mult**2, -ones ])
 
         #values = torch.stack([-ones, -sum_inv*mult, zeros, sum_inv*mult, -ones*mult ], dim=-1)
         values = torch.stack(values_list, dim=-1)
@@ -621,12 +630,11 @@ class ODESYSLP(nn.Module):
         #true_value = torch.tensor(self.value_dict[ConstraintType.Derivative])
 
         fv = self.build_forward_values(steps)
+        cv = self.build_central_values(steps)
         bv = self.build_backward_values(steps)
 
-        cv = self.build_central_values(steps)
 
-
-        built_values = torch.cat([fv,bv,cv], dim=-1)
+        built_values = torch.cat([fv,cv, bv], dim=-1)
         #built_values = torch.cat([fv,cv], dim=-1)
         #built_values = torch.cat([fv,bv], dim=-1)
 
@@ -636,6 +644,10 @@ class ODESYSLP(nn.Module):
     def build_equation_tensor(self, eq_values):
         #eq_values = self.build_equation_values(steps).reshape(-1)
         #shape batch, n_eq, n_step, n_vars, order+1
+        eq_values = eq_values.reshape(-1, self.n_order)
+
+        ones = torch.ones(eq_values.shape[0], 1)
+        eq_values = torch.cat([eq_values, -1*ones], dim=1)
         eq_values = eq_values.reshape(-1)
 
         eq_indices = self.eq_A._indices()
@@ -656,42 +668,43 @@ class ODESYSLP(nn.Module):
     def build_derivative_tensor_test(self, steps):
         #derivative_values = self.build_derivative_values(steps).reshape(-1)
 
+        G = torch.sparse_coo_tensor(torch.tensor([[]]), torch.tensor([]), dtype=self.dtype, device=steps.device)
         ##print('built', len(derivative_values))
         #derivative_indices = self.derivative_A._indices()
         #G = torch.sparse_coo_tensor(derivative_indices, derivative_values, dtype=self.dtype, device=steps.device)
 
         ##return G, derivative_values
-        #return G#, derivative_values
-        return self.derivative_A
+        return G#, derivative_values
+        #return self.derivative_A
 
 
 
-    def fill_block_constraints_torch(self, eq_A, eq_rhs, iv_rhs, derivative_A):
+    #def fill_block_constraints_torch(self, eq_A, eq_rhs, iv_rhs, derivative_A):
 
-        eq_values = eq_A._values().reshape(self.bs,-1)
-        if iv_rhs is not None:
-            self.initial_A = self.initial_A.type_as(derivative_A)
-            init_values = self.initial_A._values().reshape(self.bs, -1)
-        deriv_values = derivative_A._values().reshape(self.bs, -1)
+    #    eq_values = eq_A._values().reshape(self.bs,-1)
+    #    if iv_rhs is not None:
+    #        self.initial_A = self.initial_A.type_as(derivative_A)
+    #        init_values = self.initial_A._values().reshape(self.bs, -1)
+    #    deriv_values = derivative_A._values().reshape(self.bs, -1)
 
-        if iv_rhs is not None:
-            values = torch.cat([eq_values, init_values, deriv_values], dim=1)
-        else:
-            values = torch.cat([eq_values, deriv_values], dim=1)
-        values = values.reshape(-1)
+    #    if iv_rhs is not None:
+    #        values = torch.cat([eq_values, init_values, deriv_values], dim=1)
+    #    else:
+    #        values = torch.cat([eq_values, deriv_values], dim=1)
+    #    values = values.reshape(-1)
 
-        self.A_block_indices = self.A_block_indices.to(values.device)
+    #    self.A_block_indices = self.A_block_indices.to(values.device)
 
-        A_block = torch.sparse_coo_tensor(indices=self.A_block_indices, values=values, size=self.A_block_shape)
+    #    A_block = torch.sparse_coo_tensor(indices=self.A_block_indices, values=values, size=self.A_block_shape)
 
-        self.derivative_rhs = self.derivative_rhs.type_as(eq_rhs)
+    #    self.derivative_rhs = self.derivative_rhs.type_as(eq_rhs)
 
-        if iv_rhs is not None:
-            rhs = torch.cat([eq_rhs, iv_rhs, self.derivative_rhs], axis=1)
-        else:
-            rhs = torch.cat([eq_rhs, self.derivative_rhs], axis=1)
-        #rhs = rhs.reshape(-1)
-        return A_block, rhs
+    #    if iv_rhs is not None:
+    #        rhs = torch.cat([eq_rhs, iv_rhs, self.derivative_rhs], axis=1)
+    #    else:
+    #        rhs = torch.cat([eq_rhs, self.derivative_rhs], axis=1)
+    #    #rhs = rhs.reshape(-1)
+    #    return A_block, rhs
 
     #def fill_constraints_torch(self, eq_values, eq_rhs, iv_rhs, derivative_A):
     def fill_constraints_torch(self, eq_A, eq_rhs, iv_rhs, derivative_A):
@@ -727,7 +740,34 @@ class ODESYSLP(nn.Module):
         #self.ub = torch.cat([self.constraint_rhs, self.boundary_rhs, self.derivative_ub], axis=1)
         initial_A = self.initial_A.type_as(eq_A)
         AG = torch.cat([eq_A, initial_A, derivative_A], dim=1)
+        #AG = torch.cat([eq_A, initial_A], dim=1)
         rhs = torch.cat([eq_rhs, iv_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
+        #rhs = torch.cat([eq_rhs, iv_rhs], axis=1)
+
+        #AG = torch.cat([eq_A], dim=1)
+        #rhs = torch.cat([eq_rhs], axis=1)
+
+        #if self.initial_A is not None:
+        #    self.ub = torch.cat([self.constraint_rhs, self.initial_rhs, self.derivative_rhs], axis=1)
+        #else:
+        #    self.ub = torch.cat([self.constraint_rhs, self.derivative_rhs], axis=1)
+        ##print('ub ', self.ub.shape, flush=True)
+
+        return AG, rhs
+
+    def fill_constraints_dense_torch(self, eq_A, eq_rhs, iv_rhs, derivative_A):
+        bs = eq_rhs.shape[0]
+
+        initial_A = self.initial_A.type_as(eq_A).to_dense()
+        eq_A = eq_A.to_dense()
+        #AG = torch.cat([eq_A, initial_A, derivative_A], dim=1)
+        AG = torch.cat([eq_A, initial_A], dim=1)
+        #AG = torch.cat([eq_A, initial_A], dim=1)
+        #rhs = torch.cat([eq_rhs, iv_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
+        rhs = torch.cat([eq_rhs, iv_rhs], axis=1)
+
+        #AG = torch.cat([eq_A], dim=1)
+        #rhs = torch.cat([eq_rhs], axis=1)
 
         #if self.initial_A is not None:
         #    self.ub = torch.cat([self.constraint_rhs, self.initial_rhs, self.derivative_rhs], axis=1)
@@ -762,6 +802,12 @@ class ODESYSLP(nn.Module):
 
         #dA = x*y.reshape(b, 1,-1)
         #return dA
+
+        x = x.reshape(b, 1, -1)
+        y = y.reshape(b, -1, 1)
+
+        dA = y*x#.reshape(b, -1, 1)
+        return dA
 
         x = x.reshape(b,-1)
         y = y.reshape(b,-1)
@@ -801,11 +847,11 @@ class ODESYSLP(nn.Module):
         #y = y[:, 1:self.num_vars]
         x = x[:, 0:self.num_vars+self.num_added_eps_vars]
 
-        #x = x.reshape(b, -1, 1)
-        #y = y.reshape(b, 1, -1)
+        x = x.reshape(b, 1, -1)
+        y = y.reshape(b, -1, 1)
 
-        #dA = x*y.reshape(b, 1,-1)
-        #return dA
+        dA = y*x#.reshape(b, -1, 1)
+        return dA
 
         x = x.reshape(b,-1)
         y = y.reshape(b,-1)
@@ -823,14 +869,14 @@ class ODESYSLP(nn.Module):
 
         X = torch.sparse_coo_tensor(self.eq_row_sorted, x_repeat, 
                                        #size=(self.num_added_derivative_constraints, self.num_vars), 
-                                       #size=(self.bs, self.num_added_equation_constraints, 
-                                       #     total_vars),
+                                       size=(self.bs, self.num_added_equation_constraints, 
+                                            total_vars),
                                        dtype=self.dtype, device=x.device)
 
         Y = torch.sparse_coo_tensor(self.eq_column_sorted, y_repeat, 
                                        #size=(self.num_added_derivative_constraints, self.num_vars), 
-                                       #size=(self.bs, self.num_added_equation_constraints, 
-                                       #     total_vars),
+                                       size=(self.bs, self.num_added_equation_constraints, 
+                                            total_vars),
                                        dtype=self.dtype, device=x.device)
 
 

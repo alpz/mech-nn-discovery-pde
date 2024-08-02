@@ -80,8 +80,8 @@ def QPFunction(ode, n_iv, order, n_step=10, gamma=1, alpha=1, double_ret=True):
             num_eps = ode.num_added_eps_vars
             num_var = ode.num_vars
             #u = l
-            P_diag = torch.ones(num_eps).type_as(rhs)*1e4
-            P_zeros = torch.zeros(num_var).type_as(rhs) +1e-4
+            P_diag = torch.ones(num_eps).type_as(rhs)*1e5
+            P_zeros = torch.zeros(num_var).type_as(rhs) +1e-5
             P_diag = torch.cat([P_zeros, P_diag])
             P_diag_inv = 1/P_diag
             P_diag_inv = P_diag_inv.unsqueeze(0)
@@ -92,8 +92,21 @@ def QPFunction(ode, n_iv, order, n_step=10, gamma=1, alpha=1, double_ret=True):
             rhs = torch.bmm(A, rhs.unsqueeze(2))
             #TODO rhs is zero upto here. remove the above
             rhs = rhs.squeeze(2) + A_rhs
+            #rhs =  A_rhs
 
-            lam, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=2000)
+            #lam, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=2000)
+
+
+            ######### dense
+            A = A.to_dense()
+            At = At.to_dense()
+            PAt = P_diag_inv.unsqueeze(2)*At
+            APAt = torch.bmm(A, PAt)
+            L,info = torch.linalg.cholesky_ex(APAt,upper=False)
+            lam = torch.cholesky_solve(rhs.unsqueeze(2), L)
+            lam = lam.squeeze(2)
+            #########
+
             #print('torch cg info ', info)
             #lam,info = SPSLG.lgmres(pdmat, pd_rhs)
             #xl = -Pinv_s@(A_s.T@lam -q)
@@ -101,17 +114,35 @@ def QPFunction(ode, n_iv, order, n_step=10, gamma=1, alpha=1, double_ret=True):
             #xl = -Pinv_s@(A_s.T@lam -c)
             x = lam.unsqueeze(2)
             x = torch.bmm(At, x)
-            x = -P_diag_inv*(x.squeeze(2) - c)
+            x = P_diag_inv*(x.squeeze(2) - c)
+
+
+            ####### check
+            #G = torch.diag(1/P_diag_inv[0]).type_as(A)
+            #Z = torch.zeros((A.shape[1], A.shape[1])).type_as(A)
+
+            #K = torch.cat ([G, At[0]], dim=1)
+            #K2 = torch.cat([A[0], Z], dim=1)
+            #K = torch.cat([K,K2], dim=0)
+            #sol = torch.cat([-x[0], lam[0]], dim=0)
+            #msol = torch.mm(K, sol.unsqueeze(1)).squeeze()
+
+            #z = torch.zeros(A.shape[2]).type_as(A)
+            #t = torch.cat([c, -A_rhs[0]])
+
+            #diff = (msol - t).pow(2).sum()
+            #print('ff ', diff)
+            ###########
             
-            ctx.save_for_backward(A, P_diag_inv, x, lam)
+            ctx.save_for_backward(A, P_diag_inv, x, lam, L)
             
-            if not double_ret:
-                x = x.float()
+            #if not double_ret:
+            #    x = x.float()
             return x
         
         @staticmethod
         def backward(ctx, dl_dzhat):
-            A,P_diag_inv, _x, _y = ctx.saved_tensors
+            A,P_diag_inv, _x, _y, L = ctx.saved_tensors
             At = A.transpose(1,2)
             #n = A.shape[1]
             #m = A.shape[2]
@@ -120,48 +151,49 @@ def QPFunction(ode, n_iv, order, n_step=10, gamma=1, alpha=1, double_ret=True):
             bs = dl_dzhat.shape[0]
             m = ode.num_constraints
 
-            #z = torch.zeros(bs, m, device=dl_dzhat.device).type_as(_x)
-            rhs = -dl_dzhat #torch.cat([-dl_dzhat, z], dim=-1)
+            dl_dzhat = -dl_dzhat
 
-            rhs = -dl_dzhat
+            #z = torch.zeros(bs, m, device=dl_dzhat.device).type_as(_x)
+            rhs = dl_dzhat #torch.cat([-dl_dzhat, z], dim=-1)
+
+            #rhs = -dl_dzhat
             rhs = P_diag_inv*rhs
             rhs = torch.bmm(A, rhs.unsqueeze(2))
             #TODO rhs is zero upto here. remove the above
             rhs = rhs.squeeze(2) 
 
-            dnu, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=2000)
+            #dnu, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=2000)
+            ##### dense
+            dnu = torch.cholesky_solve(rhs.unsqueeze(2), L)
+            dnu = dnu.squeeze(2)
+            #####
 
             dx = dnu.unsqueeze(2)
             dx = torch.bmm(At, dx)
-            dx = P_diag_inv*(dx.squeeze(2)- -dl_dzhat ) 
-            #AAt_sp = tensor_to_sp(AAti)
-            #AAt_sp = tensor_to_cpsp(AAti)
-            #_dx,_dnu = solve_kkt2(A,L, z, -dl_dzhat, gamma)
-            #_dx,_dnu = solve_kkt_sparse_qr(A,z, -dl_dzhat, gamma, QPFunctionFn.QRSolver, values)
-            #_dx,_dnu = solve_kkt_indirect_cp(A,AAt_sp,z, -dl_dzhat, gamma)
-            #_dx,_dnu = solve_kkt_indirect_cg(A, AAt, z, -dl_dzhat, gamma)
-            
-            _dx, _dnu = dx, dnu
+            dx = -P_diag_inv*(dx.squeeze(2)- dl_dzhat ) 
 
-            #take row, col indices
-            #dx = _dx[:,0:n_step].reshape(bs, n_step,1)
-            #x = _x[:,0:n_step].reshape(bs, n_step,1)
-            
-            #nu = _y
-            
-            #t_vars = ode.n_system_vars
-            #num_coeffs = t_vars*n_step*(order+1)
 
-            #remove eps
-            #dnu = _dnu[:, 1:1+num_coeffs]
-            #nu = nu[:, 1:1+num_coeffs]
-            
+            ####### check
+            #G = torch.diag(1/P_diag_inv[0]).type_as(A)
+            #Z = torch.zeros((A.shape[1], A.shape[1])).type_as(A)
 
+            #K = torch.cat ([G, At[0]], dim=1)
+            #K2 = torch.cat([A[0], Z], dim=1)
+            #K = torch.cat([K,K2], dim=0)
+            #sol = torch.cat([dx[0], dnu[0]], dim=0)
+            #msol = torch.mm(K, sol.unsqueeze(1)).squeeze()
+
+            #z = torch.zeros(A.shape[1]).type_as(A)
+            #t = torch.cat([dl_dzhat[0], z])
+
+            #diff = (msol - t).pow(2).sum()
+            #print('grad ', diff)
+            ###############
             
-            #dA = torch.tensor(dA)#.sum(dim=0)
-            #db = _dx[:, :2*n_step] #torch.tensor(-dnu.squeeze())
-            #db = _dx[:, :n_step*ode.n_equations] #torch.tensor(-dnu.squeeze())
-            db = _dx[:, :ode.num_added_equation_constraints] #torch.tensor(-dnu.squeeze())
+            _dx = dx
+            _dnu = dnu
+
+            db = _dnu[:, :ode.num_added_equation_constraints] #torch.tensor(-dnu.squeeze())
             db = -db.squeeze(-1) #.reshape(bs,n_step*ode.n_equations)
             #div_rhs = torch.tensor(div_rhs)
             
@@ -171,7 +203,8 @@ def QPFunction(ode, n_iv, order, n_step=10, gamma=1, alpha=1, double_ret=True):
                 div_rhs = None
             else:
                 #div_rhs = _dx[:, n_step*ode.n_equations:(n_step+n_iv)*ode.n_equations].squeeze(2)
-                div_rhs = _dx[:, ode.num_added_equation_constraints:ode.num_added_equation_constraints + ode.num_added_initial_constraints]#.squeeze(2)
+                #div_rhs = _dx[:, ode.num_added_equation_constraints:ode.num_added_equation_constraints + ode.num_added_initial_constraints]#.squeeze(2)
+                div_rhs = _dnu[:, ode.num_added_equation_constraints:ode.num_added_equation_constraints + ode.num_added_initial_constraints]#.squeeze(2)
                 div_rhs = -div_rhs#.reshape(bs,n_iv*ode.n_equations)
             
 
@@ -183,12 +216,13 @@ def QPFunction(ode, n_iv, order, n_step=10, gamma=1, alpha=1, double_ret=True):
             dA = ode.sparse_grad_eq_constraint(_dx,_y)
             dA = dA + ode.sparse_grad_eq_constraint(_x,_dnu)
 
-            if not double_ret:
-                dA = dA.float()
-                db =db.float()
-                div_rhs = div_rhs.float() if div_rhs is not None else None
-                dD = dD.float()
+            #if not double_ret:
+            #    dA = dA.float()
+            #    db =db.float()
+            #    div_rhs = div_rhs.float() if div_rhs is not None else None
+            #    dD = dD.float()
             
+            print(dA.abs().mean(), dA.abs().max())
             return dA, db,div_rhs, dD
 
     return QPFunctionFn.apply

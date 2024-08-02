@@ -10,7 +10,7 @@ import scipy.sparse as SPS
 import scipy.sparse.linalg as SPSLG
 from scipy.integrate import odeint
 
-from solver.ode_layer import ODEINDLayerTestEPS
+from solver.ode_layer import ODEINDLayerTest#EPS
 from solver.cg import cg_matvec
 
 import matplotlib.pyplot as plt
@@ -27,7 +27,7 @@ def nonlocal_iterate(arr):
 def test_primal_equality_cg_torch():
     step_size = 0.1
     #end = 3*step_size
-    end = 100*step_size
+    end = 500*step_size
     n_step = int(end/step_size)
     order=2
 
@@ -54,7 +54,7 @@ def test_primal_equality_cg_torch():
     rhs = rhs.unsqueeze(0)
     iv = iv.unsqueeze(0)
 
-    ode = ODEINDLayerTestEPS(bs=1,order=order,n_ind_dim=1,n_iv=2,n_step=n_step,n_iv_steps=1, step_size=step_size)
+    ode = ODEINDLayerTest(bs=1,order=order,n_ind_dim=1,n_iv=2,n_step=n_step,n_iv_steps=1, step_size=step_size)
 
     #u0,u1,u2,eps,_, eq, initial, derivative, eps_tensor = ode(_coeffs, rhs, iv, steps)
     u0,u1,u2,eps,_, C,l = ode(_coeffs, rhs, iv, steps)
@@ -64,12 +64,15 @@ def test_primal_equality_cg_torch():
     num_eps = ode.num_eps
     num_var = ode.num_var
     u = l
-    P_diag = torch.ones(num_eps)*1e8
-    P_zeros = torch.zeros(num_var) +1e-8
+    P_diag = torch.ones(num_eps)
+    P_zeros = torch.zeros(num_var) +1e-3
     P_diag = torch.cat([P_zeros, P_diag])
     P_diag_inv = 1/P_diag
 
-    c = torch.zeros(num_var+num_eps, device=coeffs.device).double()
+    #c = torch.zeros(num_var+num_eps, device=coeffs.device).double()
+    c0 = torch.zeros(num_var, device=coeffs.device).double()
+    c1 = 0*torch.ones(num_eps, device=coeffs.device).double()
+    c = torch.cat([c0,c1])
 
     P= torch.sparse.spdiags(P_diag, torch.tensor(0), (num_eps+num_var, num_eps+num_var))
 
@@ -88,7 +91,7 @@ def test_primal_equality_cg_torch():
     rhs = rhs.squeeze(2) + l
 
     #lam,info = SPSLG.cg(pdmat, pd_rhs)
-    lam, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=2000)
+    lam, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=6000)
     print('torch cg info ', info)
     #lam,info = SPSLG.lgmres(pdmat, pd_rhs)
     #xl = -Pinv_s@(A_s.T@lam -q)
@@ -165,5 +168,8 @@ u0
 
 # %%
 np.abs(eps).max()
+
+# %%
+eps
 
 # %%

@@ -18,6 +18,7 @@ if ODEConfig.linear_solver == SolverType.SPARSE_INDIRECT_BLOCK_CG:
     from solver.qp_primal_indirect_batched_block_sparse_sys import QPFunction as QPFunctionSys
 
 from solver.qp_dual_indirect_sparse import QPFunction as QPFunctionSysEPS
+from torch.autograd import gradcheck
 
 #DBL=False
 
@@ -75,6 +76,14 @@ class ODEINDLayer(nn.Module):
         derivative_constraints = self.ode.build_derivative_tensor(steps)
         eq_constraints = self.ode.build_equation_tensor(coeffs)
 
+        check=False
+        if check:
+            import sys
+            #test = gradcheck(self.qpf, iv_rhs, eps=1e-4, atol=1e-3, rtol=0.001, check_undefined_grad=False, check_batched_grad=True)
+            #test = gradcheck(self.qpf, (coeffs,rhs,iv_rhs), eps=1e-6, atol=1e-5, rtol=0.001, check_undefined_grad=True, check_batched_grad=True)
+            test = gradcheck(self.qpf, (eq_constraints, rhs, iv_rhs, derivative_constraints), eps=1e-4, atol=1e-3, rtol=0.001)
+            sys.exit(0)
+
         #x = self.qpf(coeffs, rhs, iv_rhs, derivative_constraints)
         x = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints)
 
@@ -89,7 +98,7 @@ class ODEINDLayer(nn.Module):
 
         u0 = u[:,:,:,0]
         u1 = u[:,:,:,1]
-        u2 = u[:,:,:,2]
+        u2 = u[:,:,:,2] if self.order >=2 else None
         
         return u0, u1, u2, eps, steps
 
@@ -149,6 +158,14 @@ class ODESYSLayer(nn.Module):
         derivative_constraints = self.ode.build_derivative_tensor(steps)
         eq_constraints = self.ode.build_equation_tensor(coeffs)
 
+        check=False
+        if check:
+            import sys
+            #test = gradcheck(self.qpf, iv_rhs, eps=1e-4, atol=1e-3, rtol=0.001, check_undefined_grad=False, check_batched_grad=True)
+            #test = gradcheck(self.qpf, (coeffs,rhs,iv_rhs), eps=1e-6, atol=1e-5, rtol=0.001, check_undefined_grad=True, check_batched_grad=True)
+            test = gradcheck(self.qpf, (coeffs,rhs,iv_rhs), eps=1e-6, atol=1e-3, rtol=0.001)
+            sys.exit(0)
+
         x = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints)
 
         eps = x[:,0]
@@ -195,12 +212,15 @@ class ODEINDLayerTest(nn.Module):
 
         dtype = torch.float64 if self.solver_dbl else torch.float32
 
-        self.ode = ODESYSLP(bs=bs*self.n_ind_dim, n_dim=self.n_dim, n_equations=self.n_equations, n_auxiliary=0, n_step=self.n_step, step_size=self.step_size, order=self.order,
+        self.ode = ODESYSLPEPS(bs=bs*self.n_ind_dim, n_dim=self.n_dim, n_equations=self.n_equations, n_auxiliary=0, n_step=self.n_step, step_size=self.step_size, order=self.order,
                          n_iv=self.n_iv, n_iv_steps=self.n_iv_steps, dtype=dtype, 
                          add_eps_constraint=False, device=self.device)
 
 
-        self.qpf = QPFunctionSys(self.ode, n_step=self.n_step, order=self.order, n_iv=self.n_iv, gamma=gamma, alpha=alpha, double_ret=double_ret)
+        self.qpf =QPFunctionSysEPS(self.ode, n_step=self.n_step, order=self.order, n_iv=self.n_iv, gamma=gamma, alpha=alpha, double_ret=double_ret)
+
+        self.num_var = self.ode.num_vars
+        self.num_eps = self.ode.num_added_eps_vars
 
     def forward(self, coeffs, rhs, iv_rhs, steps):
         coeffs = coeffs.reshape(self.bs*self.n_ind_dim, self.n_step,self.n_dim, self.order + 1)
@@ -219,10 +239,13 @@ class ODEINDLayerTest(nn.Module):
             iv_rhs = iv_rhs.double() if iv_rhs is not None else None
             steps = steps.double()
 
-        derivative_constraints = self.ode.build_derivative_tensor_test(steps)
+        #derivative_A = self.ode.build_derivative_tensor_test(steps)
+        derivative_A = self.ode.build_derivative_tensor(steps)
         #derivative_constraints = self.ode.build_derivative_tensor(steps)
-        eq_constraints = self.ode.build_equation_tensor(coeffs)
+        eq_A = self.ode.build_equation_tensor(coeffs)
 
+
+        At, ub = self.ode.fill_constraints_torch(eq_A, rhs, iv_rhs, derivative_A)
         #x = self.qpf(coeffs, rhs, iv_rhs, derivative_constraints)
         #x = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints)
 
@@ -240,7 +263,9 @@ class ODEINDLayerTest(nn.Module):
         #u2 = u[:,:,:,2]
         
         #return u0, u1, u2, eps, steps, eq_constraints, self.ode.initial_A,  derivative_constraints, self.ode.eps_A 
-        return None, None, None, None, None, eq_constraints, self.ode.initial_A,  derivative_constraints, self.ode.eps_A 
+        #return None, None, None, None, None, eq_constraints, self.ode.initial_A,  derivative_constraints, self.ode.eps_A 
+        return None, None, None, None, None,  At, ub
+
 
 
 class ODEINDLayerTestEPS(nn.Module):
@@ -297,14 +322,27 @@ class ODEINDLayerTestEPS(nn.Module):
             iv_rhs = iv_rhs.double() if iv_rhs is not None else None
             steps = steps.double()
 
-        derivative_A = self.ode.build_derivative_tensor_test(steps)
+        derivative_A = self.ode.build_derivative_tensor(steps)
+        #derivative_A = self.ode.build_derivative_tensor_test(steps)
         #derivative_constraints = self.ode.build_derivative_tensor(steps)
         eq_A = self.ode.build_equation_tensor(coeffs)
 
+        #eq_A = eq_A.detach()
+        #eq_A.requires_grad=False
+        #rhs.requires_grad=True
+
+        check=False
+        if check:
+            import sys
+            #test = gradcheck(self.qpf, iv_rhs, eps=1e-4, atol=1e-3, rtol=0.001, check_undefined_grad=False, check_batched_grad=True)
+            #test = gradcheck(self.qpf, (coeffs,rhs,iv_rhs), eps=1e-6, atol=1e-5, rtol=0.001, check_undefined_grad=True, check_batched_grad=True)
+            test = gradcheck(self.qpf, (eq_A, rhs, iv_rhs, derivative_A), eps=1e-5, atol=1e-3, rtol=0.001, nondet_tol=1e-3)
+            sys.exit(0)
 
         #At, ub = self.ode.fill_constraints_torch(eq_A, rhs, iv_rhs, derivative_A)
         #x = self.qpf(coeffs, rhs, iv_rhs, derivative_constraints)
         x = self.qpf(eq_A, rhs, iv_rhs, derivative_A)
+        #x = self.solve(eq_A, rhs, iv_rhs, derivative_A)
 
         #eps = x[:,0]
 
@@ -312,6 +350,7 @@ class ODEINDLayerTestEPS(nn.Module):
         u = self.ode.get_solution_reshaped(x)
 
         eps = x[:, self.ode.num_vars:].abs().max(dim=1)[0]
+        #eps = x[0]
 
         #u = u.reshape(self.bs, self.n_ind_dim, self.n_step, self.order+1)
         ##shape: batch, step, vars, order
@@ -319,9 +358,70 @@ class ODEINDLayerTestEPS(nn.Module):
 
         u0 = u[:,:,:,0]
         u1 = u[:,:,:,1]
-        u2 = u[:,:,:,2]
+        u2 = u[:,:,:,2] if self.order >=2 else None
         
         #return u0, u1, u2, eps, steps, eq_constraints, self.ode.initial_A,  derivative_constraints, self.ode.eps_A 
         return u0, u1, u2, eps, steps#, eq_constraints, self.ode.initial_A,  derivative_constraints, self.ode.eps_A 
         #return None, None, None, None, None, eq_constraints, self.ode.initial_A,  derivative_constraints, self.ode.eps_A 
         #return None, None, None, None, None,  At, ub
+
+    def solve(self, eq_A, rhs, iv_rhs, derivative_A):
+    #def forward(ctx, coeffs, rhs, iv_rhs):
+        #bs = coeffs.shape[0]
+        bs = rhs.shape[0]
+        #ode.build_ode(coeffs, rhs, iv_rhs, derivative_A)
+        #At, ub = ode.fill_block_constraints_torch(eq_A, rhs, iv_rhs, derivative_A)
+        #A, A_rhs = self.ode.fill_constraints_torch(eq_A, rhs, iv_rhs, derivative_A)
+        A, A_rhs = self.ode.fill_constraints_dense_torch(eq_A, rhs, iv_rhs, derivative_A)
+        #A = eq_A.to_dense()
+        #A_rhs = rhs #= self.ode.fill_constraints_torch(eq_A, rhs, iv_rhs, derivative_A)
+        #At = A.transpose(1,2)
+
+        A = A.to_dense()
+        At = A.transpose(1,2)
+
+        num_eps = self.ode.num_added_eps_vars
+        num_var = self.ode.num_vars
+        #u = l
+        P_diag = torch.ones(num_eps).type_as(rhs)*1e1
+        P_zeros = torch.zeros(num_var).type_as(rhs) +1e-2
+        P_diag = torch.cat([P_zeros, P_diag])
+        P_diag_inv = 1/P_diag
+        P_diag_inv = P_diag_inv.unsqueeze(0)
+
+        #c = torch.zeros(num_var+num_eps, device=A.device).type_as(rhs)
+        c = torch.ones(num_var+num_eps, device=A.device).type_as(rhs)
+        rhs = c
+        rhs = P_diag_inv*rhs
+        rhs = torch.bmm(A, rhs.unsqueeze(2))
+        #TODO rhs is zero upto here. remove the above
+        rhs = rhs.squeeze(2) + A_rhs
+        #rhs =  A_rhs
+
+        #lam, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=2000)
+
+
+        ######### dense
+        #A = A.to_dense()
+        #At = At.to_dense()
+        PAt = P_diag_inv.unsqueeze(2)*At
+        APAt = torch.bmm(A, PAt)
+        L,info = torch.linalg.cholesky_ex(APAt,upper=False)
+        lam = torch.cholesky_solve(rhs.unsqueeze(2), L)
+        lam = lam.squeeze(2)
+        #########
+
+        #print('torch cg info ', info)
+        #lam,info = SPSLG.lgmres(pdmat, pd_rhs)
+        #xl = -Pinv_s@(A_s.T@lam -q)
+
+        #xl = -Pinv_s@(A_s.T@lam -c)
+        x = lam.unsqueeze(2)
+        x = torch.bmm(At, x)
+        x = -P_diag_inv*(x.squeeze(2) - c)
+        
+        #ctx.save_for_backward(A, P_diag_inv, x, lam, L)
+        
+        #if not double_ret:
+        #    x = x.float()
+        return x

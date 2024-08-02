@@ -2,8 +2,8 @@
 import torch.nn as nn
 import torch
 
-from solver.ode_layer import ODEINDLayer
-#from solver.ode_layer import ODEINDLayerTestEPS as ODEINDLayer
+#from solver.ode_layer import ODEINDLayer
+from solver.ode_layer import ODEINDLayerTestEPS as ODEINDLayer
 from torch.nn.parameter import Parameter
 import numpy as np
 
@@ -13,18 +13,19 @@ import torch.optim as optim
 import pytorch_lightning as pl
 
 from torch.utils.data import Dataset
+from torch.autograd import gradcheck
 
 #Fit a noisy exponentially damped sine wave with a second order ODE
 
 class SineDataset(Dataset):
     def __init__(self, end=10, n_step=50):
         _y = np.linspace(0, end, n_step)
-        y0 = np.sin(2*_y) + 0.5*np.random.randn(*_y.shape)
+        y0 = np.sin(2*_y) #+ 0.5*np.random.randn(*_y.shape)
         y1 = np.cos(_y) #+ 0.5*np.random.randn(*_y.shape)
         y0 = torch.tensor(y0)
 
         damp = np.exp(-0.1*_y)
-        self.y = y0*damp 
+        self.y = y0#*damp 
         
     def __len__(self):
         return 1
@@ -63,7 +64,8 @@ class Method(pl.LightningModule):
         y = batch
         eps, u0, u1,u2,steps = self()
         
-        loss = (u0-y).pow(2).sum()
+        #loss = (u0[:,2:-2]-y[:,2:-2]).pow(2).sum()
+        loss = (u0[:,:]-y[:,:]).pow(2).sum()
         eps = eps.max()
         
         self.log('train_loss', loss, prog_bar=True, logger=True)
@@ -71,7 +73,7 @@ class Method(pl.LightningModule):
         
         self.func_list.append(u0.detach().cpu().numpy())
         self.funcp_list.append(u1.detach().cpu().numpy())
-        self.funcpp_list.append(u2.detach().cpu().numpy())
+        self.funcpp_list.append(u1.detach().cpu().numpy())
         self.steps_list.append(steps.detach().cpu().numpy())
         
         self.y_list.append(y.detach().cpu().numpy())
@@ -88,9 +90,10 @@ class Sine(nn.Module):
         super().__init__()
 
         self.step_size = 0.1
-        self.end = 500* self.step_size
+        #self.end = 500* self.step_size
+        self.end = 3* self.step_size
         self.n_step = int(self.end /self.step_size)
-        self.order = 2
+        self.order = 1
         #state dimension
         self.n_dim = 1
         self.bs = bs
@@ -103,7 +106,7 @@ class Sine(nn.Module):
 
 
         #initial values grad and up
-        self.n_iv = 0
+        self.n_iv = 1
         if self.n_iv > 0:
             iv_rhs = np.array([0]*self.n_dim).reshape(self.n_dim,self.n_iv)
             iv_rhs = torch.tensor(iv_rhs, dtype=dtype)
@@ -116,7 +119,8 @@ class Sine(nn.Module):
         self.rhs = _rhs
 
         self.steps = torch.logit(self.step_size*torch.ones(1,self.n_step-1,self.n_dim))
-        self.steps = nn.Parameter(self.steps)
+        #self.steps = nn.Parameter(self.steps)
+        self.steps = torch.tensor(self.steps)
 
         #self.ode = ODEINDLayerTestEPS(bs=bs, order=self.order, n_ind_dim=self.n_dim, n_iv=self.n_iv, n_step=self.n_step, n_iv_steps=1)
         self.ode = ODEINDLayer(bs=bs, order=self.order, n_ind_dim=self.n_dim, n_iv=self.n_iv, n_step=self.n_step, n_iv_steps=1)
@@ -131,6 +135,15 @@ class Sine(nn.Module):
             iv_rhs = iv_rhs.unsqueeze(0).repeat(self.bs,1, 1)
         else:
             iv_rhs = torch.tensor([])
+
+
+        #check=True
+        #if check:
+        #    import sys
+        #    #test = gradcheck(self.qpf, iv_rhs, eps=1e-4, atol=1e-3, rtol=0.001, check_undefined_grad=False, check_batched_grad=True)
+        #    #test = gradcheck(self.qpf, (coeffs,rhs,iv_rhs), eps=1e-6, atol=1e-5, rtol=0.001, check_undefined_grad=True, check_batched_grad=True)
+        #    test = gradcheck(self.qpf, (coeffs,rhs,iv_rhs), eps=1e-6, atol=1e-3, rtol=0.001)
+        #    sys.exit(0)
 
         steps = torch.sigmoid(self.steps)
         steps = steps.repeat(self.bs,1, 1).double()

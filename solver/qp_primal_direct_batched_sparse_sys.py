@@ -123,6 +123,8 @@ def QPFunction(ode, n_step=100, order=2, n_iv=2, gamma=1, alpha=1, DEVICE='cuda'
                 div_rhs = div_rhs.float() if div_rhs is not None else None
                 dD = dD.float()
             
+
+            print(dA.to_dense().abs().mean(), dA.to_dense().abs().max())
             return dA, db,div_rhs, dD
         
 
