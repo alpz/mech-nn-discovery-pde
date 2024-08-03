@@ -94,7 +94,7 @@ class Sine(nn.Module):
         #self.end = 500* self.step_size
         self.end = 100* self.step_size
         self.n_step = int(self.end /self.step_size)
-        self.order = 2
+        self.order = 1
         #state dimension
         self.n_dim = 1
         self.bs = bs
