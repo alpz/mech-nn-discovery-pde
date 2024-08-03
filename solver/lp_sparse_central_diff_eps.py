@@ -322,7 +322,7 @@ class ODESYSLP(nn.Module):
     def build_constraints(self):
         
         self.build_equation_constraints()
-        self.build_derivative_constraints()
+        #self.build_derivative_constraints()
         self.build_initial_constraints()
         #if self.add_eps_constraint:
         #    self.build_eps_constraints()
@@ -739,10 +739,10 @@ class ODESYSLP(nn.Module):
         #self.num_constraints = self.AG.shape[1]
         #self.ub = torch.cat([self.constraint_rhs, self.boundary_rhs, self.derivative_ub], axis=1)
         initial_A = self.initial_A.type_as(eq_A)
-        AG = torch.cat([eq_A, initial_A, derivative_A], dim=1)
-        #AG = torch.cat([eq_A, initial_A], dim=1)
-        rhs = torch.cat([eq_rhs, iv_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
-        #rhs = torch.cat([eq_rhs, iv_rhs], axis=1)
+        #AG = torch.cat([eq_A, initial_A, derivative_A], dim=1)
+        AG = torch.cat([eq_A, initial_A], dim=1)
+        #rhs = torch.cat([eq_rhs, iv_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
+        rhs = torch.cat([eq_rhs, iv_rhs], axis=1)
 
         #AG = torch.cat([eq_A], dim=1)
         #rhs = torch.cat([eq_rhs], axis=1)

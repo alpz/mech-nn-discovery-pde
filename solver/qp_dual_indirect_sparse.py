@@ -18,6 +18,7 @@ from config import ODEConfig as config
 import ipdb
 
 
+
 def block_mv(A, x):
     """shape x: (b, d), A sparse block"""
     b = x.shape[0]
@@ -170,7 +171,7 @@ def QPFunction(ode, n_iv, order, n_step=10, gamma=1, alpha=1, double_ret=True):
 
             dx = dnu.unsqueeze(2)
             dx = torch.bmm(At, dx)
-            dx = -P_diag_inv*(dx.squeeze(2)- dl_dzhat ) 
+            dx = P_diag_inv*(dx.squeeze(2)- dl_dzhat ) 
 
 
             ####### check

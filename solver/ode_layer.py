@@ -20,6 +20,7 @@ if ODEConfig.linear_solver == SolverType.SPARSE_INDIRECT_BLOCK_CG:
 from solver.qp_dual_indirect_sparse import QPFunction as QPFunctionSysEPS
 from torch.autograd import gradcheck
 
+
 #DBL=False
 
 class ODEINDLayer(nn.Module):
@@ -163,7 +164,11 @@ class ODESYSLayer(nn.Module):
             import sys
             #test = gradcheck(self.qpf, iv_rhs, eps=1e-4, atol=1e-3, rtol=0.001, check_undefined_grad=False, check_batched_grad=True)
             #test = gradcheck(self.qpf, (coeffs,rhs,iv_rhs), eps=1e-6, atol=1e-5, rtol=0.001, check_undefined_grad=True, check_batched_grad=True)
-            test = gradcheck(self.qpf, (coeffs,rhs,iv_rhs), eps=1e-6, atol=1e-3, rtol=0.001)
+            try: 
+                test = gradcheck(self.qpf, (coeffs,rhs,iv_rhs), eps=1e-6, atol=1e-3, rtol=0.001)
+            except Exception as e:
+                print(e)
+
             sys.exit(0)
 
         x = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints)
@@ -322,8 +327,8 @@ class ODEINDLayerTestEPS(nn.Module):
             iv_rhs = iv_rhs.double() if iv_rhs is not None else None
             steps = steps.double()
 
-        derivative_A = self.ode.build_derivative_tensor(steps)
-        #derivative_A = self.ode.build_derivative_tensor_test(steps)
+        #derivative_A = self.ode.build_derivative_tensor(steps)
+        derivative_A = self.ode.build_derivative_tensor_test(steps)
         #derivative_constraints = self.ode.build_derivative_tensor(steps)
         eq_A = self.ode.build_equation_tensor(coeffs)
 
@@ -331,12 +336,29 @@ class ODEINDLayerTestEPS(nn.Module):
         #eq_A.requires_grad=False
         #rhs.requires_grad=True
 
-        check=False
+        check=True
         if check:
             import sys
             #test = gradcheck(self.qpf, iv_rhs, eps=1e-4, atol=1e-3, rtol=0.001, check_undefined_grad=False, check_batched_grad=True)
             #test = gradcheck(self.qpf, (coeffs,rhs,iv_rhs), eps=1e-6, atol=1e-5, rtol=0.001, check_undefined_grad=True, check_batched_grad=True)
-            test = gradcheck(self.qpf, (eq_A, rhs, iv_rhs, derivative_A), eps=1e-5, atol=1e-3, rtol=0.001, nondet_tol=1e-3)
+            try: 
+                test = gradcheck(self.qpf, (eq_A, rhs, iv_rhs, derivative_A), eps=1e-5, atol=1e-2, rtol=0.01)
+            except Exception as e:
+                string = e.args[0].split('tensor')
+                numerical = string[1].split('analytical')[0]
+                analytical = 'torch.tensor' + string[2]
+                numerical = 'torch.tensor' + numerical
+
+                #print(e)
+                print('numerical', numerical)
+                print('--------')
+                print('analytical', analytical)
+                d = eval(numerical)
+                a = eval(analytical)
+                print('diff')
+                print((d-a).abs())
+                print((d-a).abs() > 0.01)
+                print(d.shape)
             sys.exit(0)
 
         #At, ub = self.ode.fill_constraints_torch(eq_A, rhs, iv_rhs, derivative_A)

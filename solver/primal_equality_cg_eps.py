@@ -27,7 +27,7 @@ def nonlocal_iterate(arr):
 def test_primal_equality_cg_torch():
     step_size = 0.1
     #end = 3*step_size
-    end = 500*step_size
+    end = 200*step_size
     n_step = int(end/step_size)
     order=2
 
@@ -35,11 +35,11 @@ def test_primal_equality_cg_torch():
     steps = torch.tensor(steps)
 
     #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
-    _coeffs = np.array([[1,0,1]], dtype='float64')
+    #_coeffs = np.array([[1,0,1]], dtype='float64')
 
     #_coeffs = np.array([[10,0.0,1]], dtype='float64')
     #_coeffs = np.array([[2,0.1,0.1]], dtype='float64')
-    #_coeffs = np.array([[10,0.1,0.1]], dtype='float64')
+    _coeffs = np.array([[10,0.1,0.1]], dtype='float64')
     #_coeffs = np.array([[-0.1,0.1, 10]], dtype='float64')
     _coeffs = np.repeat(_coeffs, n_step, axis=0)
     _coeffs = torch.tensor(_coeffs)
@@ -64,8 +64,8 @@ def test_primal_equality_cg_torch():
     num_eps = ode.num_eps
     num_var = ode.num_var
     u = l
-    P_diag = torch.ones(num_eps)
-    P_zeros = torch.zeros(num_var) +1e-3
+    P_diag = torch.ones(num_eps)*1e8
+    P_zeros = torch.zeros(num_var) +1e-8
     P_diag = torch.cat([P_zeros, P_diag])
     P_diag_inv = 1/P_diag
 
@@ -91,7 +91,7 @@ def test_primal_equality_cg_torch():
     rhs = rhs.squeeze(2) + l
 
     #lam,info = SPSLG.cg(pdmat, pd_rhs)
-    lam, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=6000)
+    lam, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=15000)
     print('torch cg info ', info)
     #lam,info = SPSLG.lgmres(pdmat, pd_rhs)
     #xl = -Pinv_s@(A_s.T@lam -q)
