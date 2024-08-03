@@ -10,6 +10,7 @@ import ipdb
 
 class VarType(Enum):
     EPS = 1
+    EQEPS = 1
     Mesh = 10
 
 class ConstraintType(Enum):
@@ -97,6 +98,8 @@ class ODESYSLP(nn.Module):
         """remove eps and reshape solution"""
         #x = x[:, 1:]
         x = x[:, :self.num_vars]
+        #x = x.reshape(x.shape[0], -1)
+
         x = x.reshape(-1, *self.multi_index_shape)
         return x
 
@@ -116,6 +119,10 @@ class ODESYSLP(nn.Module):
         out_index = offset + out_index
 
         return out_index
+
+    def eq_eps_var(self):
+        offset = self.num_vars
+        return offset
 
     def next_eps_var(self):
         #add new eps var after the equation variables
@@ -140,6 +147,8 @@ class ODESYSLP(nn.Module):
 
 
         for i,v in enumerate(var_list):
+            #if v == VarType.EQEPS:
+            #    var_index = self.eq_eps_var()
             if v == VarType.EPS:
                 #continue
                 var_index = self.next_eps_var()
@@ -199,8 +208,8 @@ class ODESYSLP(nn.Module):
                     for order in range(self.n_order):
                         var_list.append((step,dim,order))
                         val_list.append(Const.PH)
-                    var_list.append(VarType.EPS)
-                    val_list.append(-1)
+                    #var_list.append(VarType.EPS)
+                    #val_list.append(1)
 
                 self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Equation)
 
@@ -322,7 +331,7 @@ class ODESYSLP(nn.Module):
     def build_constraints(self):
         
         self.build_equation_constraints()
-        #self.build_derivative_constraints()
+        self.build_derivative_constraints()
         self.build_initial_constraints()
         #if self.add_eps_constraint:
         #    self.build_eps_constraints()
@@ -526,7 +535,7 @@ class ODESYSLP(nn.Module):
         #first derivative
         #TODO fix coefficients. fix multiplier according to order
         mult = (csteps + psteps)/2
-        values_list.extend([ones, -0.5*ones, zeros, 0.5*ones, -ones*mult ])
+        values_list.extend([-ones, -0.5*ones, zeros, 0.5*ones, -ones*mult ])
         #values_list.extend([-ones, -0.5*ones/mult, zeros, 0.5*ones/mult, -ones ])
         if self.n_order > 2:
             #second derivative
@@ -644,10 +653,10 @@ class ODESYSLP(nn.Module):
     def build_equation_tensor(self, eq_values):
         #eq_values = self.build_equation_values(steps).reshape(-1)
         #shape batch, n_eq, n_step, n_vars, order+1
-        eq_values = eq_values.reshape(-1, self.n_order)
+        #eq_values = eq_values.reshape(-1, self.n_order)
 
-        ones = torch.ones(eq_values.shape[0], 1)
-        eq_values = torch.cat([eq_values, -1*ones], dim=1)
+        #ones = torch.ones(eq_values.shape[0], 1)
+        #eq_values = torch.cat([eq_values, -1*ones], dim=1)
         eq_values = eq_values.reshape(-1)
 
         eq_indices = self.eq_A._indices()
@@ -739,10 +748,10 @@ class ODESYSLP(nn.Module):
         #self.num_constraints = self.AG.shape[1]
         #self.ub = torch.cat([self.constraint_rhs, self.boundary_rhs, self.derivative_ub], axis=1)
         initial_A = self.initial_A.type_as(eq_A)
-        #AG = torch.cat([eq_A, initial_A, derivative_A], dim=1)
-        AG = torch.cat([eq_A, initial_A], dim=1)
-        #rhs = torch.cat([eq_rhs, iv_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
-        rhs = torch.cat([eq_rhs, iv_rhs], axis=1)
+        AG = torch.cat([eq_A, initial_A, derivative_A], dim=1)
+        #AG = torch.cat([eq_A, initial_A], dim=1)
+        rhs = torch.cat([eq_rhs, iv_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
+        #rhs = torch.cat([eq_rhs, iv_rhs], axis=1)
 
         #AG = torch.cat([eq_A], dim=1)
         #rhs = torch.cat([eq_rhs], axis=1)
@@ -760,11 +769,12 @@ class ODESYSLP(nn.Module):
 
         initial_A = self.initial_A.type_as(eq_A).to_dense()
         eq_A = eq_A.to_dense()
-        #AG = torch.cat([eq_A, initial_A, derivative_A], dim=1)
-        AG = torch.cat([eq_A, initial_A], dim=1)
+        AG = torch.cat([eq_A, initial_A, derivative_A], dim=1)
         #AG = torch.cat([eq_A, initial_A], dim=1)
-        #rhs = torch.cat([eq_rhs, iv_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
-        rhs = torch.cat([eq_rhs, iv_rhs], axis=1)
+        #AG = torch.cat([eq_A], dim=1)
+        #AG = torch.cat([eq_A, initial_A], dim=1)
+        rhs = torch.cat([eq_rhs, iv_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
+        #rhs = torch.cat([eq_rhs, iv_rhs], axis=1)
 
         #AG = torch.cat([eq_A], dim=1)
         #rhs = torch.cat([eq_rhs], axis=1)

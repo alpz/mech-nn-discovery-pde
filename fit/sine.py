@@ -65,7 +65,8 @@ class Method(pl.LightningModule):
         eps, u0, u1,u2,steps = self()
         
         #loss = (u0[:,2:-2]-y[:,2:-2]).pow(2).sum()
-        loss = (u0[:,:]-y[:,:]).pow(2).sum()
+        loss = (u0[:,:].squeeze()-y[:,:].squeeze()).pow(2).mean()
+        #loss = (u0[:,:]-y[:,:]).abs().mean()
         eps = eps.max()
         
         self.log('train_loss', loss, prog_bar=True, logger=True)
@@ -91,9 +92,9 @@ class Sine(nn.Module):
 
         self.step_size = 0.1
         #self.end = 500* self.step_size
-        self.end = 3* self.step_size
+        self.end = 100* self.step_size
         self.n_step = int(self.end /self.step_size)
-        self.order = 1
+        self.order = 2
         #state dimension
         self.n_dim = 1
         self.bs = bs
@@ -106,7 +107,7 @@ class Sine(nn.Module):
 
 
         #initial values grad and up
-        self.n_iv = 1
+        self.n_iv = 0
         if self.n_iv > 0:
             iv_rhs = np.array([0]*self.n_dim).reshape(self.n_dim,self.n_iv)
             iv_rhs = torch.tensor(iv_rhs, dtype=dtype)
@@ -114,13 +115,14 @@ class Sine(nn.Module):
         else:
             self.iv_rhs = None
 
-        _rhs = np.array([1] * self.n_step)
-        _rhs = torch.tensor(_rhs, dtype=dtype, device=self.device).reshape(1,1,-1).repeat(self.bs, self.n_dim,1)
-        self.rhs = _rhs
+        #_rhs = np.array([1] * self.n_step)
+        _rhs = np.array([1])
+        _rhs = torch.tensor(_rhs, dtype=dtype, device=self.device).reshape(1,1,-1).repeat(self.bs, self.n_dim,self.n_step)
+        self.rhs = _rhs #nn.Parameter(_rhs)
 
         self.steps = torch.logit(self.step_size*torch.ones(1,self.n_step-1,self.n_dim))
-        #self.steps = nn.Parameter(self.steps)
-        self.steps = torch.tensor(self.steps)
+        self.steps = nn.Parameter(self.steps)
+        #self.steps = torch.tensor(self.steps)
 
         #self.ode = ODEINDLayerTestEPS(bs=bs, order=self.order, n_ind_dim=self.n_dim, n_iv=self.n_iv, n_step=self.n_step, n_iv_steps=1)
         self.ode = ODEINDLayer(bs=bs, order=self.order, n_ind_dim=self.n_dim, n_iv=self.n_iv, n_step=self.n_step, n_iv_steps=1)
@@ -151,6 +153,11 @@ class Sine(nn.Module):
         rhs = self.rhs.type_as(coeffs)
 
         u0,u1,u2,eps,steps = self.ode(coeffs, rhs, iv_rhs, steps)
+
+        #c = coeffs[0,0,10,:]
+        #oo = c[0] * u0[:,10] + c[1]*u1[:,10] + c[2]*u2[:,10]
+        #print(coeffs[0,0,10,:], oo)
+
 
 
         return eps, u0, u1,u2,steps

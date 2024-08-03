@@ -81,8 +81,8 @@ def QPFunction(ode, n_iv, order, n_step=10, gamma=1, alpha=1, double_ret=True):
             num_eps = ode.num_added_eps_vars
             num_var = ode.num_vars
             #u = l
-            P_diag = torch.ones(num_eps).type_as(rhs)*1e5
-            P_zeros = torch.zeros(num_var).type_as(rhs) +1e-5
+            P_diag = torch.ones(num_eps).type_as(rhs)*1e4
+            P_zeros = torch.zeros(num_var).type_as(rhs) +1e-4
             P_diag = torch.cat([P_zeros, P_diag])
             P_diag_inv = 1/P_diag
             P_diag_inv = P_diag_inv.unsqueeze(0)
@@ -223,7 +223,7 @@ def QPFunction(ode, n_iv, order, n_step=10, gamma=1, alpha=1, double_ret=True):
             #    div_rhs = div_rhs.float() if div_rhs is not None else None
             #    dD = dD.float()
             
-            print(dA.abs().mean(), dA.abs().max())
+            #print(dA.abs().mean(), dA.abs().max())
             return dA, db,div_rhs, dD
 
     return QPFunctionFn.apply

@@ -327,8 +327,8 @@ class ODEINDLayerTestEPS(nn.Module):
             iv_rhs = iv_rhs.double() if iv_rhs is not None else None
             steps = steps.double()
 
-        #derivative_A = self.ode.build_derivative_tensor(steps)
-        derivative_A = self.ode.build_derivative_tensor_test(steps)
+        derivative_A = self.ode.build_derivative_tensor(steps)
+        #derivative_A = self.ode.build_derivative_tensor_test(steps)
         #derivative_constraints = self.ode.build_derivative_tensor(steps)
         eq_A = self.ode.build_equation_tensor(coeffs)
 
@@ -336,13 +336,15 @@ class ODEINDLayerTestEPS(nn.Module):
         #eq_A.requires_grad=False
         #rhs.requires_grad=True
 
-        check=True
+        check=False
         if check:
             import sys
             #test = gradcheck(self.qpf, iv_rhs, eps=1e-4, atol=1e-3, rtol=0.001, check_undefined_grad=False, check_batched_grad=True)
             #test = gradcheck(self.qpf, (coeffs,rhs,iv_rhs), eps=1e-6, atol=1e-5, rtol=0.001, check_undefined_grad=True, check_batched_grad=True)
             try: 
-                test = gradcheck(self.qpf, (eq_A, rhs, iv_rhs, derivative_A), eps=1e-5, atol=1e-2, rtol=0.01)
+                torch.set_printoptions(precision=4, threshold=1000000, edgeitems=None, linewidth=None, profile=None, sci_mode=None)
+
+                test = gradcheck(self.qpf, (eq_A, rhs, iv_rhs, derivative_A), eps=1e-6, atol=1e-4, rtol=0.001)
             except Exception as e:
                 string = e.args[0].split('tensor')
                 numerical = string[1].split('analytical')[0]
