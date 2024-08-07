@@ -352,14 +352,17 @@ class ODEINDLayerTestEPS(nn.Module):
                 numerical = 'torch.tensor' + numerical
 
                 #print(e)
+                print(string[0])
                 print('numerical', numerical)
                 print('--------')
                 print('analytical', analytical)
                 d = eval(numerical)
                 a = eval(analytical)
                 print('diff')
-                print((d-a).abs())
-                print((d-a).abs() > 0.01)
+                diff = (d-a).abs()
+                print(diff)
+                print(diff> 0.01)
+                print(diff.max())
                 print(d.shape)
             sys.exit(0)
 

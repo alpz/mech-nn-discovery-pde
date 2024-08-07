@@ -15,6 +15,11 @@ import pytorch_lightning as pl
 from torch.utils.data import Dataset
 from torch.autograd import gradcheck
 
+import os
+
+os.environ["CUDA_VISIBLE_DEVICES"]=""
+
+
 #Fit a noisy exponentially damped sine wave with a second order ODE
 
 class SineDataset(Dataset):
@@ -48,7 +53,9 @@ class Method(pl.LightningModule):
     def __init__(self):
         super().__init__()
         self.learning_rate = 0.01
-        self.model = Sine(device=self.device)
+        print(self.device)
+        #self.model = Sine(device=self.device)
+        self.model = Sine(device='cpu').double()
         
         self.func_list = []
         self.y_list = []
@@ -94,7 +101,7 @@ class Sine(nn.Module):
         #self.end = 500* self.step_size
         self.end = 100* self.step_size
         self.n_step = int(self.end /self.step_size)
-        self.order = 1
+        self.order = 2
         #state dimension
         self.n_dim = 1
         self.bs = bs
@@ -102,34 +109,52 @@ class Sine(nn.Module):
         self.device  = device
         dtype = torch.float64
 
-        _coeffs = torch.tensor(np.random.random((self.n_dim, self.n_step, self.order+1)), dtype=dtype)
-        self.coeffs = Parameter(_coeffs)
+        #_coeffs = torch.tensor(np.random.random((self.n_dim, self.n_step, self.order+1, dtype=torch.float64)), dtype=dtype)
+        #self._coeffs = torch.rand((self.n_dim, self.n_step, self.order+1), dtype=torch.float64)
+        self._coeffs = torch.rand((self.n_dim, 1, self.order+1), dtype=torch.float64)
+        self.coeffs = Parameter(self._coeffs)
 
 
         #initial values grad and up
-        self.n_iv = 0
+        self.n_iv = 2
         if self.n_iv > 0:
-            iv_rhs = np.array([0]*self.n_dim).reshape(self.n_dim,self.n_iv)
+            iv_rhs = np.array([0,1]*self.n_dim).reshape(self.n_dim,self.n_iv)
+            #iv_rhs = np.array([0]*self.n_dim).reshape(self.n_dim,self.n_iv)
             iv_rhs = torch.tensor(iv_rhs, dtype=dtype)
             self.iv_rhs = Parameter(iv_rhs)
+            #self.iv_rhs = (iv_rhs)
         else:
             self.iv_rhs = None
 
         #_rhs = np.array([1] * self.n_step)
         _rhs = np.array([1])
         _rhs = torch.tensor(_rhs, dtype=dtype, device=self.device).reshape(1,1,-1).repeat(self.bs, self.n_dim,self.n_step)
-        self.rhs = _rhs #nn.Parameter(_rhs)
+        #self.rhs = _rhs #nn.Parameter(_rhs)
+        self.rhs = nn.Parameter(_rhs)
 
         self.steps = torch.logit(self.step_size*torch.ones(1,self.n_step-1,self.n_dim))
-        self.steps = nn.Parameter(self.steps)
-        #self.steps = torch.tensor(self.steps)
+        #self.steps = nn.Parameter(self.steps)
+        self.steps = torch.tensor(self.steps)
 
         #self.ode = ODEINDLayerTestEPS(bs=bs, order=self.order, n_ind_dim=self.n_dim, n_iv=self.n_iv, n_step=self.n_step, n_iv_steps=1)
         self.ode = ODEINDLayer(bs=bs, order=self.order, n_ind_dim=self.n_dim, n_iv=self.n_iv, n_step=self.n_step, n_iv_steps=1)
 
+
+        self._param = torch.rand((1, 64), dtype=torch.float64)
+        self._param = Parameter(self._param)
+        self.param_net = nn.Sequential(
+            nn.Linear(64, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, self.n_dim*self.n_step*(self.order+1))
+        )
+
         
     def forward(self, check=False):
-        coeffs = self.coeffs.unsqueeze(0).repeat(self.bs,1,1,1)
+        #coeffs = self.param_net(self._param)
+        #coeffs = self.coeffs.unsqueeze(0).repeat(self.bs,1,1,1)
+        coeffs = self.coeffs.unsqueeze(0).repeat(self.bs,self.n_step,1,1)
 
         iv_rhs = self.iv_rhs
         
@@ -169,7 +194,7 @@ def train():
     datamodule = SineDataModule(dataset=dataset)
 
     trainer = pl.Trainer(
-        max_epochs=500,
+        max_epochs=1000,
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
         #accelerator="cpu",
         devices=1,

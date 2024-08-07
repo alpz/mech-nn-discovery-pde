@@ -228,10 +228,25 @@ class ODESYSLP(nn.Module):
                         h = self.step_size
 
                         if order ==2:
+                            #self.add_constraint(var_list = 
+                            #                #[ VarType.EPS,(step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2),(step,dim, var_order)], 
+                            #                #[ VarType.EPS,(step-1, dim, 0), (step, dim, 0), (step+1,dim, 0),(step,dim, 2)], 
+                            #                #values= [ -1*h,  1,  -2, 1, -1*h**2], 
+
+                            #                [ VarType.EPS,(step-1, dim, 1), (step, dim, 1), (step+1,dim, 1),(step,dim, 2)], 
+                            #                values= [ -1,  -0.5,  0, 0.5, -1*h], 
+
+                            #                rhs=0, constraint_type=ConstraintType.Derivative)
+
                             self.add_constraint(var_list = 
                                             #[ VarType.EPS,(step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2),(step,dim, var_order)], 
                                             [ VarType.EPS,(step-1, dim, 0), (step, dim, 0), (step+1,dim, 0),(step,dim, 2)], 
-                                            values= [ -1*h,  1,  -2, 1, -1*h**2], 
+                                            #values= [ -1*h,  1,  -2, 1, -1*h**2], 
+                                            values= [ -1,  1,  -2, 1, -1*h**2], 
+
+                                            #[ VarType.EPS,(step-1, dim, 1), (step, dim, 1), (step+1,dim, 1),(step,dim, 2)], 
+                                            #values= [ -1,  -0.5,  0, 0.5, -1*h], 
+
                                             rhs=0, constraint_type=ConstraintType.Derivative)
                         elif order ==1:
                             self.add_constraint(var_list = 
@@ -400,7 +415,7 @@ class ODESYSLP(nn.Module):
         #self.derivative_lb = -dub
 
 
-        #self.set_row_col_sorted_indices()
+        self.set_row_col_sorted_indices()
 
 
         #Add batch dim
@@ -536,14 +551,16 @@ class ODESYSLP(nn.Module):
         #TODO fix coefficients. fix multiplier according to order
         mult = (csteps + psteps)/2
         values_list.extend([-ones, -0.5*ones, zeros, 0.5*ones, -ones*mult ])
-        #values_list.extend([-ones, -0.5*ones/mult, zeros, 0.5*ones/mult, -ones ])
+        #values_list.extend([ones, -0.5*ones/mult, zeros, 0.5*ones/mult, -ones ])
         if self.n_order > 2:
             #second derivative
             #values_list.extend([-ones*mult, 1*ones, -2*ones, 1*ones, -ones*mult**2 ])
             #values_list.extend([-ones*mult, 1*ones, -2*ones, 1*ones, -ones*mult**2 ])
+            #values_list.extend([-ones*mult, 1*ones, -2*ones, 1*ones, -ones*mult**2 ])
+            #values_list.extend([-ones, -0.5*ones, zeros, 0.5*ones, -ones*mult ])
             values_list.extend([-ones*mult, 1*ones, -2*ones, 1*ones, -ones*mult**2 ])
-            #values_list.extend([-ones, 1*ones, -2*ones, 1*ones, -ones*mult**2 ])
-            #values_list.extend([-ones, 1*ones/mult**2, -2*ones/mult**2, 1*ones/mult**2, -ones ])
+            #values_list.extend([ones, -0.5*ones/mult, zeros, 0.5*ones/mult, -ones ])
+            #values_list.extend([ones, 1*ones/mult**2, -2*ones/mult**2, 1*ones/mult**2, -ones ])
 
         #values = torch.stack([-ones, -sum_inv*mult, zeros, sum_inv*mult, -ones*mult ], dim=-1)
         values = torch.stack(values_list, dim=-1)
@@ -807,17 +824,14 @@ class ODESYSLP(nn.Module):
         y = _y[:, self.num_added_equation_constraints+self.num_added_initial_constraints: self.num_added_equation_constraints+self.num_added_initial_constraints+self.num_added_derivative_constraints]
         x = _x[:, :self.num_vars+self.num_added_eps_vars]
 
-        #x = x.reshape(b, -1, 1)
-        #y = y.reshape(b, 1, -1)
 
-        #dA = x*y.reshape(b, 1,-1)
+        ####### dense
+        #x = x.reshape(b, 1, -1)
+        #y = y.reshape(b, -1, 1)
+
+        #dA = y*x#.reshape(b, -1, 1)
         #return dA
-
-        x = x.reshape(b, 1, -1)
-        y = y.reshape(b, -1, 1)
-
-        dA = y*x#.reshape(b, -1, 1)
-        return dA
+        ##########
 
         x = x.reshape(b,-1)
         y = y.reshape(b,-1)
@@ -855,13 +869,17 @@ class ODESYSLP(nn.Module):
         #copy x across columns. copy y across rows
         y = y[:, 0:self.num_added_equation_constraints]
         #y = y[:, 1:self.num_vars]
-        x = x[:, 0:self.num_vars+self.num_added_eps_vars]
+        #_x = x[:, 0:self.num_vars+self.num_added_eps_vars]
+        #x = x[:, 0:self.num_vars+self.n_step]
+        x = x[:, 0:self.num_vars]
 
-        x = x.reshape(b, 1, -1)
-        y = y.reshape(b, -1, 1)
+        #######dense
+        #_x = _x.reshape(b, 1, -1)
+        #y = y.reshape(b, -1, 1)
 
-        dA = y*x#.reshape(b, -1, 1)
-        return dA
+        #dA_dense = y*_x#.reshape(b, -1, 1)
+        #return dA_dense
+        ######3
 
         x = x.reshape(b,-1)
         y = y.reshape(b,-1)
@@ -870,7 +888,7 @@ class ODESYSLP(nn.Module):
         self.eq_column_counts = self.eq_column_counts.to(x.device)
 
         y_repeat = torch.repeat_interleave(y, self.eq_row_counts, dim=-1)
-        x_repeat = torch.repeat_interleave(x, self.eq_column_counts, dim=-1)
+        x_repeat = x #torch.repeat_interleave(x, self.eq_column_counts, dim=-1)
 
         x_repeat = x_repeat.reshape(-1)
         y_repeat = y_repeat.reshape(-1)
@@ -887,10 +905,19 @@ class ODESYSLP(nn.Module):
                                        #size=(self.num_added_derivative_constraints, self.num_vars), 
                                        size=(self.bs, self.num_added_equation_constraints, 
                                             total_vars),
-                                       dtype=self.dtype, device=x.device)
+                                       dtype=self.dtype, device=y.device)
+
+        #ones = torch.sparse_coo_tensor(self.eq_row_sorted, torch.ones_like(x_repeat), 
+        #                               #size=(self.num_added_derivative_constraints, self.num_vars), 
+        #                               size=(self.bs, self.num_added_equation_constraints, 
+        #                                    total_vars),
+        #                               dtype=self.dtype, device=x.device)
+        #ones = ones.to_dense()
+        #dA = dA_dense*ones
+        ##return dA
 
 
-        dD = X*Y
+        dD = Y*X
         #ipdb.set_trace()
 
         return dD

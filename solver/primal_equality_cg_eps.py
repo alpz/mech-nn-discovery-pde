@@ -27,7 +27,7 @@ def nonlocal_iterate(arr):
 def test_primal_equality_cg_torch():
     step_size = 0.1
     #end = 3*step_size
-    end = 200*step_size
+    end = 100*step_size
     n_step = int(end/step_size)
     order=2
 
@@ -64,8 +64,8 @@ def test_primal_equality_cg_torch():
     num_eps = ode.num_eps
     num_var = ode.num_var
     u = l
-    P_diag = torch.ones(num_eps)*1e8
-    P_zeros = torch.zeros(num_var) +1e-8
+    P_diag = torch.ones(num_eps)*1e7
+    P_zeros = torch.zeros(num_var) +1e-7
     P_diag = torch.cat([P_zeros, P_diag])
     P_diag_inv = 1/P_diag
 
