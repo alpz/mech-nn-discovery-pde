@@ -129,6 +129,7 @@ class Sine(nn.Module):
         #_rhs = np.array([1] * self.n_step)
         _rhs = np.array([1])
         _rhs = torch.tensor(_rhs, dtype=dtype, device=self.device).reshape(1,1,-1).repeat(self.bs, self.n_dim,self.n_step)
+        #_rhs = torch.tensor(_rhs, dtype=dtype, device=self.device).reshape(1,1,-1).repeat(self.bs, self.n_dim,1)
         #self.rhs = _rhs #nn.Parameter(_rhs)
         self.rhs = nn.Parameter(_rhs)
 
@@ -147,14 +148,16 @@ class Sine(nn.Module):
             nn.ReLU(),
             nn.Linear(1024, 1024),
             nn.ReLU(),
-            nn.Linear(1024, self.n_dim*self.n_step*(self.order+1))
+            #nn.Linear(1024, self.n_dim*self.n_step*(self.order+1))
+            nn.Linear(1024, self.n_dim*(self.order+1))
         )
 
         
     def forward(self, check=False):
-        #coeffs = self.param_net(self._param)
+        coeffs = self.param_net(self._param).reshape(1, self.n_dim, 1, self.order+1)
         #coeffs = self.coeffs.unsqueeze(0).repeat(self.bs,1,1,1)
-        coeffs = self.coeffs.unsqueeze(0).repeat(self.bs,self.n_step,1,1)
+        #coeffs = self.coeffs.unsqueeze(0).repeat(self.bs,self.n_step,1,1)
+        coeffs = coeffs.repeat(1,1, self.n_step,1)
 
         iv_rhs = self.iv_rhs
         
@@ -176,6 +179,8 @@ class Sine(nn.Module):
         steps = steps.repeat(self.bs,1, 1).double()
 
         rhs = self.rhs.type_as(coeffs)
+
+        #rhs = rhs.repeat(1, 1,self.n_step)
 
         u0,u1,u2,eps,steps = self.ode(coeffs, rhs, iv_rhs, steps)
 
