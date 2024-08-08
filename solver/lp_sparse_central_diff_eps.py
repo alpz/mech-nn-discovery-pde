@@ -219,13 +219,17 @@ class ODESYSLP(nn.Module):
         #def central_c(var_order):
         def central_c():
             #central difference for derivatives
-            for step in range(1, self.n_step-1):
+            #for step in range(1, self.n_step-1):
+            for step in range(2, self.n_step-2):
+                #if step==1 or step==self.n_step-2:
+                #    continue
                 for dim in range(self.n_system_vars):
                     for order in range(1, self.n_order):
                     #for var_order in range(1, self.n_order):
                         #top-level only
                     #var_order = self.n_order-1 
                         h = self.step_size
+
 
                         if order ==2:
                             #self.add_constraint(var_list = 
@@ -238,22 +242,35 @@ class ODESYSLP(nn.Module):
 
                             #                rhs=0, constraint_type=ConstraintType.Derivative)
 
+
+                            #self.add_constraint(var_list = 
+                            #                #[ VarType.EPS,(step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2),(step,dim, var_order)], 
+                            #                [ VarType.EPS,(step-1, dim, 0), (step, dim, 0), (step+1,dim, 0),(step,dim, 2)], 
+                            #                #values= [ -1*h,  1,  -2, 1, -1*h**2], 
+                            #                values= [ -1,  1,  -2, 1, -1*h**2], 
+                            #                rhs=0, constraint_type=ConstraintType.Derivative)
+
                             self.add_constraint(var_list = 
                                             #[ VarType.EPS,(step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2),(step,dim, var_order)], 
-                                            [ VarType.EPS,(step-1, dim, 0), (step, dim, 0), (step+1,dim, 0),(step,dim, 2)], 
+                                            [ VarType.EPS,(step-2, dim, 0), (step-1, dim, 0), (step, dim, 0),
+                                             (step+1,dim, 0),(step+2,dim, 0), (step,dim, 2)], 
                                             #values= [ -1*h,  1,  -2, 1, -1*h**2], 
-                                            values= [ -1,  1,  -2, 1, -1*h**2], 
-
-                                            #[ VarType.EPS,(step-1, dim, 1), (step, dim, 1), (step+1,dim, 1),(step,dim, 2)], 
-                                            #values= [ -1,  -0.5,  0, 0.5, -1*h], 
-
+                                            values= [ -1,  -1/12, 4/3, -5/2,  4/3, 1/12, -1*h**2], 
                                             rhs=0, constraint_type=ConstraintType.Derivative)
                         elif order ==1:
+                            #self.add_constraint(var_list = 
+                            #            #[ VarType.EPS,(step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2), (step,dim, 1)], 
+                            #            [ VarType.EPS,(step-1, dim, 0), (step, dim, 0), (step+1,dim, 0), (step,dim, 1)], 
+                            #            values= [ -1, -0.5,  0, 0.5, -1*h], 
+                            #            rhs=0, constraint_type=ConstraintType.Derivative)
+
                             self.add_constraint(var_list = 
-                                        #[ VarType.EPS,(step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2), (step,dim, 1)], 
-                                        [ VarType.EPS,(step-1, dim, 0), (step, dim, 0), (step+1,dim, 0), (step,dim, 1)], 
-                                        values= [ -1, -0.5,  0, 0.5, -1*h], 
-                                        rhs=0, constraint_type=ConstraintType.Derivative)
+                                            #[ VarType.EPS,(step-1, dim, var_order-2), (step, dim, var_order-2), (step+1,dim, var_order-2),(step,dim, var_order)], 
+                                            [ VarType.EPS,(step-2, dim, 0), (step-1, dim, 0), (step, dim, 0),
+                                             (step+1,dim, 0),(step+2,dim, 0), (step,dim, 1)], 
+                                            #values= [ -1*h,  1,  -2, 1, -1*h**2], 
+                                            values= [ -1,  1/12, -2/3, 0,  2/3, 1/12, -1*h], 
+                                            rhs=0, constraint_type=ConstraintType.Derivative)
                         else:
                             raise ValueError('Central difference for order greater than 2 not implemented')
 
@@ -535,10 +552,12 @@ class ODESYSLP(nn.Module):
 
         # step, dim, order, vals
         b = steps.shape[0]
-        csteps = steps[:, 1:, :]#.unsqueeze(-1)
+        csteps = steps[:, 2:-1, :]#.unsqueeze(-1)
         ones = torch.ones_like(csteps)
         zeros = torch.zeros_like(csteps)
         psteps = steps[:,:-1, :]#.unsqueeze(-1)
+        #s1 = -steps[:,:-1, :]#.unsqueeze(-1)
+        #s3 = steps[:, 1:, :]#.unsqueeze(-1)
 
         #sum_inv = 1/(csteps + psteps)
         #scale to make error of order O(h^3) for second order O(h^2) for first order
@@ -549,8 +568,15 @@ class ODESYSLP(nn.Module):
         #values = torch.stack([-ones, -sum_inv*mult, zeros, sum_inv*mult, -ones*mult ], dim=-1)
         #first derivative
         #TODO fix coefficients. fix multiplier according to order
-        mult = (csteps + psteps)/2
-        values_list.extend([-ones, -0.5*ones, zeros, 0.5*ones, -ones*mult ])
+        #mult = (csteps + psteps)/2
+        mult = csteps
+        #mult = (s1-s3)
+        #values_list.extend([-ones, -0.5*ones, zeros, 0.5*ones, -ones*mult ])
+        #values_list.extend([-ones, 1/12*ones, -2/3*ones, zeros, 2/3*ones, -1/12*ones, -ones*mult ])
+        #values_list.extend([-ones, 1/12*ones, -2/3*ones, zeros, 2/3*ones, -1/12*ones, -ones*mult ])
+        values_list.extend([-ones, 1/12*ones, -2/3*ones, zeros, 2/3*ones, -1/12*ones, -ones*mult ])
+        #values_list.extend([-ones, 1/12*ones/mult, -2/3*ones/mult, zeros, 2/3*ones/mult, -1/12*ones/mult, -ones ])
+        #values_list.extend([-ones, -(s3/s1)*ones, -(s3+s1)*mult/(s1*s3)*ones, s1/s3*ones, -ones*mult ])
         #values_list.extend([ones, -0.5*ones/mult, zeros, 0.5*ones/mult, -ones ])
         if self.n_order > 2:
             #second derivative
@@ -558,12 +584,18 @@ class ODESYSLP(nn.Module):
             #values_list.extend([-ones*mult, 1*ones, -2*ones, 1*ones, -ones*mult**2 ])
             #values_list.extend([-ones*mult, 1*ones, -2*ones, 1*ones, -ones*mult**2 ])
             #values_list.extend([-ones, -0.5*ones, zeros, 0.5*ones, -ones*mult ])
-            values_list.extend([-ones*mult, 1*ones, -2*ones, 1*ones, -ones*mult**2 ])
+            #values_list.extend([-ones*mult, 1*ones, -2*ones, 1*ones, -ones*mult**2 ])
+            #values_list.extend([-ones, -1/12*ones, 4/3*ones, -5/2*ones, 4/3*ones, -1/12*ones, -ones*mult**2 ])
+            values_list.extend([-ones, -1/12*ones, 4/3*ones, -5/2*ones, 4/3*ones, -1/12*ones, -ones*mult**2 ])
+            #values_list.extend([-ones, -1/12*ones/mult**2, 4/3*ones/mult**2, -5/2*ones/mult**2, 4/3*ones/mult**2, -1/12*ones/mult**2, -ones ])
+            #values_list.extend([-ones, 1*ones/mult, -2*ones/mult, 1*ones/mult, -ones*mult ])
+            #values_list.extend([-ones, 2*1/s1*ones, 2*mult/(s1*s3)*ones, -1*2/s3*ones, -ones*mult ])
             #values_list.extend([ones, -0.5*ones/mult, zeros, 0.5*ones/mult, -ones ])
             #values_list.extend([ones, 1*ones/mult**2, -2*ones/mult**2, 1*ones/mult**2, -ones ])
 
         #values = torch.stack([-ones, -sum_inv*mult, zeros, sum_inv*mult, -ones*mult ], dim=-1)
         values = torch.stack(values_list, dim=-1)
+        #print(values.shape, steps.shape)
 
         #flatten
         #shape, b, n_step-1, n_system_vars, n_order-1, 5

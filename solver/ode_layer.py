@@ -376,7 +376,8 @@ class ODEINDLayerTestEPS(nn.Module):
         ##shape: batch, step, vars (== 1), order
         u = self.ode.get_solution_reshaped(x)
 
-        eps = x[:, self.ode.num_vars:].abs().max(dim=1)[0]
+        #eps = x[:, self.ode.num_vars:].abs().max(dim=1)[0]
+        eps = x[:, self.ode.num_vars:].abs()#.max(dim=1)[0]
         #eps = x[0]
 
         #u = u.reshape(self.bs, self.n_ind_dim, self.n_step, self.order+1)
