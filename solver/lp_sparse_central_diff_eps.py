@@ -546,8 +546,47 @@ class ODESYSLP(nn.Module):
         self.eq_column_counts = torch.tensor(column_counts)
         #################
 
+    def solve_5pt_central_stencil(self, steps):
+        #steps shape b,  n_step-1, n_system_vars,
+        # 5 point stencil centered at 0
+
+        center = torch.zeros_like(steps[:, 2:-1])
+        stepn1 = steps[:, 2:-1, :]
+        stepn2 = steps[:, 3:, :]
+        stepp1 = steps[:, 1:-2]
+        stepp2 = steps[:, :-3]
+
+        left1 = -stepp1
+        left2 = left1 - stepp2
+        right1 = stepn1
+        right2 = stepn1+stepn2
+
+        #b, step, var, 5
+        matrix = torch.stack([left2, left1, center, right1, right2], dim=-1)
+        ones = torch.ones_like(matrix)
+        matrix = torch.stack([ones, matrix, matrix.pow(2), matrix.pow(3), matrix.pow(4)], dim=-2)
+
+        #shape 5,2
+        b = torch.tensor([[0, 1, 0,0,0], [0,0,2,0,0]]).type_as(matrix).T
+
+        coeffs = torch.linalg.solve(matrix, b)
+        #print(coeffs.shape)
+        ones = torch.ones_like(center).unsqueeze(-1)
+        coeffs1 = torch.cat([-ones, coeffs[...,0], -ones], dim=-1)
+        #coeffs1 = torch.cat([-ones, coeffs[...,0], -ones], dim=-1)
+
+        if self.n_order > 2:
+            coeffs2 = torch.cat([-ones, coeffs[...,1], -ones], dim=-1)
+
+
+        values = torch.cat([coeffs1, coeffs2], dim=-1)
+
+        values = values.reshape(steps.shape[0],-1)
+        return values#, coeffs1, coeffs2
     #build values for derivative constraints
     def build_central_values(self, steps):
+        values = self.solve_5pt_central_stencil(steps)
+        return values
         #steps shape b,  n_step-1, n_system_vars,
 
         # step, dim, order, vals
@@ -574,8 +613,8 @@ class ODESYSLP(nn.Module):
         #values_list.extend([-ones, -0.5*ones, zeros, 0.5*ones, -ones*mult ])
         #values_list.extend([-ones, 1/12*ones, -2/3*ones, zeros, 2/3*ones, -1/12*ones, -ones*mult ])
         #values_list.extend([-ones, 1/12*ones, -2/3*ones, zeros, 2/3*ones, -1/12*ones, -ones*mult ])
-        values_list.extend([-ones, 1/12*ones, -2/3*ones, zeros, 2/3*ones, -1/12*ones, -ones*mult ])
-        #values_list.extend([-ones, 1/12*ones/mult, -2/3*ones/mult, zeros, 2/3*ones/mult, -1/12*ones/mult, -ones ])
+        #values_list.extend([-ones, 1/12*ones, -2/3*ones, zeros, 2/3*ones, -1/12*ones, -ones*mult ])
+        values_list.extend([-ones, 1/12*ones/mult, -2/3*ones/mult, zeros, 2/3*ones/mult, -1/12*ones/mult, -ones ])
         #values_list.extend([-ones, -(s3/s1)*ones, -(s3+s1)*mult/(s1*s3)*ones, s1/s3*ones, -ones*mult ])
         #values_list.extend([ones, -0.5*ones/mult, zeros, 0.5*ones/mult, -ones ])
         if self.n_order > 2:
@@ -586,8 +625,8 @@ class ODESYSLP(nn.Module):
             #values_list.extend([-ones, -0.5*ones, zeros, 0.5*ones, -ones*mult ])
             #values_list.extend([-ones*mult, 1*ones, -2*ones, 1*ones, -ones*mult**2 ])
             #values_list.extend([-ones, -1/12*ones, 4/3*ones, -5/2*ones, 4/3*ones, -1/12*ones, -ones*mult**2 ])
-            values_list.extend([-ones, -1/12*ones, 4/3*ones, -5/2*ones, 4/3*ones, -1/12*ones, -ones*mult**2 ])
-            #values_list.extend([-ones, -1/12*ones/mult**2, 4/3*ones/mult**2, -5/2*ones/mult**2, 4/3*ones/mult**2, -1/12*ones/mult**2, -ones ])
+            #values_list.extend([-ones, -1/12*ones, 4/3*ones, -5/2*ones, 4/3*ones, -1/12*ones, -ones*mult**2 ])
+            values_list.extend([-ones, -1/12*ones/mult**2, 4/3*ones/mult**2, -5/2*ones/mult**2, 4/3*ones/mult**2, -1/12*ones/mult**2, -ones ])
             #values_list.extend([-ones, 1*ones/mult, -2*ones/mult, 1*ones/mult, -ones*mult ])
             #values_list.extend([-ones, 2*1/s1*ones, 2*mult/(s1*s3)*ones, -1*2/s3*ones, -ones*mult ])
             #values_list.extend([ones, -0.5*ones/mult, zeros, 0.5*ones/mult, -ones ])
@@ -600,6 +639,8 @@ class ODESYSLP(nn.Module):
         #flatten
         #shape, b, n_step-1, n_system_vars, n_order-1, 5
         values = values.reshape(b,-1)
+        close = torch.allclose(values, values1)
+        assert(close)
 
         return values
 

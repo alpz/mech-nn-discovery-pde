@@ -76,11 +76,9 @@ class Method(pl.LightningModule):
         #loss = (u0[:,:].squeeze()-y[:,:].squeeze()).abs().mean()
         #loss = (u0[:,:]-y[:,:]).abs().mean()
         epsmax = eps.abs().max()
-        epsmin = eps.abs().min()
         
         self.log('train_loss', loss, prog_bar=True, logger=True)
-        self.log('epsmax', epsmax, prog_bar=True, logger=True)
-        self.log('epsmin', epsmin, prog_bar=True, logger=True)
+        self.log('eps', epsmax, prog_bar=True, logger=True)
         
         self.func_list.append(u0.detach().cpu().numpy())
         self.funcp_list.append(u1.detach().cpu().numpy())
@@ -138,8 +136,8 @@ class Sine(nn.Module):
         self.rhs = nn.Parameter(_rhs)
 
         self.steps = torch.logit(self.step_size*torch.ones(1,self.n_step-1,self.n_dim))
-        #self.steps = nn.Parameter(self.steps)
-        self.steps = torch.tensor(self.steps)
+        self.steps = nn.Parameter(self.steps)
+        #self.steps = torch.tensor(self.steps)
 
         #self.ode = ODEINDLayerTestEPS(bs=bs, order=self.order, n_ind_dim=self.n_dim, n_iv=self.n_iv, n_step=self.n_step, n_iv_steps=1)
         self.ode = ODEINDLayer(bs=bs, order=self.order, n_ind_dim=self.n_dim, n_iv=self.n_iv, n_step=self.n_step, n_iv_steps=1)
@@ -153,18 +151,18 @@ class Sine(nn.Module):
             nn.Linear(1024, 1024),
             nn.ReLU(),
 
-            nn.Linear(1024, self.n_dim*self.n_step*(self.order+1)),
+            #nn.Linear(1024, self.n_dim*self.n_step*(self.order+1)),
             #nn.Tanh()
-            #nn.Linear(1024, self.n_dim*(self.order+1))
+            nn.Linear(1024, self.n_dim*(self.order+1))
         )
 
         
     def forward(self, check=False):
         #coeffs = self.param_net(self._param).reshape(1, self.n_dim, 1, self.order+1)
-        coeffs = self.param_net(self._param).reshape(1, self.n_dim, self.n_step, self.order+1)
+        #coeffs = self.param_net(self._param).reshape(1, self.n_dim, self.n_step, self.order+1)
         #coeffs[:,:,:,2] = 1.
         #coeffs = self.coeffs.unsqueeze(0).repeat(self.bs,1,1,1)
-        #coeffs = self.coeffs.unsqueeze(0).repeat(self.bs,self.n_step,1,1)
+        coeffs = self.coeffs.unsqueeze(0).repeat(self.bs,self.n_step,1,1)
         #coeffs = coeffs.repeat(1,1, self.n_step,1)
 
         iv_rhs = self.iv_rhs
@@ -183,7 +181,7 @@ class Sine(nn.Module):
         #    test = gradcheck(self.qpf, (coeffs,rhs,iv_rhs), eps=1e-6, atol=1e-3, rtol=0.001)
         #    sys.exit(0)
 
-        steps = torch.sigmoid(self.steps)#.clip(min=0.01)
+        steps = torch.sigmoid(self.steps).clip(min=0.09, max=0.5)
         steps = steps.repeat(self.bs,1, 1).double()
 
         rhs = self.rhs.type_as(coeffs)
@@ -207,7 +205,7 @@ def train():
     datamodule = SineDataModule(dataset=dataset)
 
     trainer = pl.Trainer(
-        max_epochs=1500,
+        max_epochs=700,
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
         #accelerator="cpu",
         devices=1,
