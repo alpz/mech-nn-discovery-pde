@@ -30,7 +30,7 @@ class SineDataset(Dataset):
         y0 = torch.tensor(y0)
 
         damp = np.exp(-0.5*_y)
-        self.y = y0*damp 
+        self.y = y0#*damp 
         
     def __len__(self):
         return 1
@@ -161,16 +161,17 @@ class Sine(nn.Module):
 
         self.init=False
 
-        self.lam_param = torch.rand((1, 64), dtype=torch.float64)
-        self.lam_param = Parameter(self._param)
+        self.lam_param = torch.rand((1, 512), dtype=torch.float64)
+        self.lam_param = Parameter(self.lam_param)
         self.lam_net = nn.Sequential(
             #nn.ELU(),
-            nn.ReLU(),
+            #nn.ReLU(),
             nn.Linear(512, 512),
+            #nn.Linear(64, 1024),
             nn.ReLU(),
             #nn.ELU(),
-            #nn.Linear(512, 512),
-            #nn.ReLU(),
+            nn.Linear(512, 512),
+            nn.ReLU(),
             nn.Linear(512, self.ode.num_constraints)
         )
 
