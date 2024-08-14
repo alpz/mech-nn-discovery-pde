@@ -73,7 +73,7 @@ class Method(pl.LightningModule):
         
         #loss = (u0[:,2:-2]-y[:,2:-2]).pow(2).sum()
         u_loss = (u0[:,:].squeeze()-y[:,:].squeeze()).pow(2).mean()
-        lam_loss =  (lam.squeeze() - lam_init.squeeze()).pow(2).mean()
+        lam_loss =  (lam.squeeze() - lam_init.squeeze()).abs().mean()
         loss = u_loss + lam_loss
         #loss = (u0[:,:].squeeze()-y[:,:].squeeze()).abs().mean()
         #loss = (u0[:,:]-y[:,:]).abs().mean()
@@ -159,6 +159,7 @@ class Sine(nn.Module):
             nn.Linear(512, self.n_dim*(self.order+1)+self.n_step + self.ode.num_constraints)
         )
 
+        self.init=False
 
         #self.lam_param = torch.rand((1, 512), dtype=torch.float64)
         #self.lam_param = Parameter(self._param)
@@ -206,7 +207,9 @@ class Sine(nn.Module):
         rhs = cout[:, self.n_dim*(self.order+1): self.n_dim*(self.order+1)+ self.n_step]
 
         #lout = self.lam_net(self.lam_param)
-        lam_init = cout[:, -self.ode.num_constraints:]
+        lam_init = cout[:, -self.ode.num_constraints:] if not self.init else \
+                    torch.zeros_like(cout[:, -self.ode.num_constraints:])
+        self.init=True
 
         #rhs = rhs.repeat(1, 1,self.n_step)
 
