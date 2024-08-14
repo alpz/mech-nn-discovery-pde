@@ -35,10 +35,20 @@ def batch_mat_vec(As, x):
 
     return x, pAAtp
 
+def get_M(As):
+    A = As[0]
+
+    Pinv = As[1].unsqueeze(1)
+    #print(A.shape, Pinv.shape)
+    #diag = (A*Pinv*A).sum(dim=2)
+    diag = (A*A).sum(dim=2)
+
+    return (diag).to_dense()
 
 @torch.no_grad()
 def cg_matvec(As, b, x0=None, tol=1e-5, maxiter=None, M=None, callback=None, atol=None):
     #A, M, x, b = _make_system(A, M, x0, b)
+
     #matvec = A.matvec
     #psolve = M.matvec
 
@@ -83,6 +93,8 @@ def cg_matvec(As, b, x0=None, tol=1e-5, maxiter=None, M=None, callback=None, ato
     while iters < maxiter:
         #z = psolve(r)
         z = r #psolve(r)
+        #z = M*r
+
         rho1 = rho
         #rho = cublas.dotc(r, z)
         rho = (r*z).sum(dim=1)

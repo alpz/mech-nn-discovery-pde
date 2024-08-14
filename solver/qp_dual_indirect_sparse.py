@@ -95,7 +95,7 @@ def QPFunction(ode, n_iv, order, n_step=10, gamma=1, alpha=1, double_ret=True):
             rhs = rhs.squeeze(2) + A_rhs
             #rhs =  A_rhs
 
-            lam, info = cg_matvec([A, P_diag_inv, At], rhs, x0=lam_init, maxiter=8000)
+            lam, info = cg_matvec([A, P_diag_inv, At], rhs, x0=lam_init, tol=1e-3, maxiter=8000)
             L=None
             print(info[1], info[2], lam.shape)
 
