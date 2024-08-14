@@ -159,6 +159,20 @@ class Sine(nn.Module):
             nn.Linear(512, self.n_dim*(self.order+1)+self.n_step + self.ode.num_constraints)
         )
 
+
+        #self.lam_param = torch.rand((1, 512), dtype=torch.float64)
+        #self.lam_param = Parameter(self._param)
+        #self.lam_net = nn.Sequential(
+        #    #nn.ELU(),
+        #    nn.ReLU(),
+        #    nn.Linear(512, 512),
+        #    nn.ReLU(),
+        #    #nn.ELU(),
+        #    nn.Linear(512, 512),
+        #    nn.ReLU(),
+        #    nn.Linear(512, self.ode.num_constraints)
+        #)
+
         
     def forward(self, check=False):
         cout = self.param_net(self._param)
@@ -190,6 +204,8 @@ class Sine(nn.Module):
 
         #rhs = self.rhs.type_as(coeffs)
         rhs = cout[:, self.n_dim*(self.order+1): self.n_dim*(self.order+1)+ self.n_step]
+
+        #lout = self.lam_net(self.lam_param)
         lam_init = cout[:, -self.ode.num_constraints:]
 
         #rhs = rhs.repeat(1, 1,self.n_step)

@@ -96,16 +96,16 @@ def QPFunction(ode, n_iv, order, n_step=10, gamma=1, alpha=1, double_ret=True):
             #rhs =  A_rhs
 
             lam, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=8000)
-            #L=None
+            L=None
             print(info[1], info[2], lam.shape)
 
 
             ######### dense
-            A = A.to_dense()
-            At = At.to_dense()
-            PAt = P_diag_inv.unsqueeze(2)*At
-            APAt = torch.bmm(A, PAt)
-            L,info = torch.linalg.cholesky_ex(APAt,upper=False)
+            #A = A.to_dense()
+            #At = At.to_dense()
+            #PAt = P_diag_inv.unsqueeze(2)*At
+            #APAt = torch.bmm(A, PAt)
+            #L,info = torch.linalg.cholesky_ex(APAt,upper=False)
             #lam = torch.cholesky_solve(rhs.unsqueeze(2), L)
             #lam = lam.squeeze(2)
             #########
@@ -166,10 +166,12 @@ def QPFunction(ode, n_iv, order, n_step=10, gamma=1, alpha=1, double_ret=True):
             #TODO rhs is zero upto here. remove the above
             rhs = rhs.squeeze(2) 
 
-            #dnu, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=8000)
+            dnu, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=8000)
+
+            print('back', info[1], info[2], dnu.shape)
             ##### dense
-            dnu = torch.cholesky_solve(rhs.unsqueeze(2), L)
-            dnu = dnu.squeeze(2)
+            #dnu = torch.cholesky_solve(rhs.unsqueeze(2), L)
+            #dnu = dnu.squeeze(2)
             #####
 
             dx = dnu.unsqueeze(2)
