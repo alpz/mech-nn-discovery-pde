@@ -572,14 +572,17 @@ class ODESYSLP(nn.Module):
         coeffs = torch.linalg.solve(matrix, b)
         #print(coeffs.shape)
         ones = torch.ones_like(center).unsqueeze(-1)
+        #coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)
+        values_list = []
         coeffs1 = torch.cat([-ones, coeffs[...,0], -ones], dim=-1)
-        #coeffs1 = torch.cat([-ones, coeffs[...,0], -ones], dim=-1)
-
+        values_list.append(coeffs1)
         if self.n_order > 2:
+            #coeffs2 = torch.cat([-ones, coeffs[...,1]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)
             coeffs2 = torch.cat([-ones, coeffs[...,1], -ones], dim=-1)
+            values_list.append(coeffs2)
 
 
-        values = torch.cat([coeffs1, coeffs2], dim=-1)
+        values = torch.cat(values_list,dim=-1)
 
         values = values.reshape(steps.shape[0],-1)
         return values#, coeffs1, coeffs2

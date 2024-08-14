@@ -29,8 +29,8 @@ class SineDataset(Dataset):
         y1 = np.cos(_y) #+ 0.5*np.random.randn(*_y.shape)
         y0 = torch.tensor(y0)
 
-        damp = np.exp(-0.1*_y)
-        self.y = y0#*damp 
+        damp = np.exp(-0.5*_y)
+        self.y = y0*damp 
         
     def __len__(self):
         return 1
@@ -52,7 +52,7 @@ class SineDataModule(pl.LightningDataModule):
 class Method(pl.LightningModule):
     def __init__(self):
         super().__init__()
-        self.learning_rate = 0.01
+        self.learning_rate = 0.05
         print(self.device)
         #self.model = Sine(device=self.device)
         self.model = Sine(device='cpu').double()
@@ -69,15 +69,18 @@ class Method(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         y = batch
-        eps, u0, u1,u2,steps = self()
+        eps, u0, u1,u2,steps, lam, lam_init = self()
         
         #loss = (u0[:,2:-2]-y[:,2:-2]).pow(2).sum()
-        loss = (u0[:,:].squeeze()-y[:,:].squeeze()).pow(2).mean()
+        u_loss = (u0[:,:].squeeze()-y[:,:].squeeze()).pow(2).mean()
+        lam_loss =  (lam.squeeze() - lam_init.squeeze()).pow(2).mean()
+        loss = u_loss + lam_loss
         #loss = (u0[:,:].squeeze()-y[:,:].squeeze()).abs().mean()
         #loss = (u0[:,:]-y[:,:]).abs().mean()
         epsmax = eps.abs().max()
         
-        self.log('train_loss', loss, prog_bar=True, logger=True)
+        self.log('u_loss', u_loss, prog_bar=True, logger=True)
+        self.log('lam_loss', lam_loss, prog_bar=True, logger=True)
         self.log('eps', epsmax, prog_bar=True, logger=True)
         
         self.func_list.append(u0.detach().cpu().numpy())
@@ -143,27 +146,28 @@ class Sine(nn.Module):
         self.ode = ODEINDLayer(bs=bs, order=self.order, n_ind_dim=self.n_dim, n_iv=self.n_iv, n_step=self.n_step, n_iv_steps=1)
 
 
-        self._param = torch.rand((1, 64), dtype=torch.float64)
+        self._param = torch.rand((1, 512), dtype=torch.float64)
         self._param = Parameter(self._param)
         self.param_net = nn.Sequential(
-            nn.Linear(64, 1024),
+            #nn.ELU(),
             nn.ReLU(),
-            nn.Linear(1024, 1024),
+            nn.Linear(512, 512),
             nn.ReLU(),
-
-            #nn.Linear(1024, self.n_dim*self.n_step*(self.order+1)),
-            #nn.Tanh()
-            nn.Linear(1024, self.n_dim*(self.order+1))
+            #nn.ELU(),
+            nn.Linear(512, 512),
+            nn.ReLU(),
+            nn.Linear(512, self.n_dim*(self.order+1)+self.n_step + self.ode.num_constraints)
         )
 
         
     def forward(self, check=False):
-        #coeffs = self.param_net(self._param).reshape(1, self.n_dim, 1, self.order+1)
+        cout = self.param_net(self._param)
+        coeffs = cout[:, :self.n_dim*(self.order+1)].reshape(1, self.n_dim, 1, self.order+1)
         #coeffs = self.param_net(self._param).reshape(1, self.n_dim, self.n_step, self.order+1)
         #coeffs[:,:,:,2] = 1.
         #coeffs = self.coeffs.unsqueeze(0).repeat(self.bs,1,1,1)
-        coeffs = self.coeffs.unsqueeze(0).repeat(self.bs,self.n_step,1,1)
-        #coeffs = coeffs.repeat(1,1, self.n_step,1)
+        #coeffs = self.coeffs.unsqueeze(0).repeat(self.bs,self.n_step,1,1)
+        coeffs = coeffs.repeat(1,1, self.n_step,1)
 
         iv_rhs = self.iv_rhs
         
@@ -181,14 +185,16 @@ class Sine(nn.Module):
         #    test = gradcheck(self.qpf, (coeffs,rhs,iv_rhs), eps=1e-6, atol=1e-3, rtol=0.001)
         #    sys.exit(0)
 
-        steps = torch.sigmoid(self.steps).clip(min=0.09, max=0.5)
+        steps = torch.sigmoid(self.steps).clip(min=0.09, max=0.2)
         steps = steps.repeat(self.bs,1, 1).double()
 
-        rhs = self.rhs.type_as(coeffs)
+        #rhs = self.rhs.type_as(coeffs)
+        rhs = cout[:, self.n_dim*(self.order+1): self.n_dim*(self.order+1)+ self.n_step]
+        lam_init = cout[:, -self.ode.num_constraints:]
 
         #rhs = rhs.repeat(1, 1,self.n_step)
 
-        u0,u1,u2,eps,steps = self.ode(coeffs, rhs, iv_rhs, steps)
+        u0,u1,u2,eps,steps,lam = self.ode(coeffs, rhs, iv_rhs, steps, lam_init)
 
         #c = coeffs[0,0,10,:]
         #oo = c[0] * u0[:,10] + c[1]*u1[:,10] + c[2]*u2[:,10]
@@ -196,7 +202,7 @@ class Sine(nn.Module):
 
 
 
-        return eps, u0, u1,u2,steps
+        return eps, u0, u1,u2,steps, lam, lam_init
 
 method = Method()
 

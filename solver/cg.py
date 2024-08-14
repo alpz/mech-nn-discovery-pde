@@ -60,22 +60,25 @@ def cg_matvec(As, b, x0=None, tol=1e-5, maxiter=None, M=None, callback=None, ato
         return b, 0
 
     cont_mask = cont_mask.float()
-    if atol is None:
-        #atol = tol * float(b_norm)
-        atol = tol * b_norm
-    else:
-        atol = max(float(atol), tol * float(b_norm))
+    #if atol is None:
+    #    #atol = tol * float(b_norm)
+    #    atol = tol * b_norm
+    #else:
+    #    atol = max(float(atol), tol * float(b_norm))
         #atol = float(atol)
+    atol = tol
+
 
     #r = b - matvec(x)
     #b = b.unsqueeze(-1)
-    x = torch.zeros_like(b)
+    x = x0 if x0 is not None else torch.zeros_like(b)
     #x = torch.rand_like(b)
     #r = b - torch.bmm(A,x)#.reshape(b.shape)
     #r = b - block_mv(A,x)#.reshape(b.shape)
     r = b - batch_mat_vec(As,x)[0]#.reshape(b.shape)
     iters = 0
     rho = 0
+    resid = 0
     #ipdb.set_trace()
     while iters < maxiter:
         #z = psolve(r)
@@ -115,13 +118,14 @@ def cg_matvec(As, b, x0=None, tol=1e-5, maxiter=None, M=None, callback=None, ato
         res_mask = (resid > atol).float()
         cont_mask = cont_mask*res_mask
         if resid.max() <= atol:
+            print('break ', resid.max(), atol)
             break
 
     info = 0
     if iters == maxiter and not (resid.max() <= atol):
         info = iters
 
-    return x, (info, iters, resid.max().data)
+    return x, (info, iters, resid)
     
 
 def cg_block(A, b, x0=None, tol=1e-12, maxiter=None, M=None, callback=None,

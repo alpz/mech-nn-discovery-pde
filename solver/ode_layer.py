@@ -307,10 +307,11 @@ class ODEINDLayerTestEPS(nn.Module):
 
         self.num_var = self.ode.num_vars
         self.num_eps = self.ode.num_added_eps_vars
+        self.num_constraints = self.ode.num_added_constraints
 
         self.qpf = QPFunctionSysEPS(self.ode, n_step=self.n_step, order=self.order, n_iv=self.n_iv, gamma=gamma, alpha=alpha, double_ret=double_ret)
 
-    def forward(self, coeffs, rhs, iv_rhs, steps):
+    def forward(self, coeffs, rhs, iv_rhs, steps, lam_init):
         coeffs = coeffs.reshape(self.bs*self.n_ind_dim, self.n_step,self.n_dim, self.order + 1)
 
 
@@ -368,7 +369,7 @@ class ODEINDLayerTestEPS(nn.Module):
 
         #At, ub = self.ode.fill_constraints_torch(eq_A, rhs, iv_rhs, derivative_A)
         #x = self.qpf(coeffs, rhs, iv_rhs, derivative_constraints)
-        x = self.qpf(eq_A, rhs, iv_rhs, derivative_A)
+        x,lam = self.qpf(eq_A, rhs, iv_rhs, derivative_A, lam_init)
         #x = self.solve(eq_A, rhs, iv_rhs, derivative_A)
 
         #eps = x[:,0]
@@ -389,7 +390,7 @@ class ODEINDLayerTestEPS(nn.Module):
         u2 = u[:,:,:,2] if self.order >=2 else None
         
         #return u0, u1, u2, eps, steps, eq_constraints, self.ode.initial_A,  derivative_constraints, self.ode.eps_A 
-        return u0, u1, u2, eps, steps#, eq_constraints, self.ode.initial_A,  derivative_constraints, self.ode.eps_A 
+        return u0, u1, u2, eps, steps, lam#, eq_constraints, self.ode.initial_A,  derivative_constraints, self.ode.eps_A 
         #return None, None, None, None, None, eq_constraints, self.ode.initial_A,  derivative_constraints, self.ode.eps_A 
         #return None, None, None, None, None,  At, ub
 

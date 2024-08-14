@@ -68,7 +68,7 @@ def QPFunction(ode, n_iv, order, n_step=10, gamma=1, alpha=1, double_ret=True):
         #perm = None
 
         @staticmethod
-        def forward(ctx, eq_A, rhs, iv_rhs, derivative_A):
+        def forward(ctx, eq_A, rhs, iv_rhs, derivative_A, lam_init):
         #def forward(ctx, coeffs, rhs, iv_rhs):
             #bs = coeffs.shape[0]
             bs = rhs.shape[0]
@@ -95,8 +95,9 @@ def QPFunction(ode, n_iv, order, n_step=10, gamma=1, alpha=1, double_ret=True):
             rhs = rhs.squeeze(2) + A_rhs
             #rhs =  A_rhs
 
-            #lam, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=8000)
+            lam, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=8000)
             #L=None
+            print(info[1], info[2], lam.shape)
 
 
             ######### dense
@@ -105,8 +106,8 @@ def QPFunction(ode, n_iv, order, n_step=10, gamma=1, alpha=1, double_ret=True):
             PAt = P_diag_inv.unsqueeze(2)*At
             APAt = torch.bmm(A, PAt)
             L,info = torch.linalg.cholesky_ex(APAt,upper=False)
-            lam = torch.cholesky_solve(rhs.unsqueeze(2), L)
-            lam = lam.squeeze(2)
+            #lam = torch.cholesky_solve(rhs.unsqueeze(2), L)
+            #lam = lam.squeeze(2)
             #########
 
             #print('torch cg info ', info)
@@ -140,10 +141,11 @@ def QPFunction(ode, n_iv, order, n_step=10, gamma=1, alpha=1, double_ret=True):
             
             #if not double_ret:
             #    x = x.float()
-            return x
+            #print(lam)
+            return x, lam
         
         @staticmethod
-        def backward(ctx, dl_dzhat):
+        def backward(ctx, dl_dzhat, dl_dlam):
             A,P_diag_inv, _x, _y, L = ctx.saved_tensors
             At = A.transpose(1,2)
             #n = A.shape[1]
@@ -225,6 +227,6 @@ def QPFunction(ode, n_iv, order, n_step=10, gamma=1, alpha=1, double_ret=True):
             #    dD = dD.float()
             
             #print(dA.abs().mean(), dA.abs().max())
-            return dA, db,div_rhs, dD
+            return dA, db,div_rhs, dD,None
 
     return QPFunctionFn.apply
