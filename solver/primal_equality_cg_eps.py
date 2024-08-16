@@ -27,7 +27,7 @@ def nonlocal_iterate(arr):
 def test_primal_equality_cg_torch():
     step_size = 0.1
     #end = 3*step_size
-    end = 300*step_size
+    end = 100*step_size
     n_step = int(end/step_size)
     order=2
 

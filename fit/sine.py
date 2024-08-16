@@ -74,7 +74,7 @@ class Method(pl.LightningModule):
         #loss = (u0[:,2:-2]-y[:,2:-2]).pow(2).sum()
         u_loss = (u0[:,:].squeeze()-y[:,:].squeeze()).pow(2).mean()
         lam_loss =  (lam.squeeze() - lam_init.squeeze()).abs().mean()
-        loss = u_loss + 2*lam_loss
+        loss = u_loss + 100*lam_loss
         #loss = (u0[:,:].squeeze()-y[:,:].squeeze()).abs().mean()
         #loss = (u0[:,:]-y[:,:]).abs().mean()
         epsmax = eps.abs().max()
