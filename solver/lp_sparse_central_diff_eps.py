@@ -142,7 +142,7 @@ class ODESYSLP(nn.Module):
         elif constraint_type == ConstraintType.Derivative:
             constraint_index = self.num_added_derivative_constraints
         elif constraint_type == ConstraintType.EPS:
-            assert('no eps constraints')
+            raise ValueError('no eps constraints')
             constraint_index = self.num_added_eps_constraints
 
 

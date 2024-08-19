@@ -10,6 +10,9 @@ import scipy.sparse as SP
 
 from itertools import combinations
 
+            
+from functools import cmp_to_key            
+
 class VarType(Enum):
     EPS = 1
     Mesh = 10
@@ -50,14 +53,26 @@ class QPVariableSet():
         #number of variables for each grid point.
         self.n_vars_per_step = len(self.mi_list)
 
-        self.num_vars = self.n_vars_per_step*self.grid_size + 1
-        self.num_pde_vars = self.num_vars-1
+        #self.num_vars = self.n_vars_per_step*self.grid_size + 1
+        self.num_vars = self.n_vars_per_step*self.grid_size
+        #self.num_pde_vars = self.num_vars-1
 
         self.multi_index_shape = (self.grid_size, self.n_vars_per_step)
+
+        self.num_added_eps_vars = 0
 
     def get_eps(self):
         return 0 
     
+
+    def next_eps_var(self):
+        #add new eps var after the equation variables
+        offset = self.num_vars
+        index = offset + self.num_added_eps_vars
+        self.num_added_eps_vars = self.num_added_eps_vars+ 1
+
+        return index
+
     def get_variable_from_mi_index(self, index):
         """index = (grid_index, mi_index). Returns qp variable index"""
         # 0 is epsilon, step, grad_index
@@ -74,6 +89,21 @@ class QPVariableSet():
     def get_variable_from_mi(self, grid_index, mi):
         mi_index = self.mi_to_index[mi]
         return self.get_variable_from_mi_index((grid_index,mi_index))
+
+    def zeroth_order_index(self, coord, mi):
+        """return multi index where coord order is 0 """
+        coord_order = mi[coord]
+        order = np.sum(mi)
+        
+        if coord_order == 0 :
+            raise ValueError("Tried to access zeroth order from itself")
+
+        prev_mi = list(mi)
+        prev_mi[coord] = 0 #mi[coord]-1
+        prev_mi = tuple(prev_mi)
+
+        mi_index = self.mi_to_index[prev_mi]
+        return prev_mi, mi_index
 
     def next_order_index(self, coord, mi):
         """return next higher order index """
@@ -147,9 +177,55 @@ class QPVariableSet():
     def is_right_edge(self, grid_index, coord):
         return grid_index[coord] == self.coord_dims[coord]-1
 
+    def is_right_edge_or_adjacent(self, grid_index, coord):
+        return grid_index[coord] == self.coord_dims[coord]-1 or \
+            grid_index[coord] == self.coord_dims[coord]-2
+
     def is_left_edge(self, grid_index, coord):
         return grid_index[coord] == 0
+        
+    def is_left_edge_or_adjacent(self, grid_index, coord):
+        return grid_index[coord] == 0 or grid_index[coord] == 1
 
+
+    def get_order_counts(self, coord):
+        """Create counts"""
+        #for mi_index in self.var_set.central_mi_indices:
+        #    mi = self.var_set.mi_list[mi_index]
+        order_count = {}
+        for mi in self.mi_list:
+            order = mi[coord]
+            order_count[order] = order_count.get(order,0) + 1 
+        return order_count
+
+    def get_higher_order_sorted_mi_indices(self, coord):
+        """get list of higher order mi indices sorted. Create counts"""
+        #for mi_index in self.var_set.central_mi_indices:
+        #    mi = self.var_set.mi_list[mi_index]
+
+        mi_list = [] #[self.mi_list[mi_index] for mi_index in self.central_mi_indices]
+        order_count = {}
+        #for mi_index in self.central_mi_indices
+        #for mi_index in self.mi_indices
+        #    mi = self.mi_list[mi_index]
+        for mi in self.mi_list:
+            order = mi[coord]
+            order_count[order] = order_count.get(order,0) + 1 
+
+            if order == 0:
+                continue
+            mi_list.append(mi)
+
+        def compare(x, y):
+            if x[coord] < y[coord]:
+                return -1
+            elif x[coord] > y[coord]:
+                return 1
+            else:
+                return 0
+
+        sorted_list = sorted(mi_list, key=cmp_to_key(compare))
+        return sorted_list
 
     def get_order_mi(self):
         """mi's for total order 1 and 2"""
@@ -192,6 +268,7 @@ class QPVariableSet():
 
             self.mi_indices = list(range(len(self.mi_list)))
             self.taylor_mi_indices = list(range(len(l0+l1)))
+            self.central_mi_indices = [] #list(range(len(l0+l1)))
             self.maximal_mi_indices = list(range(len(l0+l1), len(l)))
         elif order==1:
             l =  l0 + l1
@@ -205,11 +282,19 @@ class QPVariableSet():
 
             self.mi_indices = list(range(len(self.mi_list)))
             self.taylor_mi_indices = list(range(len(l0)))
+            self.central_mi_indices = [] #list(range(len(l0+l1)))
             self.maximal_mi_indices = list(range(len(l0), len(l)))
 
         else:
             raise ValueError('unsupported total order')
         print('mi list', self.mi_list)
+
+        self.sorted_central_mi_indices = {}
+        self.central_mi_index_order_count = {}
+        self.order_count = {}
+        for coord in range(self.n_coord):
+            self.sort_central_mi_indices[coord] = self.get_higher_order_sorted_mi_indices(coord)
+            self.order_count[coord] = self.get_order_counts(coord)
 
 
 class PDESYSLP(nn.Module):
@@ -226,9 +311,16 @@ class PDESYSLP(nn.Module):
         step_coords = np.array(coord_dims)
         for i in range(self.n_coord):
             one_hot = np.array([1 if k==i else 0 for k in range(self.n_coord)])
+            #unsqueeze_shape = np.array([1 if k==i else 0 for k in range(self.n_coord)])
+            unsqueeze_shape = np.array([-1 if k==i else 1 for k in range(self.n_coord)])
+            expand_shape = np.array([-1 if k==i else step_coords[k] for k in range(self.n_coord)])
             #print(one_hot)
             self.step_grid_size[i] = np.prod(step_coords - one_hot)
+
             self.step_grid_shape[i] = tuple(step_coords - one_hot)
+            self.step_grid_expand_shape[i] = tuple(expand_shape)
+            self.step_grid_unsqueeze_shape[i] = tuple(unsqueeze_shape)
+            #self.step_grid_expand_shape[i] = tuple(expand_shape)
 
         #placeholder step
         self.step_size = step_size
@@ -294,6 +386,7 @@ class PDESYSLP(nn.Module):
 
 
     def get_solution_reshaped(self, x):
+        #TODO Fix
         """remove eps and reshape solution"""
         x = x[:, 1:]
         x = x.reshape(-1, *self.var_set.multi_index_shape)
@@ -313,7 +406,8 @@ class PDESYSLP(nn.Module):
 
         for i,v in enumerate(var_list):
             if v == VarType.EPS:
-                var_index = self.var_set.get_eps()
+                var_index = self.var_set.next_eps_var()
+                #var_index = self.var_set.get_eps()
                 var_repr = 'EPS'
             else:
                 var_index = self.var_set.get_variable_from_mi_index(v)
@@ -518,35 +612,49 @@ class PDESYSLP(nn.Module):
     def _add_central_constraint(self, coord, grid_index):
         act_mi_index_count = 0
         #get maximal order indices
-        for mi_index in self.var_set.maximal_mi_indices:
-            mi = self.var_set.mi_list[mi_index]
+        #for mi_index in self.var_set.maximal_mi_indices:
+        #TODO order by coordinate order
+        #for mi_index in self.var_set.central_mi_indices:
+        #for mi_index in sorted_mi_indices:
+        for mi in self.var_set.sorted_central_mi_indices:
+            #mi = self.var_set.mi_list[mi_index]
 
             if mi[coord] == 0:
+                assert(mi[coord]!= 0)
                 continue
             act_mi_index_count += 1
 
-            _, prev_order_index = self.var_set.prev_order_index(coord, mi)
+            #_, prev_order_index = self.var_set.prev_order_index(coord, mi)
+            _, zeroth_order_index = self.var_set.zeroth_order_index(coord, mi)
             next_grid = self.var_set.next_adjacent_grid_index(grid_index=grid_index, coord=coord)
+            next_next_grid = self.var_set.next_adjacent_grid_index(grid_index=next_grid_index, coord=coord)
             prev_grid = self.var_set.prev_adjacent_grid_index(grid_index=grid_index, coord=coord)
+            prev_prev_grid = self.var_set.prev_adjacent_grid_index(grid_index=prev_grid_index, coord=coord)
 
             var_list = [ VarType.EPS]
-            var_list.append((prev_grid, prev_order_index))
-            var_list.append((grid_index, prev_order_index))
-            var_list.append((next_grid, prev_order_index))
+            var_list.append((prev_prev_grid, zeroth_order_index))
+            var_list.append((prev_grid, zeroth_order_index))
+            var_list.append((grid_index, zeroth_order_index))
+            var_list.append((next_grid, zeroth_order_index))
+            var_list.append((next_next_grid, zeroth_order_index))
             var_list.append((grid_index, mi_index))
 
             h= self.step_size
             m = (2*h)**(self.order-1)
-            values= [ 1, -0.5*m/h, 0, 0.5*m/h, -1*m]
+            values= [ 1, 0.5, -0.5*m/h, 0, 0.5*m/h, 0.5, -1*m]
 
             self.add_constraint(var_list=var_list, values= values, rhs=0, constraint_type=ConstraintType.Derivative)
         self.act_central_mi_index_count = act_mi_index_count if self.act_central_mi_index_count is None else self.act_central_mi_index_count
 
     def central_constraints(self):
+        #5 point central diff estimate
         for coord in range(self.n_coord):
+            #sort_mi_indices = self.var_set.get_order_sorted_mi_indices(coord)
             for grid_index in self.var_set.grid_indices:
                 #skip left and right edge
-                if self.var_set.is_right_edge(grid_index=grid_index, coord=coord) or self.var_set.is_left_edge(grid_index=grid_index, coord=coord):
+                #if self.var_set.is_right_edge(grid_index=grid_index, coord=coord) or self.var_set.is_left_edge(grid_index=grid_index, coord=coord):
+                if self.var_set.is_right_edge_or_adjacent(grid_index=grid_index, coord=coord)  \
+                        or self.var_set.is_left_edge_or_adjacent(grid_index=grid_index, coord=coord):
                     continue
                 #for mi_index in self.var_set.mi_indices:
                 self._add_central_constraint(coord, grid_index)
@@ -736,7 +844,7 @@ class PDESYSLP(nn.Module):
 
         #bsmat = torch.sparse_coo_tensor(indices = bindices, values =bvalues, size=bmat.shape)
     
-    def get_row_col_sorted_indices(self, row, col, exclude_eps=True):
+    def get_row_col_sorted_indices(self, row, col, num_constraints):
         """ Compute indices sorted by row and column and repeats. Useful for sparse outer product when computing constraint derivatives"""
         indices = np.stack([row, col], axis=0)
 
@@ -745,6 +853,11 @@ class PDESYSLP(nn.Module):
 
         _, row_counts = np.unique(row_sorted[0], return_counts=True)
         _, column_counts = np.unique(column_sorted[1], return_counts=True)
+
+
+        row_counts = np.bincount(row_sorted[0], minlength=num_constraints)
+        total_vars = self.num_vars + self.num_added_eps_vars
+        column_counts = np.bincount(column_sorted[1], minlength=total_vars)
 
         row_count = row.shape[0]
         #add batch dimension
@@ -767,7 +880,8 @@ class PDESYSLP(nn.Module):
         ############## derivative indices sorted and counted
         derivative_rows = np.array(self.row_dict[ConstraintType.Derivative])
         derivative_columns = np.array(self.col_dict[ConstraintType.Derivative])
-        row_sorted, column_sorted, row_counts, column_counts = self.get_row_col_sorted_indices(derivative_rows, derivative_columns)
+        #row_sorted, column_sorted, row_counts, column_counts = self.get_row_col_sorted_indices(derivative_rows, derivative_columns)
+        row_sorted, column_sorted, row_counts, column_counts = self.get_row_col_sorted_indices(derivative_rows, derivative_columns, self.num_added_derivative_constraints)
         
 
         self.derivative_row_sorted = torch.tensor(row_sorted)
@@ -780,7 +894,8 @@ class PDESYSLP(nn.Module):
         ###############equation indices sorted and counted
         eq_rows = np.array(self.row_dict[ConstraintType.Equation])
         eq_columns = np.array(self.col_dict[ConstraintType.Equation])
-        row_sorted, column_sorted, row_counts, column_counts = self.get_row_col_sorted_indices(eq_rows, eq_columns)
+        #row_sorted, column_sorted, row_counts, column_counts = self.get_row_col_sorted_indices(eq_rows, eq_columns)
+        row_sorted, column_sorted, row_counts, column_counts = self.get_row_col_sorted_indices(eq_rows, eq_columns, self.num_added_equation_constraints)
 
         self.eq_row_sorted = torch.tensor(row_sorted)
         self.eq_column_sorted = torch.tensor(column_sorted)
@@ -788,8 +903,87 @@ class PDESYSLP(nn.Module):
         self.eq_column_counts = torch.tensor(column_counts)
         #################
 
-    #build values for derivative constraints
+    
+    def solve_5pt_central_stencil(self, coord, steps):
+        #steps shape b,  n_step-1
+        # 5 point stencil centered at 0
+
+        center = torch.zeros_like(steps[:, 2:-1])
+        stepn1 = steps[:, 2:-1]
+        stepn2 = steps[:, 3:]
+        stepp1 = steps[:, 1:-2]
+        stepp2 = steps[:, :-3]
+
+        left1 = -stepp1
+        left2 = left1 - stepp2
+        right1 = stepn1
+        right2 = stepn1+stepn2
+
+        #b, step, var, 5
+        matrix = torch.stack([left2, left1, center, right1, right2], dim=-1)
+        ones = torch.ones_like(matrix)
+        matrix = torch.stack([ones, matrix, matrix.pow(2), matrix.pow(3), matrix.pow(4)], dim=-2)
+
+        #shape 5,2
+        b = torch.tensor([[0,1,0,0,0], [0,0,2,0,0]]).type_as(matrix).T
+
+        coeffs = torch.linalg.solve(matrix, b)
+        #print(coeffs.shape)
+        ones = torch.ones_like(center).unsqueeze(-1)
+        values_list = []
+        #coeffs1 = torch.cat([-ones, coeffs[...,0], -ones], dim=-1)
+        coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)
+
+        #values_list.append(coeffs1)
+        #if self.n_order > 2:
+        coeffs2 = torch.cat([-ones, coeffs[...,1]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
+            #coeffs2 = torch.cat([-ones, coeffs[...,1], -ones], dim=-1)
+        #values_list.append(coeffs2)
+
+        #coeffs order 1 shape b, steps, num_values
+        #repeat num order 1 indices b, steps,num_index, num_values
+        coeffs1 = coeffs1.unsqueeze(2).repeat(self.var_set.order_count[coord].get(1,0),dim=2)
+
+        #coeffs order 2 shape b, steps, num_values
+        #repeat num order 2 indices b, steps,num_index, num_values
+        coeffs2 = coeffs2.unsqueeze(2).repeat(self.var_set.order_count[coord].get(2,0),dim=2)
+
+
+        #concat along mi indices
+        coeffs = torch.cat([coeffs1, coeffs2],dim=2)
+
+        #expand over grid
+        expand_shape_step = self.step_grid_expand_shape[coord]
+        new_shape_step = self.step_grid_unsqueeze_shape[coord]
+
+        c_shape = coeffs.shape
+        new_shape = c_shape[:1] + new_shape_step + c_shape[2:]
+        #expand_shape = (-1,)*len(c_shape[:1]) + expand_shape_step + (-1,)*len(c_shape[2:])
+        expand_shape = c_shape[:1] + expand_shape_step + c_shape[2:]
+
+        coeffs = coeffs.reshape(new_shape)
+        coeffs = coeffs.expand(expand_shape)
+
+        #shape b, steps, num_values
+        values = torch.cat(values_list,dim=-1)
+
+        #repeat
+
+        values = values.reshape(steps.shape[0],-1)
+        return values#, coeffs1, coeffs2
+
     def build_central_values(self, steps_list):
+
+        values_list = []
+        for i in range(self.n_coord):
+            #coeffs shape b, step_grid, num_indices, num_values
+            coeffs = solve_5pt_central_stencil(coord, steps)
+
+        #stack along coord: b, num_coord, step_grid, num_indices, num_values 
+
+
+    #build values for derivative constraints
+    def build_central_values_old(self, steps_list):
 
         values_list = []
         #b, coord, gridpm, max indices, 5
@@ -829,6 +1023,7 @@ class PDESYSLP(nn.Module):
         values_list = []
         for coord, steps in enumerate(steps_list):
             b = steps.shape[0]
+            #TODO expand steps
             #steps shape b, step_grid
             repeats = (1,)*len(steps.shape)
             steps = steps.unsqueeze(dim=-1).repeat(*repeats, self.tc_count)
@@ -852,6 +1047,8 @@ class PDESYSLP(nn.Module):
     def build_backward_values(self, steps_list):
         values_list = []
         for coord, steps in enumerate(steps_list):
+            #TODO expand steps
+
             steps = -steps
             b = steps.shape[0]
             #steps shape b, step_grid
@@ -1007,8 +1204,12 @@ class PDESYSLP(nn.Module):
         self.derivative_row_counts = self.derivative_row_counts.to(x.device)
         self.derivative_column_counts = self.derivative_column_counts.to(x.device)
 
-        x_repeat = torch.repeat_interleave(x, self.derivative_row_counts, dim=-1)
-        y_repeat = torch.repeat_interleave(y, self.derivative_column_counts, dim=-1)
+        #x_repeat = torch.repeat_interleave(x, self.derivative_row_counts, dim=-1)
+        #y_repeat = torch.repeat_interleave(y, self.derivative_column_counts, dim=-1)
+
+
+        y_repeat = torch.repeat_interleave(y, self.derivative_row_counts, dim=-1)
+        x_repeat = torch.repeat_interleave(x, self.derivative_column_counts, dim=-1)
 
         x_repeat = x_repeat.reshape(-1)
         y_repeat = y_repeat.reshape(-1)
@@ -1036,7 +1237,11 @@ class PDESYSLP(nn.Module):
         b = x.shape[0]
         #copy x across columns. copy y across rows
         x = x[:, 0:self.num_added_equation_constraints]
-        y = y[:, 1:self.var_set.num_vars]
+        #y = y[:, 1:self.var_set.num_vars]
+        y = y[:, 0:self.var_set.num_vars]
+
+        #y = y[:, 0:self.num_added_equation_constraints]
+        #x = x[:, 0:self.num_vars]
 
         #x = x.reshape(b, -1, 1)
         #y = y.reshape(b, 1, -1)
@@ -1050,8 +1255,11 @@ class PDESYSLP(nn.Module):
         self.eq_row_counts = self.eq_row_counts.to(x.device)
         self.eq_column_counts = self.eq_column_counts.to(x.device)
 
-        x_repeat = torch.repeat_interleave(x, self.eq_row_counts, dim=-1)
-        y_repeat = torch.repeat_interleave(y, self.eq_column_counts, dim=-1)
+        #x_repeat = torch.repeat_interleave(x, self.eq_row_counts, dim=-1)
+        #y_repeat = torch.repeat_interleave(y, self.eq_column_counts, dim=-1)
+
+        y_repeat = torch.repeat_interleave(y, self.eq_row_counts, dim=-1)
+        x_repeat = x #torch.repeat_interleave(x, self.eq_column_counts, dim=-1)
 
         x_repeat = x_repeat.reshape(-1)
         y_repeat = y_repeat.reshape(-1)
