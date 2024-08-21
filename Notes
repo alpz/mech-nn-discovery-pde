@@ -33,3 +33,7 @@ central differences with variable step
 multiple eps
 
 central diff + grad
+
+
+##### conjugate grad normal equations
+
