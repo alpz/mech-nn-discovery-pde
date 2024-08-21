@@ -55,7 +55,7 @@ class QPVariableSet():
 
         #self.num_vars = self.n_vars_per_step*self.grid_size + 1
         self.num_vars = self.n_vars_per_step*self.grid_size
-        #self.num_pde_vars = self.num_vars-1
+        self.num_pde_vars = self.num_vars
 
         self.multi_index_shape = (self.grid_size, self.n_vars_per_step)
 
@@ -465,7 +465,7 @@ class PDESYSLP(nn.Module):
 
         return '\n'.join(repr_list)
 
-    def repr_taylor(self, rows=None, cols=None, values=None, rhs=None):
+    def repr_taylor(self, rows=None, cols=None, values=None, rhs=None, print_row=False):
         if cols is None:
             cols =self.col_dict[ConstraintType.Derivative] 
         if rows is None:
@@ -481,6 +481,8 @@ class PDESYSLP(nn.Module):
         cidx = 0
         repr_list = []
         for i,r in enumerate(urows):
+            if print_row:
+                repr_list.append(str(i) + ': ')
             count = counts[i]
             constraint_repr = []
             for coffset in range(count):
@@ -616,6 +618,7 @@ class PDESYSLP(nn.Module):
                 self._add_forward_backward_constraint(coord, grid_index, forward=False)
 
     def _add_central_constraint(self, coord, grid_index):
+        print('central coord ', coord, grid_index)
         act_mi_index_count = 0
         #get maximal order indices
         #for mi_index in self.var_set.maximal_mi_indices:
@@ -650,9 +653,9 @@ class PDESYSLP(nn.Module):
             m = (2*h)**(self.order-1)
 
             if mi[coord]==1:
-                values= [ 1, 1/12*h, -2/3*h, 0, 2/3*h, -1/12*h, -1*h]
+                values= [ -1, 1/12, -2/3, 0, 2/3, -1/12, -1*h]
             elif mi[coord] ==2:
-                values= [ 1, -1/12*h**2, 4/3*h**2, -5/2*h**2, 4/3*h**2, -1/12*h**2, -1*h**2]
+                values= [ -1, -1/12, 4/3, -5/2, 4/3, -1/12, -1*h**2]
             else:
                 raise ValueError('Central diff not implemented for ' + str(mi[coord]))
 
@@ -919,7 +922,7 @@ class PDESYSLP(nn.Module):
         self.eq_column_counts = torch.tensor(column_counts)
         #################
 
-    def expand_steps(self, steps, coord):
+    def expand_steps(self, coord, steps):
         expand_shape_step = self.step_grid_expand_shape[coord]
         new_shape_step = self.step_grid_unsqueeze_shape[coord]
 
@@ -928,7 +931,7 @@ class PDESYSLP(nn.Module):
         #expand_shape = (-1,)*len(c_shape[:1]) + expand_shape_step + (-1,)*len(c_shape[2:])
         expand_shape = c_shape[:1] + expand_shape_step + c_shape[2:]
 
-        steps = step.reshape(new_shape)
+        steps = steps.reshape(new_shape)
         #expand over grid
         steps = steps.expand(expand_shape)
         return steps
@@ -971,15 +974,29 @@ class PDESYSLP(nn.Module):
 
         #coeffs order 1 shape b, steps, num_values
         #repeat num order 1 indices b, steps,num_index, num_values
-        coeffs1 = coeffs1.unsqueeze(2).repeat(self.var_set.order_count[coord].get(1,0),dim=2)
+        coeffs_list = []
+        n_order1 = self.var_set.order_count[coord].get(1,0)
+        if n_order1 > 0:
+            ex_shape = coeffs1.shape
+            ex_shape = ex_shape[:2] + (n_order1,) + ex_shape[2:]
+            #print(coeffs1.shape, ex_shape, self.var_set.order_count, n_order1, coord)
+            #coeffs1 = coeffs1.unsqueeze(2).repeat(self.var_set.order_count[coord].get(1,0),dim=2)
+            coeffs1 = coeffs1.unsqueeze(2).expand(ex_shape)
+            coeffs_list.append(coeffs1)
 
         #coeffs order 2 shape b, steps, num_values
         #repeat num order 2 indices b, steps,num_index, num_values
-        coeffs2 = coeffs2.unsqueeze(2).repeat(self.var_set.order_count[coord].get(2,0),dim=2)
-
+        n_order2 = self.var_set.order_count[coord].get(2,0)
+        if self.var_set.order_count[coord].get(2,0) > 0:
+            ex_shape = coeffs2.shape
+            ex_shape = ex_shape[:2] + (n_order2,) + ex_shape[2:]
+            #coeffs2 = coeffs2.unsqueeze(2).repeat(self.var_set.order_count[coord].get(2,0),dim=2)
+            coeffs2 = coeffs2.unsqueeze(2).expand(ex_shape)
+            coeffs_list.append(coeffs2)
 
         #concat along mi indices
-        coeffs = torch.cat([coeffs1, coeffs2],dim=2)
+        coeffs = torch.cat(coeffs_list,dim=2)
+        #print('insi ', coeffs.shape)
 
         #expand over grid
         expand_shape_step = self.step_grid_expand_shape[coord]
@@ -989,10 +1006,13 @@ class PDESYSLP(nn.Module):
         new_shape = c_shape[:1] + new_shape_step + c_shape[2:]
         #expand_shape = (-1,)*len(c_shape[:1]) + expand_shape_step + (-1,)*len(c_shape[2:])
         expand_shape = c_shape[:1] + expand_shape_step + c_shape[2:]
+        #print(new_shape, expand_shape)
 
         coeffs = coeffs.reshape(new_shape)
         #expand over grid
+        #print('reshape ', coeffs.shape)
         coeffs = coeffs.expand(expand_shape)
+        #print('expand ', coeffs.shape)
 
         #concat along mi index axis
         #shape b, steps, num_values
@@ -1000,21 +1020,22 @@ class PDESYSLP(nn.Module):
 
         #repeat
 
-        #values = values.reshape(steps.shape[0],-1)
+        coeffs = coeffs.reshape(steps.shape[0],-1)
         return coeffs#, coeffs1, coeffs2
 
     def build_central_values(self, steps_list):
 
         values_list = []
-        for i in range(self.n_coord):
+        for coord in range(self.n_coord):
             #coeffs shape b, step_grid, num_indices, num_values
-            coeffs = solve_5pt_central_stencil(coord, steps)
+            coeffs = self.solve_5pt_central_stencil(coord, steps_list[coord])
+            print('cret ', coeffs.shape)
 
             values_list.append(coeffs) 
 
         #stack along coord: b, num_coord, step_grid, num_indices, num_values 
-        values = torch.stack(values_list, dim=1)
-        values = values.reshape(steps_list[0].shape[0], -1)
+        values = torch.cat(values_list, dim=1)
+        #values = values.reshape(steps_list[0].shape[0], -1)
         return values
 
 
@@ -1318,17 +1339,22 @@ class PDESYSLP(nn.Module):
         return dD
 
 def test_mat_eq():
-    coord_dims = (4,6)
+    coord_dims = (4,5)
     bs = 1
-    pde = PDESYSLP(bs=bs, coord_dims=coord_dims, n_iv=0, step_size=0.25, order=2, n_iv_steps=1, step_list = None)
+    pde = PDESYSLP(bs=bs, coord_dims=coord_dims, n_iv=1, step_size=0.25, order=2, n_iv_steps=1, 
+                step_list = None, build=False)
 
+    pde.build_constraints()
     #steps shape: (batch, n_coord, dim0-1, dim1-1, dim2-1)
     #steps0 = 0.25*torch.ones(bs, coord_dims[0]-1, coord_dims[1])
-    steps0 = 0.25*torch.ones(bs, *pde.step_grid_shape[0])
-    steps1 = 0.25*torch.ones(bs, coord_dims[0], coord_dims[1]-1)
+    #steps0 = 0.25*torch.ones(bs, *pde.step_grid_shape[0])
+    #steps1 = 0.25*torch.ones(bs, coord_dims[0], coord_dims[1]-1)
+
+    steps0 = 0.25*torch.ones(bs, coord_dims[0]-1)
+    steps1 = 0.25*torch.ones(bs, coord_dims[1]-1)
+
     steps_list = [steps0, steps1]
-    pde.build_constraints()
-    pde.tc_tensor()
+    #pde.tc_tensor()
     derivative_A = pde.derivative_A#.todense()
 
 
@@ -1339,41 +1365,42 @@ def test_mat_eq():
     print(fill_A.shape, derivative_A.shape, fill_A._nnz(), derivative_A._nnz())
     print(fill_A._indices())
     print(derivative_A._indices())
-    print((vd-vf))
-    print((vd-vf).mean())
+    diff = vd-vf
+    print((diff))
+    print(diff.mean(), diff.abs().max())
 
-    fi = fill_A._indices()
-    di = derivative_A._indices()
+    #print(X[0, 198,318])
 
-    print((fi==di).all())
+    #print((fi==di).all())
 
-    dda = derivative_A.coalesce().to_dense()
-    dfa = fill_A.coalesce().to_dense()
-    print(dda, dda.shape)
-    print(dfa, dfa.shape)
-    print(dda[:,:,-1])
-    print((dda[:,:,:142]-dfa).sum())
+    #dda = derivative_A.coalesce().to_dense()
+    #dfa = fill_A.coalesce().to_dense()
+    #print(dda, dda.shape)
+    #print(dfa, dfa.shape)
+    #print(dda[:,:,-1])
+    #print((dda[:,:,:142]-dfa).sum())
     #print(vd)
     #print(vf)
     #print(list(zip(vd,vf)))
 
-    #repr = pde.repr_taylor(values = vf)
+    #repr = pde.repr_taylor(values = vf, print_row=True)
     #print(repr)
     ##print(vf)
 
     #print("********")
-    #repr = pde.repr_taylor(values = vd)
+    #repr = pde.repr_taylor(values = vd, print_row=True)
     #print(repr)
 
 def test_taylor_repr():
-    pde = PDESYSLP(bs=1, coord_dims=(4,6), n_iv=1, step_size=0.25, order=2, n_iv_steps=1, step_list = None)
+    pde = PDESYSLP(bs=1, coord_dims=(5,6), n_iv=1, step_size=0.25, order=2, 
+                n_iv_steps=1, step_list = None, build=False)
     #pde.build_equation_constraints()
     #pde.build_derivative_constraints()
     #pde.forward_constraints()
-    pde.backward_constraints()
-    #pde.build_constraints()
+    #pde.backward_constraints()
+    pde.build_constraints()
     #pde.central_constraints()
-    pde.tc_tensor()
+    #pde.tc_tensor()
     repr = pde.repr_taylor()
     print(repr)
 
@@ -1383,27 +1410,29 @@ def test_initial():
     #pde.build_initial_constraints()
     pde.build_constraints()
     #pde.build_derivative_constraints()
-    pde.tc_tensor()
+    #pde.tc_tensor()
     repr = pde.repr_eq(type=ConstraintType.Initial)
     print(repr)
 
 def test_eq2():
-    pde = PDESYSLP(bs=1, coord_dims=(4,6), n_iv=1, step_size=0.25, order=2, n_iv_steps=1, step_list = None)
+    pde = PDESYSLP(bs=1, coord_dims=(5,6), n_iv=1, step_size=0.25, order=2, 
+                n_iv_steps=1, step_list = None, build=False)
     #pde.build_equation_constraints()
     #pde.build_initial_constraints()
     pde.build_constraints()
     #pde.tc_tensor()
     coeffs = torch.arange(pde.var_set.num_pde_vars).reshape(pde.var_set.grid_size, len(pde.var_set.mi_list))
-    coeffs[:, 0] = 1
-    coeffs[:, 4] = 0
+    #coeffs[:, 0] = 1
+    #coeffs[:, 4] = 0
     rhs = torch.ones(pde.var_set.grid_size)
     G = pde.build_equation_tensor(coeffs)
     _values = G._values()
-    repr = pde.repr_eq(values =_values,rhs=rhs, type=ConstraintType.Equation)
+    repr = pde.repr_eq(values =_values.numpy(),rhs=rhs, type=ConstraintType.Equation)
     print(repr)
 
 def test_eq():
-    pde = PDESYSLP(bs=1, coord_dims=(4,6), n_iv=1, step_size=0.25, order=2, n_iv_steps=1, step_list = None)
+    pde = PDESYSLP(bs=1, coord_dims=(4,6), n_iv=1, step_size=0.25, order=2, 
+                n_iv_steps=1, step_list = None, build=False)
     pde.build_equation_constraints()
     pde.build_derivative_constraints()
     pde.tc_tensor()
@@ -1451,6 +1480,6 @@ if __name__=="__main__":
     #test_eq()
     #test_eq2()
     #test_taylor_repr()
-    #test_mat_eq()
-    test_grid()
+    test_mat_eq()
+    #test_grid()
     #test_initial()
