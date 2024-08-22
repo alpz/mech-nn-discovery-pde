@@ -122,13 +122,13 @@ class Sine(nn.Module):
         self.device  = device
         dtype = torch.float64
         #self.coord_dims = (64,32)
-        self.coord_dims = (5,15)
+        self.coord_dims = (10,15)
         #self.coord_dims = (10,10)
         #self.coord_dims = (64,64)
         #self.coord_dims = (64,32)
         self.n_iv = 1
-        #self.iv_list = [(0,0), (0,1),(1,0),(1,2)]
-        self.iv_list = [(1,0), (0,1)]
+        self.iv_list = [(0,0), (1,2)]
+        #self.iv_list = [(1,0), (0,1)]
         #self.iv_list = [(0,0), (1,0)]
         #self.iv_list = [(0,0), (0,1),(1,0)]
 
@@ -139,8 +139,8 @@ class Sine(nn.Module):
         #_coeffs = torch.tensor(np.random.random((self.n_dim, self.pde.grid_size, self.pde.n_orders)), dtype=dtype)
         #_coeffs = torch.randn((self.n_dim, self.pde.grid_size, self.pde.n_orders), dtype=dtype)
         #_coeffs = torch.rand((self.n_dim, 1, self.pde.n_orders), dtype=dtype)
-        #_coeffs = torch.rand((self.n_dim, 1, self.pde.n_orders), dtype=dtype)
-        _coeffs = torch.randn((self.n_dim, self.pde.grid_size, self.pde.n_orders), dtype=dtype)
+        _coeffs = torch.rand((self.n_dim, 1, self.pde.n_orders), dtype=dtype)
+        #_coeffs = torch.randn((self.n_dim, self.pde.grid_size, self.pde.n_orders), dtype=dtype)
         self.coeffs = Parameter(_coeffs)
 
         #initial values grad and up
@@ -169,12 +169,12 @@ class Sine(nn.Module):
         #self.steps0 = torch.logit(self.step_size*torch.ones(1,self.pde.step_grid_shape[0][0],1))
         self.steps0 = torch.logit(self.step_size*torch.ones(1,self.coord_dims[0]-1))
         #self.steps0 = torch.logit(self.step_size*torch.ones(1,1,1))
-        #self.steps0 = nn.Parameter(self.steps0)
+        self.steps0 = nn.Parameter(self.steps0)
 
         self.steps1 = torch.logit(self.step_size*torch.ones(1,self.coord_dims[1]-1))
         #self.steps1 = torch.logit(self.step_size*torch.ones(1,*self.pde.step_grid_shape[1]))
         #self.steps1 = torch.logit(self.step_size*torch.ones(1,1,1))
-        #self.steps1 = nn.Parameter(self.steps1)
+        self.steps1 = nn.Parameter(self.steps1)
 
         self.cf_nn = nn.Sequential(
             nn.Linear(256,256),
@@ -200,7 +200,7 @@ class Sine(nn.Module):
         #coeffs = coeffs
         #print(coeffs, coeffs.shape)
         #coeffs = self.coeffs.unsqueeze(0).repeat(self.bs,1,self.pde.grid_size,1)
-        coeffs = coeffs.unsqueeze(0)#.repeat(self.bs,1,self.pde.grid_size,1)
+        coeffs = coeffs.unsqueeze(0).repeat(self.bs,1,self.pde.grid_size,1)
         #coeffs = self.coeffs.unsqueeze(0).repeat(self.bs,1,self.pde.grid_size,1)
         #coeffs = coeffs.unsqueeze(0).repeat(self.bs,1,self.pde.grid_size,1)
         #coeffs = self.coeffs.unsqueeze(0).repeat(self.bs,1,1,1)

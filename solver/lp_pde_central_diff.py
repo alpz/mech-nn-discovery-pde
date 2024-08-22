@@ -551,6 +551,7 @@ class PDESYSLP(nn.Module):
             mi_index_list = self.var_set.next_orders_all(coord=coord, mi_index=mi_index)
             assert(len(mi_index_list)>=2)
 
+            #TODO check order scale
             #diff between maximum number of taylor terms (order+1) and current terms
             order_diff = self.order+1- len(mi_index_list)+4
             for _j,ts_mi_index in enumerate(mi_index_list):
