@@ -20,6 +20,9 @@ if config.pde_linear_solver == SolverType.DENSE_CHOLESKY:
     from solver.qp_primal_direct_pde import QPFunction as QPFunctionSys
 elif config.pde_linear_solver == SolverType.DENSE_CHOLESKY_DUAL:
     from solver.qp_dual_direct_pde import QPFunction as QPFunctionSys
+elif config.pde_linear_solver == SolverType.SPARSE_INDIRECT_CG_DUAL:
+    from solver.qp_dual_indirect_sparse_pde import QPFunction as QPFunctionSys
+    #from solver.qp_primal_indirect_batched_sparse_pde import QPFunction as QPFunctionSys
 elif config.pde_linear_solver == SolverType.SPARSE_INDIRECT_CG:
     from solver.qp_primal_indirect_batched_sparse_pde import QPFunction as QPFunctionSys
 elif config.pde_linear_solver == SolverType.SPARSE_INDIRECT_BLOCK_CG:
