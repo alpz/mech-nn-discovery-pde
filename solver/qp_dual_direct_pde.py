@@ -79,8 +79,8 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             num_eps = pde.var_set.num_added_eps_vars
             num_var = pde.var_set.num_vars
             #u = l
-            P_diag = torch.ones(num_eps).type_as(rhs)*1e5
-            P_zeros = torch.zeros(num_var).type_as(rhs) +1e-5
+            P_diag = torch.ones(num_eps).type_as(rhs)*1e6
+            P_zeros = torch.zeros(num_var).type_as(rhs) +1e-6
             P_diag = torch.cat([P_zeros, P_diag])
             P_diag_inv = 1/P_diag
             P_diag_inv = P_diag_inv.unsqueeze(0)
@@ -93,21 +93,21 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             rhs = rhs.squeeze(2) + A_rhs
             #rhs =  A_rhs
 
-            #lam, info = cg_matvec([A, P_diag_inv, At], rhs, x0=lam_init, tol=1e-3, maxiter=8000)
+            #lam, info = cg_matvec([A, P_diag_inv, At], rhs, x0=None, tol=1e-3, maxiter=16000)
             #L=None
             #print(info[1], info[2], lam.shape, A.shape)
             
 
 
-            ######### dense
+            ########### dense
             A = A.to_dense()
-            At = At.to_dense()
+            At = A.transpose(1,2)#.to_dense()
             PAt = P_diag_inv.unsqueeze(2)*At
             APAt = torch.bmm(A, PAt)
             L,info = torch.linalg.cholesky_ex(APAt,upper=False)
             lam = torch.cholesky_solve(rhs.unsqueeze(2), L)
             lam = lam.squeeze(2)
-            #########
+            ###########
 
             #print('torch cg info ', info)
             #lam,info = SPSLG.lgmres(pdmat, pd_rhs)
@@ -165,13 +165,13 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             #TODO rhs is zero upto here. remove the above
             rhs = rhs.squeeze(2) 
 
-            #dnu, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=8000)
+            #dnu, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=16000)
 
             #print('back', info[1], info[2], dnu.shape)
-            ##### dense
+            ###### dense
             dnu = torch.cholesky_solve(rhs.unsqueeze(2), L)
             dnu = dnu.squeeze(2)
-            #####
+            ######
 
             dx = dnu.unsqueeze(2)
             dx = torch.bmm(At, dx)

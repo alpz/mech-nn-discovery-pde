@@ -266,9 +266,10 @@ class QPVariableSet():
             #self.taylor_mi_list = l0+l1
 
             self.mi_indices = list(range(len(self.mi_list)))
-            self.taylor_mi_indices = list(range(len(l0+l1)))
-            self.central_mi_indices = [] #list(range(len(l0+l1)))
-            self.maximal_mi_indices = list(range(len(l0+l1), len(l)))
+            #self.taylor_mi_indices = list(range(len(l0+l1)))
+            self.taylor_mi_indices = list(range(len(l0)))
+            #self.central_mi_indices = [] #list(range(len(l0+l1)))
+            #self.maximal_mi_indices = list(range(len(l0+l1), len(l)))
         elif order==1:
             l =  l0 + l1
             repr = r0+r1
@@ -281,8 +282,8 @@ class QPVariableSet():
 
             self.mi_indices = list(range(len(self.mi_list)))
             self.taylor_mi_indices = list(range(len(l0)))
-            self.central_mi_indices = [] #list(range(len(l0+l1)))
-            self.maximal_mi_indices = list(range(len(l0), len(l)))
+            #self.central_mi_indices = [] #list(range(len(l0+l1)))
+            #self.maximal_mi_indices = list(range(len(l0), len(l)))
 
         else:
             raise ValueError('unsupported total order')
@@ -551,7 +552,7 @@ class PDESYSLP(nn.Module):
             assert(len(mi_index_list)>=2)
 
             #diff between maximum number of taylor terms (order+1) and current terms
-            order_diff = self.order+1- len(mi_index_list)
+            order_diff = self.order+1- len(mi_index_list)+4
             for _j,ts_mi_index in enumerate(mi_index_list):
                 j = _j +order_diff
                 #h = self.step_size**(j)
@@ -690,7 +691,7 @@ class PDESYSLP(nn.Module):
             self.t0_grid_size = t0_size
 
             for grid_index in t0_grid:
-                for iv in range(1):
+                for iv in range(self.n_iv):
                     var_list = []
                     val_list = []
                     #add initial function values
@@ -784,14 +785,14 @@ class PDESYSLP(nn.Module):
                                        #dtype=self.dtype, device=self.device)
                                        dtype=self.dtype)
         
-        if self.n_iv > 0:
-            initial_A = torch.sparse_coo_tensor([self.row_dict[ConstraintType.Initial],self.col_dict[ConstraintType.Initial]],
+        #if self.n_iv > 0:
+        initial_A = torch.sparse_coo_tensor([self.row_dict[ConstraintType.Initial],self.col_dict[ConstraintType.Initial]],
                                        self.value_dict[ConstraintType.Initial], 
                                        size=(self.num_added_initial_constraints, total_vars), 
                                        #dtype=self.dtype, device=self.device)
                                        dtype=self.dtype)
-        else:
-            initial_A =None
+        #else:
+        #    initial_A =None
 
 
         derivative_A = torch.sparse_coo_tensor([self.row_dict[ConstraintType.Derivative],self.col_dict[ConstraintType.Derivative]],
@@ -965,10 +966,13 @@ class PDESYSLP(nn.Module):
         values_list = []
         #coeffs1 = torch.cat([-ones, coeffs[...,0], -ones], dim=-1)
         coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)
+        #coeffs1 = torch.cat([-ones, coeffs[...,0], -ones], dim=-1)
 
         #values_list.append(coeffs1)
         #if self.n_order > 2:
         coeffs2 = torch.cat([-ones, coeffs[...,1]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
+        #coeffs2 = torch.cat([-ones, coeffs[...,1]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)
+        #coeffs2 = torch.cat([-ones, coeffs[...,1], -ones], dim=-1)
             #coeffs2 = torch.cat([-ones, coeffs[...,1], -ones], dim=-1)
         #values_list.append(coeffs2)
 
@@ -1038,42 +1042,6 @@ class PDESYSLP(nn.Module):
         return values
 
 
-    #build values for derivative constraints
-    def build_central_values_old(self, steps_list):
-
-        values_list = []
-        #b, coord, gridpm, max indices, 5
-        for i in range(self.n_coord):
-            coord_steps = steps_list[i]
-            b = coord_steps.shape[0]
-            #skip batch dim
-            step_coord_index = 1+i 
-
-            coord_len = coord_steps.shape[step_coord_index]
-            #1 to end
-            csteps = torch.split(coord_steps, [1, coord_len-1], dim=step_coord_index)[1]
-            #0 to end-1
-            psteps = torch.split(coord_steps, [coord_len-1,1], dim=step_coord_index)[0]
-
-            ones = torch.ones_like(csteps)
-            zeros = torch.zeros_like(csteps)
-
-            mult = (csteps + psteps)**(self.order-1)
-            sum_inv = (csteps + psteps)**(self.order-2)
-
-            values = torch.stack([ones, -sum_inv, zeros, sum_inv, -ones*mult ], dim=-1)
-            
-            repeats = (1,)*len(values.shape[:-1]) + (self.act_central_mi_index_count,) + (1,)
-            values = values.unsqueeze(dim=-2)
-            values = values.repeat(repeats)
-
-            values = values.reshape(b,-1)
-            values_list.append(values)
-        #stack along coord axis
-        values = torch.cat(values_list, dim=-1)
-
-        return values
-
     def build_forward_values(self, steps_list):
 
         values_list = []
@@ -1139,6 +1107,7 @@ class PDESYSLP(nn.Module):
         bv = self.build_backward_values(steps_list)
 
         built_values = torch.cat([fv,cv,bv], dim=-1)
+        #built_values = torch.cat([cv], dim=-1)
         #built_values = torch.cat([fv,bv], dim=-1)
         #built_values = torch.cat([fv,cv], dim=-1)
         #built_values = torch.cat([cv,bv], dim=-1)
@@ -1527,10 +1496,12 @@ def test_taylor_repr():
     print(repr)
 
 def test_initial():
-    pde = PDESYSLP(bs=1, coord_dims=(4,6), n_iv=1, step_size=0.25, order=2, n_iv_steps=1, step_list = None)
+    init_list = [(0,0), (1,0)]
+    pde = PDESYSLP(bs=1, coord_dims=(4,6), n_iv=1, step_size=0.25, order=2, 
+                   init_index_mi_list=init_list, n_iv_steps=1, step_list = None, build=True)
     #pde.build_equation_constraints()
     #pde.build_initial_constraints()
-    pde.build_constraints()
+    #pde.build_constraints()
     #pde.build_derivative_constraints()
     #pde.tc_tensor()
     repr = pde.repr_eq(type=ConstraintType.Initial)
@@ -1602,6 +1573,6 @@ if __name__=="__main__":
     #test_eq()
     #test_eq2()
     #test_taylor_repr()
-    test_mat_eq()
+    #test_mat_eq()
     #test_grid()
-    #test_initial()
+    test_initial()

@@ -20,7 +20,7 @@ class SineDataset(Dataset):
     def __init__(self, end=1, coord_dims=(50,32)):
         _y = np.linspace(0, end, coord_dims[0])
         _x = np.linspace(0, end, coord_dims[1])
-        y0 = np.sin(5*_y) #+ 0.5*np.random.randn(*_y.shape)
+        y0 = np.sin(3*_y) #+ 0.5*np.random.randn(*_y.shape)
         y1 = np.cos(3*_y) #+ 0.5*np.random.randn(*_y.shape)
         y0 = torch.tensor(y0)
 
@@ -80,6 +80,7 @@ class Method(pl.LightningModule):
         
 
         loss = (u0.reshape(-1)-y.reshape(-1)).pow(2).mean()
+        #loss = (u0.reshape(-1)-y.reshape(-1)).abs().mean()
         #loss = loss + 0.1*cf.pow(2).mean()
         #loss = loss + eps.pow(2).mean()
         #loss = loss + eps.pow(2).sum()
@@ -121,12 +122,13 @@ class Sine(nn.Module):
         self.device  = device
         dtype = torch.float64
         #self.coord_dims = (64,32)
-        self.coord_dims = (3,3)
+        self.coord_dims = (5,15)
         #self.coord_dims = (10,10)
         #self.coord_dims = (64,64)
         #self.coord_dims = (64,32)
-        self.n_iv = 4
-        self.iv_list = [(0,0), (0,1),(1,0),(1,1)]
+        self.n_iv = 1
+        #self.iv_list = [(0,0), (0,1),(1,0),(1,2)]
+        self.iv_list = [(1,0), (0,1)]
         #self.iv_list = [(0,0), (1,0)]
         #self.iv_list = [(0,0), (0,1),(1,0)]
 
@@ -137,23 +139,25 @@ class Sine(nn.Module):
         #_coeffs = torch.tensor(np.random.random((self.n_dim, self.pde.grid_size, self.pde.n_orders)), dtype=dtype)
         #_coeffs = torch.randn((self.n_dim, self.pde.grid_size, self.pde.n_orders), dtype=dtype)
         #_coeffs = torch.rand((self.n_dim, 1, self.pde.n_orders), dtype=dtype)
-        #_coeffs = torch.randn((self.n_dim, 1, self.pde.n_orders), dtype=dtype)
-        #_coeffs = torch.randn((self.n_dim, 1, 256), dtype=dtype)
-        _coeffs = torch.ones((self.n_dim, self.pde.grid_size, self.pde.n_orders), dtype=dtype)
+        #_coeffs = torch.rand((self.n_dim, 1, self.pde.n_orders), dtype=dtype)
+        _coeffs = torch.randn((self.n_dim, self.pde.grid_size, self.pde.n_orders), dtype=dtype)
         self.coeffs = Parameter(_coeffs)
 
         #initial values grad and up
         if self.n_iv > 0:
             #iv_rhs = np.array([0]*self.n_dim).reshape(self.n_dim,self.n_iv)
             #iv_rhs = torch.zeros(1,self.coord_dims[1] + 2*self.coord_dims[0], dtype=dtype)
-            iv_rhs = torch.randn(1,2*self.coord_dims[1] + 2*self.coord_dims[0], dtype=dtype)
+            #iv_rhs = torch.randn(1,2*self.coord_dims[1] + 2*self.coord_dims[0], dtype=dtype)
+            iv_rhs = torch.randn(1,self.coord_dims[0] + self.coord_dims[1], dtype=dtype)
+            #iv_rhs = torch.randn(1,self.coord_dims[0], dtype=dtype)
             #iv_rhs = torch.randn(1,self.coord_dims[1] + self.coord_dims[0], dtype=dtype)
             self.iv_rhs = Parameter(iv_rhs)
             #self.iv_rhs = (iv_rhs)
         else:
-            self.iv_rhs = None
+            #self.iv_rhs = None
+            self.iv_rhs = torch.tensor([])
 
-        _rhs = np.array([1] * self.pde.grid_size)
+        _rhs = np.array([0] * self.pde.grid_size)
         #_rhs = np.array([0])
         #_rhs = torch.tensor(_rhs, dtype=dtype, device=self.device).reshape(1,1).repeat(self.bs, self.pde.grid_size)
         _rhs = torch.tensor(_rhs, dtype=dtype, device=self.device)#.reshape(1,1).repeat(self.bs, self.pde.grid_size)
@@ -222,8 +226,8 @@ class Sine(nn.Module):
         steps1 = self.steps1.type_as(coeffs)
         #steps0 = self.steps0
         #steps1 = self.steps1
-        steps0 = torch.sigmoid(steps0)#.clip(min=0.005, max=0.5)
-        steps1 = torch.sigmoid(steps1)#.clip(min=0.005, max=0.5)
+        steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.2)
+        steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.2)
         #print(steps0)
         #print(steps1)
         #steps = steps.repeat(self.bs,1, 1)#.double()
@@ -234,8 +238,10 @@ class Sine(nn.Module):
 
         u0,u,eps = self.pde(coeffs, rhs, iv_rhs, steps_list)
 
+        #print(eps)
 
-        return eps, u0,_coeffs#, u1,u2,steps
+
+        return eps.max(), u0,_coeffs#, u1,u2,steps
 
 method = Method()
 dataset = SineDataset(end=method.model.end, coord_dims=method.model.coord_dims)

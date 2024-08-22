@@ -218,7 +218,7 @@ class PDEINDLayerEPS(nn.Module):
         #eps = x[:,0]
 
         #print(x)
-        eps = x[:, self.pde.var_set.num_vars:].abs().max(dim=1)[0]
+        eps = x[:, self.pde.var_set.num_vars:].abs()#.max(dim=1)[0]
 
         #shape: batch, grid, order
         u = self.pde.get_solution_reshaped(x)
