@@ -114,7 +114,7 @@ class Sine(nn.Module):
         #self.end = 500* self.step_size
         self.end =1
         #kself.n_step = int(self.end /self.step_size)
-        self.order = 2
+        self.order = 1
         #state dimension
         self.n_dim = 1
         self.bs = bs
@@ -123,11 +123,12 @@ class Sine(nn.Module):
         dtype = torch.float64
         #self.coord_dims = (64,32)
         self.coord_dims = (10,15)
+        #self.coord_dims = (32,32)
         #self.coord_dims = (10,10)
         #self.coord_dims = (64,64)
         #self.coord_dims = (64,32)
         self.n_iv = 1
-        self.iv_list = [(0,0), (1,2)]
+        self.iv_list = [(0,1), (1,0)]
         #self.iv_list = [(1,0), (0,1)]
         #self.iv_list = [(0,0), (1,0)]
         #self.iv_list = [(0,0), (0,1),(1,0)]
