@@ -257,8 +257,8 @@ class QPVariableSet():
         
 
         if order ==2:
-            l =  l0 + l1 + l12 + l2
-            repr = r0+r1+r12+r2
+            l =  l0 + l1 + l12 #+ l2
+            repr = r0+r1+r12#+r2
             #return (),l)
             self.mi_list = l
             self.mi_list_repr = repr
@@ -553,7 +553,7 @@ class PDESYSLP(nn.Module):
 
             #TODO check order scale
             #diff between maximum number of taylor terms (order+1) and current terms
-            order_diff = self.order+1- len(mi_index_list)+4
+            order_diff =6 # self.order+1- len(mi_index_list)
             for _j,ts_mi_index in enumerate(mi_index_list):
                 j = _j +order_diff
                 #h = self.step_size**(j)
@@ -581,6 +581,7 @@ class PDESYSLP(nn.Module):
             
             if forward:
                 h_pow_i = self.step_size**(order_diff)
+                #h_pow_i = self.step_size**(4)
                 val_list.append(-h_pow_i)
 
                 self.tc_list_append(coord, order_diff, -1, forward=forward)
@@ -589,6 +590,7 @@ class PDESYSLP(nn.Module):
                 #neg sign is used with all steps in the backward approximation when filling in during training
                 #denom corrects the sign
                 h_pow_i = (-self.step_size)**(order_diff)
+                #h_pow_i = (-self.step_size)**(4)
                 d = (-1)**(order_diff)
                 d = -d
 
@@ -1137,6 +1139,7 @@ class PDESYSLP(nn.Module):
         G = torch.sparse_coo_tensor(derivative_indices, derivative_values, size=self.derivative_A.shape, dtype=self.dtype)
 
         return G
+
 
     def fill_block_constraints_torch(self, eq_A, eq_rhs, iv_rhs, derivative_A):
         self.initial_A = self.initial_A.type_as(derivative_A)

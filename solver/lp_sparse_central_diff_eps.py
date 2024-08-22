@@ -737,6 +737,7 @@ class ODESYSLP(nn.Module):
 
 
         built_values = torch.cat([fv,cv, bv], dim=-1)
+        #built_values = torch.cat([cv], dim=-1)
         #built_values = torch.cat([fv,cv], dim=-1)
         #built_values = torch.cat([fv,bv], dim=-1)
 

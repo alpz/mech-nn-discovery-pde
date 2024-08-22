@@ -58,7 +58,7 @@ class SineDataModule(pl.LightningDataModule):
 class Method(pl.LightningModule):
     def __init__(self):
         super().__init__()
-        self.learning_rate = 0.01
+        self.learning_rate = 0.05
         self.model = Sine(device=self.device)
         self.model = self.model.double()
         
@@ -114,7 +114,7 @@ class Sine(nn.Module):
         #self.end = 500* self.step_size
         self.end =1
         #kself.n_step = int(self.end /self.step_size)
-        self.order = 1
+        self.order = 2
         #state dimension
         self.n_dim = 1
         self.bs = bs
@@ -128,7 +128,7 @@ class Sine(nn.Module):
         #self.coord_dims = (64,64)
         #self.coord_dims = (64,32)
         self.n_iv = 1
-        self.iv_list = [(0,1), (1,0)]
+        self.iv_list = [(0,1), (1,0), (1,2), (0,3)]
         #self.iv_list = [(1,0), (0,1)]
         #self.iv_list = [(0,0), (1,0)]
         #self.iv_list = [(0,0), (0,1),(1,0)]
@@ -141,7 +141,9 @@ class Sine(nn.Module):
         #_coeffs = torch.randn((self.n_dim, self.pde.grid_size, self.pde.n_orders), dtype=dtype)
         #_coeffs = torch.rand((self.n_dim, 1, self.pde.n_orders), dtype=dtype)
         _coeffs = torch.rand((self.n_dim, 1, self.pde.n_orders), dtype=dtype)
+        #_coeffs = torch.rand((self.n_dim, 1, 256), dtype=dtype)
         #_coeffs = torch.randn((self.n_dim, self.pde.grid_size, self.pde.n_orders), dtype=dtype)
+        #_coeffs = torch.randn((self.n_dim, self.pde.grid_size, 256), dtype=dtype)
         self.coeffs = Parameter(_coeffs)
 
         #initial values grad and up
@@ -149,7 +151,7 @@ class Sine(nn.Module):
             #iv_rhs = np.array([0]*self.n_dim).reshape(self.n_dim,self.n_iv)
             #iv_rhs = torch.zeros(1,self.coord_dims[1] + 2*self.coord_dims[0], dtype=dtype)
             #iv_rhs = torch.randn(1,2*self.coord_dims[1] + 2*self.coord_dims[0], dtype=dtype)
-            iv_rhs = torch.randn(1,self.coord_dims[0] + self.coord_dims[1], dtype=dtype)
+            iv_rhs = torch.randn(1,2*self.coord_dims[0] + 2*self.coord_dims[1], dtype=dtype)
             #iv_rhs = torch.randn(1,self.coord_dims[0], dtype=dtype)
             #iv_rhs = torch.randn(1,self.coord_dims[1] + self.coord_dims[0], dtype=dtype)
             self.iv_rhs = Parameter(iv_rhs)
@@ -170,12 +172,12 @@ class Sine(nn.Module):
         #self.steps0 = torch.logit(self.step_size*torch.ones(1,self.pde.step_grid_shape[0][0],1))
         self.steps0 = torch.logit(self.step_size*torch.ones(1,self.coord_dims[0]-1))
         #self.steps0 = torch.logit(self.step_size*torch.ones(1,1,1))
-        self.steps0 = nn.Parameter(self.steps0)
+        #self.steps0 = nn.Parameter(self.steps0)
 
         self.steps1 = torch.logit(self.step_size*torch.ones(1,self.coord_dims[1]-1))
         #self.steps1 = torch.logit(self.step_size*torch.ones(1,*self.pde.step_grid_shape[1]))
         #self.steps1 = torch.logit(self.step_size*torch.ones(1,1,1))
-        self.steps1 = nn.Parameter(self.steps1)
+        #self.steps1 = nn.Parameter(self.steps1)
 
         self.cf_nn = nn.Sequential(
             nn.Linear(256,256),
@@ -183,7 +185,7 @@ class Sine(nn.Module):
             nn.ReLU(),
             nn.Linear(256,256),
             nn.ReLU(),
-            nn.Linear(256,6),
+            nn.Linear(256,self.pde.n_orders),
             #nn.Tanh()
         )
 

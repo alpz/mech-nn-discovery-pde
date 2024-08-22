@@ -14,10 +14,12 @@ from config import ODEConfig, SolverType
 
 if ODEConfig.linear_solver == SolverType.DENSE_CHOLESKY:
     from solver.qp_primal_direct_batched_sparse_sys import QPFunction as QPFunctionSys
-if ODEConfig.linear_solver == SolverType.SPARSE_INDIRECT_BLOCK_CG:
+elif ODEConfig.linear_solver == SolverType.SPARSE_INDIRECT_BLOCK_CG:
     from solver.qp_primal_indirect_batched_block_sparse_sys import QPFunction as QPFunctionSys
-
-from solver.qp_dual_indirect_sparse import QPFunction as QPFunctionSysEPS
+elif ODEConfig.linear_solver == SolverType.DENSE_CHOLESKY_DUAL:
+    from solver.qp_dual_dense import QPFunction as QPFunctionSysEPS
+else:
+    from solver.qp_dual_indirect_sparse import QPFunction as QPFunctionSysEPS
 from torch.autograd import gradcheck
 
 
