@@ -391,7 +391,7 @@ class PDESYSLP(nn.Module):
     def get_solution_reshaped(self, x):
         """remove eps and reshape solution"""
         #x = x[:, 1:]
-        x = x[:, :self.num_vars]
+        x = x[:, :self.var_set.num_vars]
         x = x.reshape(-1, *self.var_set.multi_index_shape)
 
         #x = x.reshape(x.shape[0], -1)
@@ -618,7 +618,6 @@ class PDESYSLP(nn.Module):
                 self._add_forward_backward_constraint(coord, grid_index, forward=False)
 
     def _add_central_constraint(self, coord, grid_index):
-        print('central coord ', coord, grid_index)
         act_mi_index_count = 0
         #get maximal order indices
         #for mi_index in self.var_set.maximal_mi_indices:
@@ -701,66 +700,66 @@ class PDESYSLP(nn.Module):
                     self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Initial)
         return
 
-        #build constraint for t=0
-        t0_dims = (1,) + self.coord_dims[1:]
-        t0_size  = np.prod(t0_dims)
-        t0_grid = np.indices(t0_dims).reshape(self.n_coord, t0_size).transpose(1,0)
-        self.t0_grid_size = t0_size
+        ##build constraint for t=0
+        #t0_dims = (1,) + self.coord_dims[1:]
+        #t0_size  = np.prod(t0_dims)
+        #t0_grid = np.indices(t0_dims).reshape(self.n_coord, t0_size).transpose(1,0)
+        #self.t0_grid_size = t0_size
 
-        #u(t=0) = ..
-        for grid_index in t0_grid:
-            for iv in range(1):
-                var_list = []
-                val_list = []
-                #add initial function values
-                mi_index = 0
-                var_list.append((grid_index, mi_index))
-                val_list.append(1)
-                self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Initial)
+        ##u(t=0) = ..
+        #for grid_index in t0_grid:
+        #    for iv in range(1):
+        #        var_list = []
+        #        val_list = []
+        #        #add initial function values
+        #        mi_index = 0
+        #        var_list.append((grid_index, mi_index))
+        #        val_list.append(1)
+        #        self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Initial)
 
-        if self.order == 1:
-            return
+        #if self.order == 1:
+        #    return
 
-        #u_t(t=0) = ..
-        for grid_index in t0_grid:
-            for iv in range(1):
-                var_list = []
-                val_list = []
-                #add initial function values
-                mi_index = 1
-                var_list.append((grid_index, mi_index))
-                val_list.append(1)
-                self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Initial)
-
-
-
-        x0_dims = self.coord_dims[:1] + (1,)
-        x0_size  = np.prod(x0_dims)
-        x0_grid = np.indices(x0_dims).reshape(self.n_coord, x0_size).transpose(1,0)
-        self.x0_grid_size = x0_size
+        ##u_t(t=0) = ..
+        #for grid_index in t0_grid:
+        #    for iv in range(1):
+        #        var_list = []
+        #        val_list = []
+        #        #add initial function values
+        #        mi_index = 1
+        #        var_list.append((grid_index, mi_index))
+        #        val_list.append(1)
+        #        self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Initial)
 
 
-        ##u(x=0) = ..
-        for grid_index in x0_grid:
-            for iv in range(1):
-                var_list = []
-                val_list = []
-                #add initial function values
-                mi_index = 0
-                var_list.append((grid_index, mi_index))
-                val_list.append(1)
-                self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Initial)
 
-        ##u(x=0) = ..
-        for grid_index in x0_grid:
-            for iv in range(1):
-                var_list = []
-                val_list = []
-                #add initial function values
-                mi_index = 2
-                var_list.append((grid_index, mi_index))
-                val_list.append(1)
-                self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Initial)
+        #x0_dims = self.coord_dims[:1] + (1,)
+        #x0_size  = np.prod(x0_dims)
+        #x0_grid = np.indices(x0_dims).reshape(self.n_coord, x0_size).transpose(1,0)
+        #self.x0_grid_size = x0_size
+
+
+        ###u(x=0) = ..
+        #for grid_index in x0_grid:
+        #    for iv in range(1):
+        #        var_list = []
+        #        val_list = []
+        #        #add initial function values
+        #        mi_index = 0
+        #        var_list.append((grid_index, mi_index))
+        #        val_list.append(1)
+        #        self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Initial)
+
+        ###u(x=0) = ..
+        #for grid_index in x0_grid:
+        #    for iv in range(1):
+        #        var_list = []
+        #        val_list = []
+        #        #add initial function values
+        #        mi_index = 2
+        #        var_list.append((grid_index, mi_index))
+        #        val_list.append(1)
+        #        self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Initial)
         
 
 
@@ -803,6 +802,7 @@ class PDESYSLP(nn.Module):
 
         full_A = torch.cat([eq_A, initial_A, derivative_A], dim=0)
 
+        #print('first ', eq_A.shape, initial_A.shape, derivative_A.shape)
         self.num_constraints = full_A.shape[0]
         self.build_block_diag(full_A)
 
@@ -870,8 +870,8 @@ class PDESYSLP(nn.Module):
         row_sorted = indices[:, indices[0,:].argsort()]
         column_sorted = indices[:, indices[1,:].argsort()]
 
-        _, row_counts = np.unique(row_sorted[0], return_counts=True)
-        _, column_counts = np.unique(column_sorted[1], return_counts=True)
+        #_, row_counts = np.unique(row_sorted[0], return_counts=True)
+        #_, column_counts = np.unique(column_sorted[1], return_counts=True)
 
 
         row_counts = np.bincount(row_sorted[0], minlength=num_constraints)
@@ -1029,7 +1029,6 @@ class PDESYSLP(nn.Module):
         for coord in range(self.n_coord):
             #coeffs shape b, step_grid, num_indices, num_values
             coeffs = self.solve_5pt_central_stencil(coord, steps_list[coord])
-            print('cret ', coeffs.shape)
 
             values_list.append(coeffs) 
 
@@ -1154,7 +1153,8 @@ class PDESYSLP(nn.Module):
         eq_values = eq_values.reshape(-1)
 
         eq_indices = self.eq_A._indices()
-        G = torch.sparse_coo_tensor(eq_indices, eq_values, dtype=self.dtype, device=eq_values.device)
+        #G = torch.sparse_coo_tensor(eq_indices, eq_values, dtype=self.dtype, device=eq_values.device)
+        G = torch.sparse_coo_tensor(eq_indices, eq_values, self.eq_A.shape, dtype=self.dtype, device=eq_values.device, )
 
         return G
     
@@ -1189,8 +1189,18 @@ class PDESYSLP(nn.Module):
         return A_block, rhs
 
 
-    #def fill_constraints_torch(self, eq_values, eq_rhs, iv_rhs, derivative_A):
     def fill_constraints_torch(self, eq_A, eq_rhs, iv_rhs, derivative_A):
+        bs = eq_rhs.shape[0]
+
+        initial_A = self.initial_A.type_as(eq_A)
+        AG = torch.cat([eq_A, initial_A, derivative_A], dim=1)
+        #AG = torch.cat([eq_A, initial_A], dim=1)
+        rhs = torch.cat([eq_rhs, iv_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
+
+        return AG, rhs
+
+    #def fill_constraints_torch(self, eq_values, eq_rhs, iv_rhs, derivative_A):
+    def fill_constraints_torch_old(self, eq_A, eq_rhs, iv_rhs, derivative_A):
         bs = eq_rhs.shape[0]
 
         # (b, *)
@@ -1212,6 +1222,7 @@ class PDESYSLP(nn.Module):
         if self.initial_A is not None:
             initial_A = self.initial_A.type_as(G)
 
+        #print(eq_A.shape, initial_A.shape, G.shape)
         #print(self.constraint_A.shape, initial_A.shape, G.shape, flush=True)
         if self.initial_A is not None:
             self.AG = torch.cat([eq_A, initial_A, G], dim=1)
@@ -1233,40 +1244,32 @@ class PDESYSLP(nn.Module):
     def build_pde(self, coeffs, rhs, iv_rhs, derivative_A):
         self.fill_constraints_torch(coeffs, rhs, iv_rhs, derivative_A)
         #self.fill_constraints_torch_test(coeffs, rhs, iv_rhs, derivative_A)
-    
-    def sparse_grad_derivative_constraint(self, x, y, dense=False):
+
+    def sparse_grad_derivative_constraint(self, _x, _y):
         """ sparse x y' for derivative constraint"""
         #dx = _dx[:,0:n_step].reshape(bs, n_step,1)
         #dA = dx*nu.reshape(bs, 1,num_coeffs)
         #correct x, y shapes
 
-        b = x.shape[0]
+        b = _x.shape[0]
         #copy x across columns. copy y across rows
-        x = x[:, self.num_added_equation_constraints+self.num_added_initial_constraints: self.num_added_equation_constraints+self.num_added_initial_constraints+self.num_added_derivative_constraints]
-        y = y[:, :self.var_set.num_vars]
+        y = _y[:, self.num_added_equation_constraints+self.num_added_initial_constraints: self.num_added_equation_constraints+self.num_added_initial_constraints+self.num_added_derivative_constraints]
+        x = _x[:, :self.var_set.num_vars+self.var_set.num_added_eps_vars]
+
+
+        ####### dense
+        #x = x.reshape(b, 1, -1)
+        #y = y.reshape(b, -1, 1)
+
+        #dA = y*x#.reshape(b, -1, 1)
+        #return dA
+        ##########
 
         x = x.reshape(b,-1)
         y = y.reshape(b,-1)
 
-        if dense:
-            x = x.unsqueeze(2)
-            y = y.unsqueeze(1)
-            outer = x*y
-            return outer
-
-        #x = x.reshape(b, -1, 1)
-        #y = y.reshape(b, 1, -1)
-
-        #dA = x*y.reshape(b, 1,-1)
-        #return dA
-
-
         self.derivative_row_counts = self.derivative_row_counts.to(x.device)
         self.derivative_column_counts = self.derivative_column_counts.to(x.device)
-
-        #x_repeat = torch.repeat_interleave(x, self.derivative_row_counts, dim=-1)
-        #y_repeat = torch.repeat_interleave(y, self.derivative_column_counts, dim=-1)
-
 
         y_repeat = torch.repeat_interleave(y, self.derivative_row_counts, dim=-1)
         x_repeat = torch.repeat_interleave(x, self.derivative_column_counts, dim=-1)
@@ -1296,18 +1299,19 @@ class PDESYSLP(nn.Module):
 
         b = x.shape[0]
         #copy x across columns. copy y across rows
-        x = x[:, 0:self.num_added_equation_constraints]
-        #y = y[:, 1:self.var_set.num_vars]
-        y = y[:, 0:self.var_set.num_vars]
+        y = y[:, 0:self.num_added_equation_constraints]
+        #y = y[:, 1:self.num_vars]
+        #_x = x[:, 0:self.num_vars+self.num_added_eps_vars]
+        #x = x[:, 0:self.num_vars+self.n_step]
+        x = x[:, 0:self.var_set.num_vars]
 
-        #y = y[:, 0:self.num_added_equation_constraints]
-        #x = x[:, 0:self.num_vars]
+        #######dense
+        #_x = _x.reshape(b, 1, -1)
+        #y = y.reshape(b, -1, 1)
 
-        #x = x.reshape(b, -1, 1)
-        #y = y.reshape(b, 1, -1)
-
-        #dA = x*y.reshape(b, 1,-1)
-        #return dA
+        #dA_dense = y*_x#.reshape(b, -1, 1)
+        #return dA_dense
+        ######3
 
         x = x.reshape(b,-1)
         y = y.reshape(b,-1)
@@ -1315,31 +1319,147 @@ class PDESYSLP(nn.Module):
         self.eq_row_counts = self.eq_row_counts.to(x.device)
         self.eq_column_counts = self.eq_column_counts.to(x.device)
 
-        #x_repeat = torch.repeat_interleave(x, self.eq_row_counts, dim=-1)
-        #y_repeat = torch.repeat_interleave(y, self.eq_column_counts, dim=-1)
-
         y_repeat = torch.repeat_interleave(y, self.eq_row_counts, dim=-1)
         x_repeat = x #torch.repeat_interleave(x, self.eq_column_counts, dim=-1)
 
         x_repeat = x_repeat.reshape(-1)
         y_repeat = y_repeat.reshape(-1)
 
+        total_vars = self.var_set.num_vars + self.var_set.num_added_eps_vars
+
         X = torch.sparse_coo_tensor(self.eq_row_sorted, x_repeat, 
                                        #size=(self.num_added_derivative_constraints, self.num_vars), 
+                                       size=(self.bs, self.num_added_equation_constraints, 
+                                            total_vars),
                                        dtype=self.dtype, device=x.device)
 
         Y = torch.sparse_coo_tensor(self.eq_column_sorted, y_repeat, 
                                        #size=(self.num_added_derivative_constraints, self.num_vars), 
-                                       dtype=self.dtype, device=x.device)
+                                       size=(self.bs, self.num_added_equation_constraints, 
+                                            total_vars),
+                                       dtype=self.dtype, device=y.device)
 
+        #ones = torch.sparse_coo_tensor(self.eq_row_sorted, torch.ones_like(x_repeat), 
+        #                               #size=(self.num_added_derivative_constraints, self.num_vars), 
+        #                               size=(self.bs, self.num_added_equation_constraints, 
+        #                                    total_vars),
+        #                               dtype=self.dtype, device=x.device)
+        #ones = ones.to_dense()
+        #dA = dA_dense*ones
+        ##return dA
+
+
+        dD = Y*X
         #ipdb.set_trace()
 
-        dD = X*Y
-
         return dD
+    
+    #def sparse_grad_derivative_constraint(self, x, y, dense=False):
+    #    """ sparse x y' for derivative constraint"""
+    #    #dx = _dx[:,0:n_step].reshape(bs, n_step,1)
+    #    #dA = dx*nu.reshape(bs, 1,num_coeffs)
+    #    #correct x, y shapes
+
+    #    b = x.shape[0]
+    #    #copy x across columns. copy y across rows
+    #    x = x[:, self.num_added_equation_constraints+self.num_added_initial_constraints: self.num_added_equation_constraints+self.num_added_initial_constraints+self.num_added_derivative_constraints]
+    #    y = y[:, :self.var_set.num_vars]
+
+    #    x = x.reshape(b,-1)
+    #    y = y.reshape(b,-1)
+
+    #    if dense:
+    #        x = x.unsqueeze(2)
+    #        y = y.unsqueeze(1)
+    #        outer = x*y
+    #        return outer
+
+    #    #x = x.reshape(b, -1, 1)
+    #    #y = y.reshape(b, 1, -1)
+
+    #    #dA = x*y.reshape(b, 1,-1)
+    #    #return dA
+
+
+    #    self.derivative_row_counts = self.derivative_row_counts.to(x.device)
+    #    self.derivative_column_counts = self.derivative_column_counts.to(x.device)
+
+    #    #x_repeat = torch.repeat_interleave(x, self.derivative_row_counts, dim=-1)
+    #    #y_repeat = torch.repeat_interleave(y, self.derivative_column_counts, dim=-1)
+
+
+    #    x_repeat = torch.repeat_interleave(x, self.derivative_column_counts, dim=-1)
+    #    y_repeat = torch.repeat_interleave(y, self.derivative_row_counts, dim=-1)
+
+    #    x_repeat = x_repeat.reshape(-1)
+    #    y_repeat = y_repeat.reshape(-1)
+
+    #    X = torch.sparse_coo_tensor(self.derivative_row_sorted, x_repeat, 
+    #                                   #size=(self.num_added_derivative_constraints, self.num_vars), 
+    #                                   dtype=self.dtype, device=x.device)
+
+    #    Y = torch.sparse_coo_tensor(self.derivative_column_sorted, y_repeat, 
+    #                                   #size=(self.num_added_derivative_constraints, self.num_vars), 
+    #                                   dtype=self.dtype, device=x.device)
+
+    #    #ipdb.set_trace()
+
+    #    dD = X*Y
+
+    #    return dD
+
+    #def sparse_grad_eq_constraint(self, x, y):
+    #    """ sparse x y' for eq constraint"""
+    #    #dx = _dx[:,0:n_step].reshape(bs, n_step,1)
+    #    #dA = dx*nu.reshape(bs, 1,num_coeffs)
+    #    #correct x, y shapes
+
+    #    b = x.shape[0]
+    #    #copy x across columns. copy y across rows
+    #    x = x[:, 0:self.num_added_equation_constraints]
+    #    #y = y[:, 1:self.var_set.num_vars]
+    #    y = y[:, 0:self.var_set.num_vars]
+
+    #    #y = y[:, 0:self.num_added_equation_constraints]
+    #    #x = x[:, 0:self.num_vars]
+
+    #    #x = x.reshape(b, -1, 1)
+    #    #y = y.reshape(b, 1, -1)
+
+    #    #dA = x*y.reshape(b, 1,-1)
+    #    #return dA
+
+    #    x = x.reshape(b,-1)
+    #    y = y.reshape(b,-1)
+
+    #    self.eq_row_counts = self.eq_row_counts.to(x.device)
+    #    self.eq_column_counts = self.eq_column_counts.to(x.device)
+
+    #    #x_repeat = torch.repeat_interleave(x, self.eq_row_counts, dim=-1)
+    #    #y_repeat = torch.repeat_interleave(y, self.eq_column_counts, dim=-1)
+
+    #    y_repeat = torch.repeat_interleave(y, self.eq_row_counts, dim=-1)
+    #    x_repeat = x #torch.repeat_interleave(x, self.eq_column_counts, dim=-1)
+
+    #    x_repeat = x_repeat.reshape(-1)
+    #    y_repeat = y_repeat.reshape(-1)
+
+    #    X = torch.sparse_coo_tensor(self.eq_row_sorted, x_repeat, 
+    #                                   #size=(self.num_added_derivative_constraints, self.num_vars), 
+    #                                   dtype=self.dtype, device=x.device)
+
+    #    Y = torch.sparse_coo_tensor(self.eq_column_sorted, y_repeat, 
+    #                                   #size=(self.num_added_derivative_constraints, self.num_vars), 
+    #                                   dtype=self.dtype, device=x.device)
+
+    #    #ipdb.set_trace()
+
+    #    dD = X*Y
+
+    #    return dD
 
 def test_mat_eq():
-    coord_dims = (4,5)
+    coord_dims = (6,5,8,9)
     bs = 1
     pde = PDESYSLP(bs=bs, coord_dims=coord_dims, n_iv=1, step_size=0.25, order=2, n_iv_steps=1, 
                 step_list = None, build=False)
@@ -1352,8 +1472,10 @@ def test_mat_eq():
 
     steps0 = 0.25*torch.ones(bs, coord_dims[0]-1)
     steps1 = 0.25*torch.ones(bs, coord_dims[1]-1)
+    steps2 = 0.25*torch.ones(bs, coord_dims[2]-1)
+    steps3 = 0.25*torch.ones(bs, coord_dims[3]-1)
 
-    steps_list = [steps0, steps1]
+    steps_list = [steps0, steps1, steps2, steps3]
     #pde.tc_tensor()
     derivative_A = pde.derivative_A#.todense()
 
@@ -1454,26 +1576,26 @@ def test_grid():
     print(step1.reshape(-1))
 
 def test():
-        n_step = 10
-        dim =1
-        #steps = 0.1*torch.ones(1,n_step-1,dim)
-        _steps = 0.01+ np.random.random(n_step-1)
-        steps = torch.tensor(_steps).reshape(1,n_step-1,1)
+    n_step = 10
+    dim =1
+    #steps = 0.1*torch.ones(1,n_step-1,dim)
+    _steps = 0.01+ np.random.random(n_step-1)
+    steps = torch.tensor(_steps).reshape(1,n_step-1,1)
 
-        ode = ODESYSLP(bs=1, n_dim=dim, n_equations=1, n_auxiliary=0, n_step=n_step, step_size=0.1, order=2, n_iv=1, device='cpu', step_list=_steps)
+    ode = ODESYSLP(bs=1, n_dim=dim, n_equations=1, n_auxiliary=0, n_step=n_step, step_size=0.1, order=2, n_iv=1, device='cpu', step_list=_steps)
 
-        derivative_constraints,deriv_values = ode.build_derivative_tensor(steps)
-        #eq_constraints = self.ode.build_equation_tensor(coeffs)
+    derivative_constraints,deriv_values = ode.build_derivative_tensor(steps)
+    #eq_constraints = self.ode.build_equation_tensor(coeffs)
 
-        fix_values = ode.value_dict[ConstraintType.Derivative]
+    fix_values = ode.value_dict[ConstraintType.Derivative]
 
-        print('A',deriv_values)
-        print('B', fix_values)
+    print('A',deriv_values)
+    print('B', fix_values)
 
-        #print(ode.value_dict[ConstraintType.Derivative])
-        diff = deriv_values - torch.tensor(fix_values)
-        print(diff)
-        print(diff.mean())
+    #print(ode.value_dict[ConstraintType.Derivative])
+    diff = deriv_values - torch.tensor(fix_values)
+    print(diff)
+    print(diff.mean())
 
 if __name__=="__main__":
     #ODESYSLP().ode()
