@@ -172,11 +172,11 @@ def test_primal_equality_cg():
     steps = torch.tensor(steps)
 
     #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
-    #_coeffs = np.array([[0,1,0,1]], dtype='float32')
+    _coeffs = np.array([[1,0,1]], dtype='float32')
 
-    _coeffs = np.array([[10,0.0,1]], dtype='float64')
+    #_coeffs = np.array([[10,0.0,1]], dtype='float64')
     #_coeffs = np.array([[20,0.1,0.1]], dtype='float64')
-    #_coeffs = np.array([[10,0.1,0.1]], dtype='float64')
+    _coeffs = np.array([[10,0.1,0.1]], dtype='float64')
     #_coeffs = np.array([[-0.1,0.1, 10]], dtype='float64')
     _coeffs = np.repeat(_coeffs, n_step, axis=0)
     _coeffs = torch.tensor(_coeffs)
@@ -557,8 +557,8 @@ def ode_solve():
 
 # %%
 #eps, u0, u1 = test_osqp_dual_relaxation()
-#eps, u0, u1 = test_primal_equality_cg()
-eps, u0, u1 = test_primal_equality_cg_torch()
+eps, u0, u1 = test_primal_equality_cg()
+#eps, u0, u1 = test_primal_equality_cg_torch()
 #eps, u0, u1 = test_osqp()
 #eps, u0, u1 = test_py()
 #res = ode_solve()

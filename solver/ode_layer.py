@@ -270,8 +270,8 @@ class ODEINDLayerTest(nn.Module):
         #u2 = u[:,:,:,2]
         
         #return u0, u1, u2, eps, steps, eq_constraints, self.ode.initial_A,  derivative_constraints, self.ode.eps_A 
-        #return None, None, None, None, None, eq_constraints, self.ode.initial_A,  derivative_constraints, self.ode.eps_A 
-        return None, None, None, None, None,  At, ub
+        return None, None, None, None, None, eq_A, self.ode.initial_A,  derivative_A,  None
+        #return None, None, None, None, None,  At, ub
 
 
 

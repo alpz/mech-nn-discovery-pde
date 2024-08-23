@@ -35,11 +35,11 @@ def test_primal_equality_cg_torch():
     steps = torch.tensor(steps)
 
     #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
-    _coeffs = np.array([[1,0,1]], dtype='float64')
+    #_coeffs = np.array([[1,0,1]], dtype='float64')
 
     #_coeffs = np.array([[10,0.0,1]], dtype='float64')
     #_coeffs = np.array([[2,0.1,0.1]], dtype='float64')
-    #_coeffs = np.array([[10,0.1,0.1]], dtype='float64')
+    _coeffs = np.array([[10,0.1,0.1]], dtype='float64')
     #_coeffs = np.array([[-0.1,0.1, 10]], dtype='float64')
     _coeffs = np.repeat(_coeffs, n_step, axis=0)
     _coeffs = torch.tensor(_coeffs)
@@ -90,7 +90,7 @@ def test_primal_equality_cg_torch():
     rhs = torch.bmm(A, rhs.unsqueeze(2))
     rhs = rhs.squeeze(2) + l
 
-    #lam,info = SPSLG.cg(pdmat, pd_rhs)
+    #lam,info = SPSLG.cg(pdmat, pd_rhs, callback=nonlocal_iterate)
     lam, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=15000)
     print('torch cg info ', info)
     #lam,info = SPSLG.lgmres(pdmat, pd_rhs)

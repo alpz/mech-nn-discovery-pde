@@ -553,7 +553,7 @@ class PDESYSLP(nn.Module):
 
             #TODO check order scale
             #diff between maximum number of taylor terms (order+1) and current terms
-            order_diff =2 # self.order+1- len(mi_index_list)
+            order_diff =4 # self.order+1- len(mi_index_list)
             for _j,ts_mi_index in enumerate(mi_index_list):
                 j = _j +order_diff
                 #h = self.step_size**(j)
@@ -958,7 +958,8 @@ class PDESYSLP(nn.Module):
         #b, step, var, 5
         matrix = torch.stack([left2, left1, center, right1, right2], dim=-1)
         ones = torch.ones_like(matrix)
-        matrix = torch.stack([ones, matrix, matrix.pow(2), matrix.pow(3), matrix.pow(4)], dim=-2)
+        mp2 = matrix.pow(2)
+        matrix = torch.stack([ones, matrix, mp2 , matrix*mp2, mp2*mp2], dim=-2)
 
         #shape 5,2
         b = torch.tensor([[0,1,0,0,0], [0,0,2,0,0]]).type_as(matrix).T
@@ -973,8 +974,8 @@ class PDESYSLP(nn.Module):
 
         #values_list.append(coeffs1)
         #if self.n_order > 2:
-        coeffs2 = torch.cat([-ones, coeffs[...,1]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
         #coeffs2 = torch.cat([-ones, coeffs[...,1]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)
+        coeffs2 = torch.cat([-ones, coeffs[...,1]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
         #coeffs2 = torch.cat([-ones, coeffs[...,1], -ones], dim=-1)
             #coeffs2 = torch.cat([-ones, coeffs[...,1], -ones], dim=-1)
         #values_list.append(coeffs2)
