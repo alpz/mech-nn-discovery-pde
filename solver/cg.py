@@ -187,12 +187,13 @@ def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None,
     #matvec = A.matvec
     #psolve = M.matvec
 
-    n = A.shape[0]
+    bs = A.shape[0]
+    n = A.shape[1]
     if n == 0:
         #return cupy.empty_like(b), 0
         return torch.empty_like(b), 0
     #b_norm = cupy.linalg.norm(b)
-    b_norm = torch.linalg.norm(b)
+    b_norm = torch.linalg.norm(b, dim=1)
     if b_norm == 0:
         return b, 0
     #if atol is None:
@@ -212,16 +213,17 @@ def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None,
         callback_type = None
 
     #V = torch.empty((n, restart), dtype=A.dtype, order='F')
-    V = torch.empty((n, restart), dtype=A.dtype)
+    V = torch.empty((bs, n, restart), dtype=A.dtype)
     #H = torch.zeros((restart+1, restart), dtype=A.dtype, order='F')
-    H = torch.zeros((restart+1, restart), dtype=A.dtype)
+    H = torch.zeros((bs, restart+1, restart), dtype=A.dtype)
     #e = np.zeros((restart+1,), dtype=A.dtype)
-    e = torch.zeros((restart+1,), dtype=A.dtype)
+    e = torch.zeros((bs, restart+1,), dtype=A.dtype)
 
     def compute_hu(VV, u, j):
-        S = VV[:, :j+1]
-        h = torch.mm(S.T, u.unsqueeze(1)).squeeze(1)
-        u = u - torch.mm(S, h.unsqueeze(1)).squeeze(1)
+        S = VV[:, :, :j+1]
+        #h = torch.mm(S.T, u.unsqueeze(1)).squeeze(1)
+        h = torch.bmm(S.transpose(1,2), u.unsqueeze(2)).squeeze(2)
+        u = u - torch.bmm(S, h.unsqueeze(2)).squeeze(2)
         return h, u
 
     #compute_hu = _make_compute_hu(V)
@@ -231,40 +233,45 @@ def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None,
         #mx = psolve(x)
         mx = x
         #r = b - matvec(mx)
-        r = b - torch.mm(A, mx.unsqueeze(1)).squeeze(1)
+        #r = b - torch.mm(A, mx.unsqueeze(1)).squeeze(1)
+        #print(A, mx.shape)
+        r = b - torch.bmm(A, mx.unsqueeze(2)).squeeze(2)
         #r_norm = cublas.nrm2(r)
-        r_norm = torch.linalg.norm(r)
+        r_norm = torch.linalg.norm(r, dim=1)
         if callback_type == 'x':
             callback(mx)
         elif callback_type == 'pr_norm' and iters > 0:
             callback(r_norm / b_norm)
-        if r_norm <= atol or iters >= maxiter:
-            print('breaking', r_norm, atol, iters, maxiter)
+        #if r_norm <= atol or iters >= maxiter:
+        if (r_norm <= atol).all() or iters >= maxiter:
             break
         v = r / r_norm
-        V[:, 0] = v
-        e[0] = r_norm
+        V[:, :, 0] = v
+        e[:, 0] = r_norm
 
         # Arnoldi iteration
         for j in range(restart):
             #z = psolve(v)
             z = v #psolve(v)
             #u = matvec(z)
-            u = torch.mm(A, z.unsqueeze(1)).squeeze(1)
-            H[:j+1, j], u = compute_hu(V, u, j)
+            #u = torch.mm(A, z.unsqueeze(1)).squeeze(1)
+            u = torch.bmm(A, z.unsqueeze(2)).squeeze(2)
+            #H[:j+1, j], u = compute_hu(V, u, j)
+            H[:, :j+1, j], u = compute_hu(V, u, j)
             #cublas.nrm2(u, out=H[j+1, j])
-            torch.linalg.norm(u, out=H[j+1, j])
+            torch.linalg.norm(u, out=H[:, j+1, j])
             if j+1 < restart:
-                v = u / H[j+1, j]
-                V[:, j+1] = v
+                v = u / H[:, j+1, j]
+                V[:, :, j+1] = v
 
         # Note: The least-square solution to equation Hy = e is computed on CPU
         # because it is faster if the matrix size is small.
         #ret = numpy.linalg.lstsq(cupy.asnumpy(H), e)
-        ret = torch.linalg.lstsq(H, e.unsqueeze(1))
+        ret = torch.linalg.lstsq(H, e.unsqueeze(2))
         #y = cupy.array(ret[0])
-        y = (ret[0].squeeze(1))
-        x += V @ y
+        y = (ret[0].squeeze(2))
+        #x += V @ y
+        x = x + torch.bmm(V, y.unsqueeze(2)).squeeze(2)
         iters += restart
 
     #info = 0

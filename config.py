@@ -11,7 +11,8 @@ class SolverType(Enum):
 
 
 class ODEConfig:
-    linear_solver = SolverType.DENSE_CHOLESKY_DUAL
+    #linear_solver = SolverType.DENSE_CHOLESKY_DUAL
+    linear_solver = SolverType.SPARSE_INDIRECT_CG
 
 class PDEConfig:
     pde_linear_solver = SolverType.DENSE_CHOLESKY_DUAL

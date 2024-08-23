@@ -27,7 +27,7 @@ def nonlocal_iterate(arr):
 def test_primal_equality_cg_torch():
     step_size = 0.1
     #end = 3*step_size
-    end = 100*step_size
+    end = 300*step_size
     n_step = int(end/step_size)
     order=2
 
@@ -35,11 +35,11 @@ def test_primal_equality_cg_torch():
     steps = torch.tensor(steps)
 
     #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
-    _coeffs = np.array([[1,0,1]], dtype='float64')
+    #_coeffs = np.array([[1,0,1]], dtype='float64')
 
-    #_coeffs = np.array([[10,0.0,1]], dtype='float64')
+    #_coeffs = np.array([[1,0.0,1]], dtype='float64')
     #_coeffs = np.array([[2,0.1,0.1]], dtype='float64')
-    #_coeffs = np.array([[10,0.1,0.1]], dtype='float64')
+    _coeffs = np.array([[10,0.1,0.1]], dtype='float64')
     #_coeffs = np.array([[-0.1,0.1, 10]], dtype='float64')
     _coeffs = np.repeat(_coeffs, n_step, axis=0)
     _coeffs = torch.tensor(_coeffs)
@@ -64,8 +64,8 @@ def test_primal_equality_cg_torch():
     num_eps = ode.num_eps
     num_var = ode.num_var
     u = l
-    P_diag = torch.ones(num_eps)*1e4
-    P_zeros = torch.zeros(num_var) +1e-4
+    P_diag = torch.ones(num_eps)*1e2
+    P_zeros = torch.zeros(num_var) +1e-5
     P_diag = torch.cat([P_zeros, P_diag])
     P_diag_inv = 1/P_diag
 
@@ -90,21 +90,34 @@ def test_primal_equality_cg_torch():
     rhs = torch.bmm(A, rhs.unsqueeze(2))
     rhs = rhs.squeeze(2) + l
 
-    Ad = A.to_dense()[0]
-    Atd = At.to_dense()[0]
-    PAtd = P_diag_inv[0].unsqueeze(1)*Atd
-    APAtd = torch.mm(Ad, PAtd)
-    #lam,info = SPSLG.cg(pdmat, pd_rhs, callback=nonlocal_iterate)
-    G = torch.diag(P_diag)
-    GA = torch.cat([G, Ad], dim=0)
-    Z = torch.zeros((Ad.shape[0], Ad.shape[0])).type_as(G)
-    AtZ = torch.cat([Atd, Z], dim =0)
-    KKT = torch.cat([GA, AtZ], dim =1)
-    R = torch.cat([torch.zeros(G.shape[0]), -rhs[0]])
+    G = torch.sparse.spdiags(P_diag, torch.tensor([0]), (P_diag.shape[0], P_diag.shape[0]), 
+                             layout=torch.sparse_coo)
+    G = G.unsqueeze(0)
+    GA = torch.cat([G, A], dim=1)
+    Z = torch.sparse_coo_tensor(torch.empty([2,0]), [], size=(A.shape[1], A.shape[1]), dtype=A.dtype)
+    Z = Z.unsqueeze(0)
+    print('zshape ', Z.shape)
+
+    AtZ = torch.cat([A.transpose(1,2), Z], dim =1)
+    KKT = torch.cat([GA, AtZ], dim =2)
+
+    print('kkt ', KKT)
+
+    #Ad = A.to_dense()[0]
+    #Atd = At.to_dense()[0]
+    #PAtd = P_diag_inv[0].unsqueeze(1)*Atd
+    #APAtd = torch.mm(Ad, PAtd)
+    ##lam,info = SPSLG.cg(pdmat, pd_rhs, callback=nonlocal_iterate)
+    #G = torch.diag(P_diag)
+    #GA = torch.cat([G, Ad], dim=0)
+    #Z = torch.zeros((Ad.shape[0], Ad.shape[0])).type_as(G)
+    #AtZ = torch.cat([Atd, Z], dim =0)
+    #KKT = torch.cat([GA, AtZ], dim =1)
+    R = torch.cat([torch.zeros(G.shape[1]), -rhs[0]])
     #lam, info = gmres(APAtd, rhs[0], x0=torch.zeros_like(rhs[0]), maxiter=500, restart=40)
-    sol, info = gmres(KKT, R, x0=torch.zeros_like(R), maxiter=1000, restart=1000)
+    sol, info = gmres(KKT, R.unsqueeze(0), x0=torch.zeros_like(R).unsqueeze(0), maxiter=1, restart=1200)
     #sol = sol.unsqueeze(0)
-    sol = -sol
+    sol = -sol.squeeze()
 
     #lam, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=15000)
     print('torch gmres info ', info)
