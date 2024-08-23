@@ -553,7 +553,7 @@ class PDESYSLP(nn.Module):
 
             #TODO check order scale
             #diff between maximum number of taylor terms (order+1) and current terms
-            order_diff =4 # self.order+1- len(mi_index_list)
+            order_diff =4 #4 # self.order+1- len(mi_index_list)
             for _j,ts_mi_index in enumerate(mi_index_list):
                 j = _j +order_diff
                 #h = self.step_size**(j)
@@ -591,7 +591,7 @@ class PDESYSLP(nn.Module):
                 #denom corrects the sign
                 h_pow_i = (-self.step_size)**(order_diff)
                 #h_pow_i = (-self.step_size)**(4)
-                d = (-1)**(order_diff)
+                d = 1 #(-1)**(order_diff)
                 d = -d
 
                 val_list.append(d*h_pow_i)
@@ -1433,7 +1433,7 @@ class PDESYSLP(nn.Module):
     #    return dD
 
 def test_mat_eq():
-    coord_dims = (6,5,8,9)
+    coord_dims = (6,7)
     bs = 1
     pde = PDESYSLP(bs=bs, coord_dims=coord_dims, n_iv=1, step_size=0.25, order=2, n_iv_steps=1, 
                 step_list = None, build=False)
@@ -1446,10 +1446,10 @@ def test_mat_eq():
 
     steps0 = 0.25*torch.ones(bs, coord_dims[0]-1)
     steps1 = 0.25*torch.ones(bs, coord_dims[1]-1)
-    steps2 = 0.25*torch.ones(bs, coord_dims[2]-1)
-    steps3 = 0.25*torch.ones(bs, coord_dims[3]-1)
+    #steps2 = 0.25*torch.ones(bs, coord_dims[2]-1)
+    #steps3 = 0.25*torch.ones(bs, coord_dims[3]-1)
 
-    steps_list = [steps0, steps1, steps2, steps3]
+    steps_list = [steps0, steps1]
     #pde.tc_tensor()
     derivative_A = pde.derivative_A#.todense()
 
@@ -1479,9 +1479,9 @@ def test_mat_eq():
     #print(vf)
     #print(list(zip(vd,vf)))
 
-    #repr = pde.repr_taylor(values = vf, print_row=True)
-    #print(repr)
-    ##print(vf)
+    repr = pde.repr_taylor(values = vf, print_row=True)
+    print(repr)
+    #print(vf)
 
     #print("********")
     #repr = pde.repr_taylor(values = vd, print_row=True)
@@ -1578,6 +1578,6 @@ if __name__=="__main__":
     #test_eq()
     #test_eq2()
     #test_taylor_repr()
-    #test_mat_eq()
+    test_mat_eq()
     #test_grid()
-    test_initial()
+    #test_initial()

@@ -42,7 +42,7 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             num_eps = pde.var_set.num_added_eps_vars
             num_var = pde.var_set.num_vars
             #u = l
-            P_diag = torch.ones(num_eps).type_as(rhs)*1e5
+            P_diag = torch.ones(num_eps).type_as(rhs)*1e3
             P_zeros = torch.zeros(num_var).type_as(rhs) +1e-5
             P_diag = torch.cat([P_zeros, P_diag])
             #P_diag_inv = 1/P_diag
@@ -80,7 +80,7 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             #x0 = torch.cat([xinit, lam_init], dim=1)
             
             #print('kkt ', KKT.shape)
-            sol, info = cg.gmres(KKT, R, x0=torch.zeros_like(R), maxiter=1, restart=600)
+            sol, info = cg.gmres(KKT, R, x0=torch.zeros_like(R), maxiter=1, restart=800)
             #sol, info = cg.gmres(KKT, R, x0=x0, maxiter=1, restart=600)
             print('torch gmres info ', info, sol.shape)
 
