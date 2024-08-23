@@ -182,7 +182,7 @@ def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None,
     .. seealso:: :func:`scipy.sparse.linalg.gmres`
     """
     #A, M, x, b = _make_system(A, M, x0, b)
-    x0 = torch.zeros_like(b)
+    #x0 = torch.zeros_like(b)
     A, M, x, b = A, M, x0, b
     #matvec = A.matvec
     #psolve = M.matvec

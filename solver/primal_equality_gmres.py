@@ -11,7 +11,7 @@ import scipy.sparse.linalg as SPSLG
 from scipy.integrate import odeint
 
 from solver.ode_layer import ODEINDLayerTest#EPS
-from solver.cg import gmres
+from solver.cg import gmres, cg_matvec
 
 import matplotlib.pyplot as plt
 
@@ -95,8 +95,16 @@ def test_primal_equality_cg_torch():
     PAtd = P_diag_inv[0].unsqueeze(1)*Atd
     APAtd = torch.mm(Ad, PAtd)
     #lam,info = SPSLG.cg(pdmat, pd_rhs, callback=nonlocal_iterate)
-    lam, info = gmres(APAtd, rhs[0], maxiter=4000, restart=40)
-    lam = lam.unsqueeze(0)
+    G = torch.diag(P_diag)
+    GA = torch.cat([G, Ad], dim=0)
+    Z = torch.zeros((Ad.shape[0], Ad.shape[0])).type_as(G)
+    AtZ = torch.cat([Atd, Z], dim =0)
+    KKT = torch.cat([GA, AtZ], dim =1)
+    R = torch.cat([torch.zeros(G.shape[0]), -rhs[0]])
+    #lam, info = gmres(APAtd, rhs[0], x0=torch.zeros_like(rhs[0]), maxiter=500, restart=40)
+    sol, info = gmres(KKT, R, x0=torch.zeros_like(R), maxiter=1000, restart=1000)
+    #sol = sol.unsqueeze(0)
+    sol = -sol
 
     #lam, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=15000)
     print('torch gmres info ', info)
@@ -104,14 +112,14 @@ def test_primal_equality_cg_torch():
     #xl = -Pinv_s@(A_s.T@lam -q)
 
     #xl = -Pinv_s@(A_s.T@lam -c)
-    xl = lam.unsqueeze(2)
-    xl = torch.bmm(At, xl)
-    xl = -P_diag_inv*(xl.squeeze(2) - c)
-    #xl = xl.squeeze(2)
-    xl = xl[0]
+    #xl = lam.unsqueeze(2)
+    #xl = torch.bmm(At, xl)
+    #xl = -P_diag_inv*(xl.squeeze(2) - c)
+    ##xl = xl.squeeze(2)
+    #xl = xl[0]
 
 
-    sol = -xl[:num_eps+num_var]
+    #sol = -xl[:num_eps+num_var]
 
     eps = sol[num_var:num_var+num_eps]
     #u = sol[num_eps:num_eps+n_step*(order+1)]
