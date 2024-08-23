@@ -111,12 +111,12 @@ def QPFunction(ode, n_iv, order, n_step=10, gamma=1, alpha=1, double_ret=True):
 
             R = torch.cat([torch.zeros(rhs.shape[0],G.shape[1]).type_as(rhs), -A_rhs], dim=1)
 
-            xinit = lam_init.unsqueeze(2)
-            xinit = torch.bmm(At, xinit)
-            xinit = P_diag_inv*(xinit.squeeze(2))
+            #xinit = lam_init.unsqueeze(2)
+            #xinit = torch.bmm(At, xinit)
+            #xinit = P_diag_inv*(xinit.squeeze(2))
 
-            #x0 = torch.cat([torch.zeros(rhs.shape[0],G.shape[1]).type_as(rhs), lam_init], dim=1)
-            x0 = torch.cat([xinit, lam_init], dim=1)
+            ##x0 = torch.cat([torch.zeros(rhs.shape[0],G.shape[1]).type_as(rhs), lam_init], dim=1)
+            #x0 = torch.cat([xinit, lam_init], dim=1)
             
             #print('kkt ', KKT.shape)
             sol, info = cg.gmres(KKT, R, x0=torch.zeros_like(R), maxiter=1, restart=600)

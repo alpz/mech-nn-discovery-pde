@@ -15,8 +15,8 @@ class ODEConfig:
     linear_solver = SolverType.SPARSE_INDIRECT_CG
 
 class PDEConfig:
-    pde_linear_solver = SolverType.DENSE_CHOLESKY_DUAL
-    #pde_linear_solver = SolverType.SPARSE_INDIRECT_CG_DUAL
+    #pde_linear_solver = SolverType.DENSE_CHOLESKY_DUAL
+    pde_linear_solver = SolverType.SPARSE_INDIRECT_CG_DUAL
 
     #uncomment to choose linear solver sparse conjuate gradient
     #linear_solver = SolverType.SPARSE_INDIRECT_BLOCK_CG
