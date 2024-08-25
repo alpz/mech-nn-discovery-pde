@@ -969,7 +969,8 @@ class PDESYSLP(nn.Module):
         ones = torch.ones_like(center).unsqueeze(-1)
         values_list = []
         #coeffs1 = torch.cat([-ones, coeffs[...,0], -ones], dim=-1)
-        coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
+        coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)
+        #coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
         #coeffs1 = torch.cat([-ones, coeffs[...,0], -ones], dim=-1)
 
         #values_list.append(coeffs1)

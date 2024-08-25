@@ -27,7 +27,7 @@ def nonlocal_iterate(arr):
 def test_primal_equality_cg_torch():
     step_size = 0.1
     #end = 3*step_size
-    end = 300*step_size
+    end = 100*step_size
     n_step = int(end/step_size)
     order=2
 
@@ -35,11 +35,11 @@ def test_primal_equality_cg_torch():
     steps = torch.tensor(steps)
 
     #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
-    #_coeffs = np.array([[1,0,1]], dtype='float64')
+    _coeffs = np.array([[5,0,1]], dtype='float64')
 
     #_coeffs = np.array([[1,0.0,1]], dtype='float64')
     #_coeffs = np.array([[2,0.1,0.1]], dtype='float64')
-    _coeffs = np.array([[10,0.1,0.1]], dtype='float64')
+    #_coeffs = np.array([[10,0.1,0.1]], dtype='float64')
     #_coeffs = np.array([[-0.1,0.1, 10]], dtype='float64')
     _coeffs = np.repeat(_coeffs, n_step, axis=0)
     _coeffs = torch.tensor(_coeffs)
@@ -90,18 +90,29 @@ def test_primal_equality_cg_torch():
     rhs = torch.bmm(A, rhs.unsqueeze(2))
     rhs = rhs.squeeze(2) + l
 
+    #mz = torch.zeros((A.shape[1])) + 1e-4
+    #M = None #torch.cat([P_diag, mz]).unsqueeze(0)
+    
     G = torch.sparse.spdiags(P_diag, torch.tensor([0]), (P_diag.shape[0], P_diag.shape[0]), 
                              layout=torch.sparse_coo)
     G = G.unsqueeze(0)
     GA = torch.cat([G, A], dim=1)
     Z = torch.sparse_coo_tensor(torch.empty([2,0]), [], size=(A.shape[1], A.shape[1]), dtype=A.dtype)
     Z = Z.unsqueeze(0)
-    print('zshape ', Z.shape)
 
     AtZ = torch.cat([A.transpose(1,2), Z], dim =1)
     KKT = torch.cat([GA, AtZ], dim =2)
 
-    print('kkt ', KKT)
+
+    KKTs = KKT[0]
+    print(KKTs._indices().shape, KKTs._values().shape)
+    indices = KKTs._indices().cpu().numpy()
+    values = KKTs._values().cpu().numpy()
+    shape = list(KKTs.shape)
+    KKTs = SPS.coo_matrix((values, (indices[0], indices[1]) ), shape = shape)
+
+    M = SPSLG.spilu(KKTs, fill_factor=4.0)
+    print('nnz ', M.nnz, KKTs.nnz)
 
     #Ad = A.to_dense()[0]
     #Atd = At.to_dense()[0]
@@ -115,7 +126,8 @@ def test_primal_equality_cg_torch():
     #KKT = torch.cat([GA, AtZ], dim =1)
     R = torch.cat([torch.zeros(G.shape[1]), -rhs[0]])
     #lam, info = gmres(APAtd, rhs[0], x0=torch.zeros_like(rhs[0]), maxiter=500, restart=40)
-    sol, info = gmres(KKT, R.unsqueeze(0), x0=torch.zeros_like(R).unsqueeze(0), maxiter=1, restart=1200)
+    sol, info = gmres(KKT, R.unsqueeze(0), x0=torch.zeros_like(R).unsqueeze(0), M=M, 
+                      maxiter=20, restart=10)
     #sol = sol.unsqueeze(0)
     sol = -sol.squeeze()
 

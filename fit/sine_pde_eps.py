@@ -122,8 +122,8 @@ class Sine(nn.Module):
         self.device  = device
         dtype = torch.float64
         #self.coord_dims = (64,32)
-        self.coord_dims = (10,15)
-        #self.coord_dims = (32,32)
+        #self.coord_dims = (10,15)
+        self.coord_dims = (32,32)
         #self.coord_dims = (10,10)
         #self.coord_dims = (64,64)
         #self.coord_dims = (64,32)

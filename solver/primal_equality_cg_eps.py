@@ -37,9 +37,9 @@ def test_primal_equality_cg_torch():
     #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
     #_coeffs = np.array([[1,0,1]], dtype='float64')
 
-    #_coeffs = np.array([[10,0.0,1]], dtype='float64')
+    _coeffs = np.array([[10,0.0,1]], dtype='float64')
     #_coeffs = np.array([[2,0.1,0.1]], dtype='float64')
-    _coeffs = np.array([[10,0.1,0.1]], dtype='float64')
+    #_coeffs = np.array([[10,0.1,0.1]], dtype='float64')
     #_coeffs = np.array([[-0.1,0.1, 10]], dtype='float64')
     _coeffs = np.repeat(_coeffs, n_step, axis=0)
     _coeffs = torch.tensor(_coeffs)

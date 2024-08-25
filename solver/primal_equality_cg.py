@@ -172,7 +172,7 @@ def test_primal_equality_cg():
     steps = torch.tensor(steps)
 
     #coeffs are c_2 = 1, c_1 = 0, c_0 = 0
-    _coeffs = np.array([[1,0,1]], dtype='float32')
+    #_coeffs = np.array([[1,0,1]], dtype='float32')
 
     #_coeffs = np.array([[10,0.0,1]], dtype='float64')
     #_coeffs = np.array([[20,0.1,0.1]], dtype='float64')

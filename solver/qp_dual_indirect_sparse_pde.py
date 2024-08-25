@@ -10,6 +10,7 @@ import scipy.linalg as spl
 import scipy.sparse as SP
 import torch.linalg as TLA
 
+
 from solver.cg import cg_matvec
 
 
@@ -72,6 +73,20 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
 
             R = torch.cat([torch.zeros(rhs.shape[0],G.shape[1]).type_as(rhs), -A_rhs], dim=1)
 
+            ##### ilu preconditioner
+            KKTs = KKT[0]
+            #print(KKTs._indices().shape, KKTs._values().shape)
+            indices = KKTs._indices().cpu().numpy()
+            values = KKTs._values().cpu().numpy()
+            shape = list(KKTs.shape)
+            KKTs = SP.coo_matrix((values, (indices[0], indices[1]) ), shape = shape)
+
+            M = spla.spilu(KKTs, fill_factor=20.0)
+            ctx.M = M
+
+            print('nnz ', M.nnz, KKTs.nnz, KKTs.nnz/(M.shape[0]*M.shape[1]), M.shape, KKTs.shape)
+            ###########
+
             #xinit = lam_init.unsqueeze(2)
             #xinit = torch.bmm(At, xinit)
             #xinit = P_diag_inv*(xinit.squeeze(2))
@@ -80,7 +95,7 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             #x0 = torch.cat([xinit, lam_init], dim=1)
             
             #print('kkt ', KKT.shape)
-            sol, info = cg.gmres(KKT, R, x0=torch.zeros_like(R), maxiter=1, restart=800)
+            sol, info = cg.gmres(KKT, R, x0=torch.zeros_like(R), M=M, maxiter=100, restart=40)
             #sol, info = cg.gmres(KKT, R, x0=x0, maxiter=1, restart=600)
             print('torch gmres info ', info, sol.shape)
 
@@ -136,6 +151,7 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
         @staticmethod
         def backward(ctx, dl_dzhat, dl_dlam):
             A,P_diag_inv, _x, _y, KKT = ctx.saved_tensors
+            M = ctx.M
             At = A.transpose(1,2)
             #n = A.shape[1]
             #m = A.shape[2]
@@ -148,7 +164,7 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             z = torch.zeros(bs, m, device=dl_dzhat.device).type_as(_x)
             R = torch.cat([dl_dzhat, z], dim=-1)
             
-            sol, info = cg.gmres(KKT, R, x0=torch.zeros_like(R), maxiter=1, restart=800)
+            sol, info = cg.gmres(KKT, R, x0=torch.zeros_like(R), M=M, maxiter=100, restart=40)
 
             print('back gmres info ', info)
 

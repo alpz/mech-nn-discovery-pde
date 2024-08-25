@@ -232,6 +232,9 @@ def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None,
     while True:
         #mx = psolve(x)
         mx = x
+        if M is not None:
+            mx = M.solve(x[0].cpu().numpy())
+            mx = torch.tensor(mx).unsqueeze(0)
         #r = b - matvec(mx)
         #r = b - torch.mm(A, mx.unsqueeze(1)).squeeze(1)
         #print(A, mx.shape)
@@ -253,6 +256,10 @@ def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None,
         for j in range(restart):
             #z = psolve(v)
             z = v #psolve(v)
+            if M is not None:
+                #z = z*M
+                z = M.solve(z[0].cpu().numpy())
+                z = torch.tensor(z).unsqueeze(0)
             #u = matvec(z)
             #u = torch.mm(A, z.unsqueeze(1)).squeeze(1)
             u = torch.bmm(A, z.unsqueeze(2)).squeeze(2)
