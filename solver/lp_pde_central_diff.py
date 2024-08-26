@@ -553,7 +553,7 @@ class PDESYSLP(nn.Module):
 
             #TODO check order scale
             #diff between maximum number of taylor terms (order+1) and current terms
-            order_diff =4 #4 # self.order+1- len(mi_index_list)
+            order_diff =4 # self.order+1- len(mi_index_list)
             for _j,ts_mi_index in enumerate(mi_index_list):
                 j = _j +order_diff
                 #h = self.step_size**(j)
@@ -592,6 +592,7 @@ class PDESYSLP(nn.Module):
                 h_pow_i = (-self.step_size)**(order_diff)
                 #h_pow_i = (-self.step_size)**(4)
                 d = 1 #(-1)**(order_diff)
+                #d = (-1)**(order_diff)
                 d = -d
 
                 val_list.append(d*h_pow_i)
@@ -682,18 +683,24 @@ class PDESYSLP(nn.Module):
     def build_initial_constraints(self):
         #if(self.n_iv > 1):
         #    raise ValueError("Not implemented n_iv>1")
+        #TODO range
 
         for pair in self.init_index_mi_list:
             coord_index = pair[0]
             mi_index = pair[1]
+            range_begin = np.array(pair[2])
+            range_end = np.array(pair[3])
 
-            #t0_dims = (1,) + self.coord_dims[1:]
-            t0_dims = self.coord_dims[:coord_index] + (1,) + self.coord_dims[coord_index+1:]
-            t0_size  = np.prod(t0_dims)
-            t0_grid = np.indices(t0_dims).reshape(self.n_coord, t0_size).transpose(1,0)
-            self.t0_grid_size = t0_size
+            ##t0_dims = (1,) + self.coord_dims[1:]
+            #t0_dims = self.coord_dims[:coord_index] + (1,) + self.coord_dims[coord_index+1:]
+            #t0_size  = np.prod(t0_dims)
+            #t0_grid = np.indices(t0_dims).reshape(self.n_coord, t0_size).transpose(1,0)
+            #self.t0_grid_size = t0_size
 
-            for grid_index in t0_grid:
+            #for grid_index in t0_grid:
+            for grid_index in self.var_set.grid_indices:
+                if (grid_index < range_begin).any() or (grid_index > range_end).any():
+                    continue
                 for iv in range(self.n_iv):
                     var_list = []
                     val_list = []
@@ -703,6 +710,27 @@ class PDESYSLP(nn.Module):
                     val_list.append(1)
                     self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Initial)
         return
+
+        #for pair in self.init_index_mi_list:
+        #    coord_index = pair[0]
+        #    mi_index = pair[1]
+
+        #    #t0_dims = (1,) + self.coord_dims[1:]
+        #    t0_dims = self.coord_dims[:coord_index] + (1,) + self.coord_dims[coord_index+1:]
+        #    t0_size  = np.prod(t0_dims)
+        #    t0_grid = np.indices(t0_dims).reshape(self.n_coord, t0_size).transpose(1,0)
+        #    self.t0_grid_size = t0_size
+
+        #    for grid_index in t0_grid:
+        #        for iv in range(self.n_iv):
+        #            var_list = []
+        #            val_list = []
+        #            #add initial function values
+        #            #mi_index = 0
+        #            var_list.append((grid_index, mi_index))
+        #            val_list.append(1)
+        #            self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Initial)
+        #return
 
         ##build constraint for t=0
         #t0_dims = (1,) + self.coord_dims[1:]
@@ -1502,7 +1530,7 @@ def test_taylor_repr():
     print(repr)
 
 def test_initial():
-    init_list = [(0,0), (1,0)]
+    init_list = [(0,0,[0,3],[0,5]), (1,0,[1,0],[3,0])]
     pde = PDESYSLP(bs=1, coord_dims=(4,6), n_iv=1, step_size=0.25, order=2, 
                    init_index_mi_list=init_list, n_iv_steps=1, step_list = None, build=True)
     #pde.build_equation_constraints()
@@ -1579,6 +1607,6 @@ if __name__=="__main__":
     #test_eq()
     #test_eq2()
     #test_taylor_repr()
-    test_mat_eq()
+    #test_mat_eq()
     #test_grid()
-    #test_initial()
+    test_initial()

@@ -17,6 +17,9 @@ class ODEConfig:
 class PDEConfig:
     #pde_linear_solver = SolverType.DENSE_CHOLESKY_DUAL
     pde_linear_solver = SolverType.SPARSE_INDIRECT_CG_DUAL
+    pde_gmres_max_iter = 200 
+    pde_gmres_repeat = 80 
+    ilu_fill_factor= 20.0
 
     #uncomment to choose linear solver sparse conjuate gradient
     #linear_solver = SolverType.SPARSE_INDIRECT_BLOCK_CG
