@@ -977,10 +977,10 @@ class PDESYSLP(nn.Module):
 
         if backward:
             end = torch.zeros_like(steps[:, -2:])
-            stepn1 = steps[:, -4:-2]
-            stepn2 = steps[:, -5:-3]
-            stepn3 = steps[:, -6:-4]
-            stepn4 = steps[:, -7:-5]
+            stepn1 = steps[:, -3:-1]
+            stepn2 = steps[:, -4:-2]
+            stepn3 = steps[:, -5:-3]
+            stepn4 = steps[:, -6:-4]
 
             left1 = -stepn1
             left2 = left1-stepn2
@@ -988,7 +988,8 @@ class PDESYSLP(nn.Module):
             left4 = left3-stepn4
 
             #b, step, var, 5
-            matrix = torch.stack([left4, left3, left2, left1, end], dim=-1)
+            #matrix = torch.stack([left4, left3, left2, left1, end], dim=-1)
+            matrix = torch.stack([end, left1, left2, left3, left4], dim=-1)
         else:
             begin = torch.zeros_like(steps[:, 0:2])
             stepn1 = steps[:, 1:3]
@@ -1561,7 +1562,8 @@ class PDESYSLP(nn.Module):
 def test_mat_eq():
     coord_dims = (8,9)
     bs = 1
-    pde = PDESYSLP(bs=bs, coord_dims=coord_dims, n_iv=1, step_size=0.25, order=2, n_iv_steps=1, 
+    step = 0.1
+    pde = PDESYSLP(bs=bs, coord_dims=coord_dims, n_iv=1, step_size=step, order=2, n_iv_steps=1, 
                 step_list = None, build=False)
 
     pde.build_constraints()
@@ -1570,8 +1572,8 @@ def test_mat_eq():
     #steps0 = 0.25*torch.ones(bs, *pde.step_grid_shape[0])
     #steps1 = 0.25*torch.ones(bs, coord_dims[0], coord_dims[1]-1)
 
-    steps0 = 0.25*torch.ones(bs, coord_dims[0]-1)
-    steps1 = 0.25*torch.ones(bs, coord_dims[1]-1)
+    steps0 = step*torch.ones(bs, coord_dims[0]-1)
+    steps1 = step*torch.ones(bs, coord_dims[1]-1)
     #steps2 = 0.25*torch.ones(bs, coord_dims[2]-1)
     #steps3 = 0.25*torch.ones(bs, coord_dims[3]-1)
 
@@ -1585,8 +1587,8 @@ def test_mat_eq():
     vf = fill_A._values()
 
     print(fill_A.shape, derivative_A.shape, fill_A._nnz(), derivative_A._nnz())
-    print(fill_A._indices())
-    print(derivative_A._indices())
+    #print(fill_A._indices())
+    #print(derivative_A._indices())
     diff = vd-vf
     print((diff))
     print(diff.mean(), diff.abs().max())
@@ -1607,7 +1609,7 @@ def test_mat_eq():
 
     #repr = pde.repr_taylor(values = vf, print_row=True)
     #print(repr)
-    #print(vf)
+    ##print(vf)
 
     #print("********")
     #repr = pde.repr_taylor(values = vd, print_row=True)
