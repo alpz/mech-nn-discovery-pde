@@ -1016,8 +1016,9 @@ class PDESYSLP(nn.Module):
 
         ones = torch.ones_like(steps[:,0:2]).unsqueeze(-1)
         #values_list = []
-        coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)
+        coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
         coeffs2 = torch.cat([-ones, coeffs[...,1]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
+
 
         coeffs_list = []
         n_order1 = self.var_set.order_count[coord].get(1,0)

@@ -58,7 +58,7 @@ class SineDataModule(pl.LightningDataModule):
 class Method(pl.LightningModule):
     def __init__(self):
         super().__init__()
-        self.learning_rate = 0.001
+        self.learning_rate = 0.005
         self.model = Sine(device=self.device)
         self.model = self.model.double()
         
@@ -219,14 +219,14 @@ class Sine(nn.Module):
             #nn.Linear(1024,1024),
 
             #nn.ReLU(),
-            #nn.Linear(1024,1),
-            nn.Linear(1024,self.pde.grid_size),
+            nn.Linear(1024,1),
+            #nn.Linear(1024,self.pde.grid_size),
             #nn.Tanh()
         )
 
         self.cf_nn = nn.Sequential(
             nn.Linear(1024,self.pde.n_orders),
-            nn.Tanh()
+            #nn.Tanh()
         )
 
         self.iv_nn = nn.Sequential(
@@ -300,12 +300,12 @@ class Sine(nn.Module):
         steps_list = [steps0, steps1]
 
         #rhs = self.rhs#.reshape(1,1).repeat(self.bs, self.pde.grid_size)
-        #rhs = rhs.reshape(1,1).repeat(self.bs, self.pde.grid_size)
+        rhs = rhs.reshape(1,1).repeat(self.bs, self.pde.grid_size)
         #rhs = rhs.type_as(coeffs)
 
         u0,u,eps = self.pde(coeffs, rhs, iv_rhs, steps_list)
 
-        #print(eps)
+        #print(eps, eps.abs().min(), eps.abs().mean())
 
 
         return eps.max(), u0,_coeffs#, u1,u2,steps
