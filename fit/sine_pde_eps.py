@@ -268,7 +268,7 @@ class Sine(nn.Module):
         #coeffs[:,:,:,5] = 0.
 
         #iv_rhs = self.iv_rhs
-        iv_rhs = torch.cat(init_list, dim=0)
+        #iv_rhs = torch.cat(init_list, dim=0)
 
 
         #iv_rhs10[0] = iv_rhs00[0]
