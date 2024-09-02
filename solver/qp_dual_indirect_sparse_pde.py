@@ -28,6 +28,7 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
         #QRSolver = None
         #dim = None
         #perm = None
+        first=True
 
         @staticmethod
         def forward(ctx, eq_A, rhs, iv_rhs, derivative_A):
@@ -81,7 +82,13 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             shape = list(KKTs.shape)
             KKTs = SP.coo_matrix((values, (indices[0], indices[1]) ), shape = shape)
 
-            M = spla.spilu(KKTs, fill_factor=config.ilu_fill_factor)
+            #if not QPFunctionFn.first:
+            M = spla.spilu(KKTs, fill_factor=config.ilu_fill_factor, options=dict(Fact='DOFACT', PrintStat=True))
+            #M = spla.spilu(KKTs, fill_factor=config.ilu_fill_factor, options=dict(Fact='SamePattern', PrintStat=True))
+            #else:
+            #    M = spla.spilu(KKTs, fill_factor=config.ilu_fill_factor, options=dict(PrintStat='YES'))
+            #    QPFunctionFn.first=False
+            #M = spla.spilu(KKTs, fill_factor=40)
             ctx.M = M
 
             print('nnz ', M.nnz, KKTs.nnz, KKTs.nnz/(M.shape[0]*M.shape[1]), M.shape, KKTs.shape)

@@ -140,6 +140,7 @@ def cg_matvec(As, b, x0=None, tol=1e-5, maxiter=None, M=None, callback=None, ato
 
     return x, (info, iters, resid)
     
+@torch.no_grad()
 def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None,
           callback=None, atol=1e-5, callback_type=None):
     """Uses Generalized Minimal RESidual iteration to solve ``Ax = b``.
@@ -266,7 +267,7 @@ def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None,
             #H[:j+1, j], u = compute_hu(V, u, j)
             H[:, :j+1, j], u = compute_hu(V, u, j)
             #cublas.nrm2(u, out=H[j+1, j])
-            torch.linalg.norm(u, out=H[:, j+1, j])
+            torch.linalg.norm(u, out=H[:, j+1, j], dim=-1)
             if j+1 < restart:
                 v = u / H[:, j+1, j]
                 V[:, :, j+1] = v

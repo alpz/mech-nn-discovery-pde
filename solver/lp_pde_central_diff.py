@@ -637,25 +637,25 @@ class PDESYSLP(nn.Module):
             _, zeroth_order_index = self.var_set.zeroth_order_index(coord, mi)
 
             if backward: 
+                #prev_grid = self.var_set.next_adjacent_grid_index(grid_index=grid_index, coord=coord)
                 next_grid = self.var_set.prev_adjacent_grid_index(grid_index=grid_index, coord=coord)
                 next_2_grid = self.var_set.prev_adjacent_grid_index(grid_index=next_grid, coord=coord)
                 next_3_grid = self.var_set.prev_adjacent_grid_index(grid_index=next_2_grid, coord=coord)
                 next_4_grid = self.var_set.prev_adjacent_grid_index(grid_index=next_3_grid, coord=coord)
             else:
+                #prev_grid = self.var_set.prev_adjacent_grid_index(grid_index=grid_index, coord=coord)
                 next_grid = self.var_set.next_adjacent_grid_index(grid_index=grid_index, coord=coord)
                 next_2_grid = self.var_set.next_adjacent_grid_index(grid_index=next_grid, coord=coord)
                 next_3_grid = self.var_set.next_adjacent_grid_index(grid_index=next_2_grid, coord=coord)
                 next_4_grid = self.var_set.next_adjacent_grid_index(grid_index=next_3_grid, coord=coord)
 
             var_list = [ VarType.EPS]
+            #var_list.append((prev_grid, zeroth_order_index))
             var_list.append((grid_index, zeroth_order_index))
             var_list.append((next_grid, zeroth_order_index))
             var_list.append((next_2_grid, zeroth_order_index))
             var_list.append((next_3_grid, zeroth_order_index))
             var_list.append((next_4_grid, zeroth_order_index))
-            #var_list.append((prev_prev_grid, zeroth_order_index))
-            #var_list.append((prev_grid, zeroth_order_index))
-            #var_list.append((next_next_grid, zeroth_order_index))
             var_list.append((grid_index, mi_index))
 
             h= self.step_size
@@ -667,6 +667,7 @@ class PDESYSLP(nn.Module):
                 if backward:
                     values= [-1, 25/12, -4, 3,-4/3,1/4, -1*h]
             elif mi[coord] ==2:
+                #continue
                 #values= [ -1, -1/12, 4/3, -5/2, 4/3, -1/12, -1*h**2]
                 values= [ -1, 35/12, -104/12, 114/12, -56/12, 11/12, -1*h**2]
             else:
@@ -728,7 +729,9 @@ class PDESYSLP(nn.Module):
                 #if self.var_set.is_right_edge(grid_index=grid_index, coord=coord) or self.var_set.is_left_edge(grid_index=grid_index, coord=coord):
                 if self.var_set.is_right_edge_or_adjacent(grid_index=grid_index, coord=coord)  \
                         or self.var_set.is_left_edge_or_adjacent(grid_index=grid_index, coord=coord):
-                    continue
+
+                    if self.var_set.is_right_edge(grid_index=grid_index, coord=coord) or self.var_set.is_left_edge(grid_index=grid_index, coord=coord):
+                        continue
                 else:
                 #for mi_index in self.var_set.mi_indices:
                     self._add_central_constraint(coord, grid_index)
@@ -739,6 +742,8 @@ class PDESYSLP(nn.Module):
             #sort_mi_indices = self.var_set.get_order_sorted_mi_indices(coord)
             for grid_index in self.var_set.grid_indices:
                 if self.var_set.is_left_edge_or_adjacent(grid_index=grid_index, coord=coord):
+                    #if self.var_set.is_left_edge(grid_index=grid_index, coord=coord):
+                    #    continue
                     self._add_central_constraint_edge(coord, grid_index, backward=False)
 
     def central_constraints_right_edge(self):
@@ -747,6 +752,8 @@ class PDESYSLP(nn.Module):
             #sort_mi_indices = self.var_set.get_order_sorted_mi_indices(coord)
             for grid_index in self.var_set.grid_indices:
                 if self.var_set.is_right_edge_or_adjacent(grid_index=grid_index, coord=coord):
+                    #if self.var_set.is_right_edge(grid_index=grid_index, coord=coord):
+                    #    continue
                     self._add_central_constraint_edge(coord, grid_index, backward=True)
 
     def build_initial_constraints(self):
@@ -798,8 +805,8 @@ class PDESYSLP(nn.Module):
 
     def build_derivative_constraints(self):
         self.forward_constraints()
-        self.central_constraints()
         self.central_constraints_left_edge()
+        self.central_constraints()
         self.central_constraints_right_edge()
         self.backward_constraints()
 
@@ -839,7 +846,7 @@ class PDESYSLP(nn.Module):
 
         #print('first ', eq_A.shape, initial_A.shape, derivative_A.shape)
         self.num_constraints = full_A.shape[0]
-        self.build_block_diag(full_A)
+        #self.build_block_diag(full_A)
 
         derivative_rhs = self.rhs_dict[ConstraintType.Derivative]
         #derivative_rhs = torch.tensor(derivative_rhs, dtype=self.dtype, device=self.device)
@@ -971,6 +978,101 @@ class PDESYSLP(nn.Module):
         steps = steps.expand(expand_shape)
         return steps
 
+    def solve_5pt_central_stencil_edge_test(self, coord, steps, backward=False):
+        #steps shape b,  n_step-1
+        # 5 point stencil starting at 0 
+
+        if backward:
+            stepp1 = steps[:, -1:]
+            end = torch.zeros_like(steps[:, -2:-1])
+            stepn1 = steps[:, -3:-2]
+            stepn2 = steps[:, -4:-3]
+            stepn3 = steps[:, -5:-4]
+            #stepn4 = steps[:, -6:-4]
+
+            right1 = stepp1
+            left1 = -stepn1
+            left2 = left1-stepn2
+            left3 = left2-stepn3
+            #left4 = left3-stepn4
+
+            #b, step, var, 5
+            #matrix = torch.stack([left4, left3, left2, left1, end], dim=-1)
+            #matrix = torch.stack([end, left1, left2, left3, left4], dim=-1)
+            matrix = torch.stack([right1, end, left1, left2, left3], dim=-1)
+        else:
+            stepp1 = steps[:, 0:1]
+            begin = torch.zeros_like(steps[:, 1:2])
+            stepn1 = steps[:, 2:3]
+            stepn2 = steps[:, 3:4]
+            stepn3 = steps[:, 4:5]
+            #stepn4 = steps[:, 4:6]
+
+            left1 = -stepp1
+            right1 = stepn1
+            right2 = right1+stepn2
+            right3 = right2+stepn3
+            #right4 = right3+stepn4
+
+            #b, step, var, 5
+            matrix = torch.stack([left1, begin, right1, right2, right3], dim=-1)
+
+        ones = torch.ones_like(matrix)
+        mp2 = matrix.pow(2)
+        matrix = torch.stack([ones, matrix, mp2 , matrix*mp2, mp2*mp2], dim=-2)
+
+        #shape 5,2
+        b = torch.tensor([[0,1,0,0,0], [0,0,2,0,0]]).type_as(matrix).T
+
+        coeffs = torch.linalg.solve(matrix, b)
+
+        #ones = torch.ones_like(steps[:,0:2]).unsqueeze(-1)
+        ones = torch.ones_like(steps[:,0:1]).unsqueeze(-1)
+        #values_list = []
+        #coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
+        coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
+        coeffs2 = torch.cat([-ones, coeffs[...,1]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
+
+
+        coeffs_list = []
+        n_order1 = self.var_set.order_count[coord].get(1,0)
+        if n_order1 > 0:
+            ex_shape = coeffs1.shape
+            ex_shape = ex_shape[:2] + (n_order1,) + ex_shape[2:]
+            #print(coeffs1.shape, ex_shape, self.var_set.order_count, n_order1, coord)
+            #coeffs1 = coeffs1.unsqueeze(2).repeat(self.var_set.order_count[coord].get(1,0),dim=2)
+            coeffs1 = coeffs1.unsqueeze(2).expand(ex_shape)
+            coeffs_list.append(coeffs1)
+
+        #coeffs order 2 shape b, steps, num_values
+        #repeat num order 2 indices b, steps,num_index, num_values
+
+        #n_order2 = self.var_set.order_count[coord].get(2,0)
+        #if self.var_set.order_count[coord].get(2,0) > 0:
+        #    ex_shape = coeffs2.shape
+        #    ex_shape = ex_shape[:2] + (n_order2,) + ex_shape[2:]
+        #    #coeffs2 = coeffs2.unsqueeze(2).repeat(self.var_set.order_count[coord].get(2,0),dim=2)
+        #    coeffs2 = coeffs2.unsqueeze(2).expand(ex_shape)
+        #    coeffs_list.append(coeffs2)
+
+        #concat along mi indices
+        coeffs = torch.cat(coeffs_list,dim=2)
+        #print('insi ', coeffs.shape)
+
+        #expand over grid
+        expand_shape_step = self.step_grid_expand_shape[coord]
+        new_shape_step = self.step_grid_unsqueeze_shape[coord]
+
+        c_shape = coeffs.shape
+        new_shape = c_shape[:1] + new_shape_step + c_shape[2:]
+        expand_shape = c_shape[:1] + expand_shape_step + c_shape[2:]
+
+        coeffs = coeffs.reshape(new_shape)
+        coeffs = coeffs.expand(expand_shape)
+
+        coeffs = coeffs.reshape(steps.shape[0],-1)
+        return coeffs#, coeffs1, coeffs2
+
     def solve_5pt_central_stencil_edge(self, coord, steps, backward=False):
         #steps shape b,  n_step-1
         # 5 point stencil starting at 0 
@@ -1016,6 +1118,7 @@ class PDESYSLP(nn.Module):
 
         ones = torch.ones_like(steps[:,0:2]).unsqueeze(-1)
         #values_list = []
+        #coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
         coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
         coeffs2 = torch.cat([-ones, coeffs[...,1]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
 
@@ -1032,6 +1135,7 @@ class PDESYSLP(nn.Module):
 
         #coeffs order 2 shape b, steps, num_values
         #repeat num order 2 indices b, steps,num_index, num_values
+
         n_order2 = self.var_set.order_count[coord].get(2,0)
         if self.var_set.order_count[coord].get(2,0) > 0:
             ex_shape = coeffs2.shape
@@ -1087,8 +1191,8 @@ class PDESYSLP(nn.Module):
         ones = torch.ones_like(center).unsqueeze(-1)
         values_list = []
         #coeffs1 = torch.cat([-ones, coeffs[...,0], -ones], dim=-1)
-        coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)
-        #coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
+        #coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)
+        coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
         #coeffs1 = torch.cat([-ones, coeffs[...,0], -ones], dim=-1)
 
         #values_list.append(coeffs1)

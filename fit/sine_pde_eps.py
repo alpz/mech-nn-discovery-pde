@@ -28,15 +28,15 @@ class SineDataset(Dataset):
         _yy= np.linspace(0, end, coord_dims[1])[np.newaxis, :]
 
         #self.damp = (np.exp(-0.05*((_xx-end/2)**2 + (_yy-end/2)**2))).reshape(coord_dims)
-        #self.damp = (np.exp(-0.1*(_xx) + (_yy-end/2)**2))).reshape(coord_dims)
+        self.damp = (np.exp(-0.1*(_xx) + (_yy-end/2)**2)).reshape(coord_dims)
         #self.damp = np.exp(-0.1*(_yy)).reshape(1,coord_dims[1])
-        self.damp = np.exp(-0.01*(_yy+_xx)).reshape(coord_dims[0],coord_dims[1])
+        #self.damp = np.exp(-0.1*(_yy+_xx)).reshape(coord_dims[0],coord_dims[1])
         #self.y = y0*damp 
         self.y = y0.unsqueeze(-1).repeat(1,coord_dims[1])#.transpose(1,0)
         #self.y = np.sin((2*_yy+_xx))#.transpose(1,0)
         #self.y = np.sin((2*_yy+_xx))#.transpose(1,0)
         #self.y = np.sin((7*_yy+3*_xx))*np.cos(4*_xx)#.transpose(1,0)
-        #self.y = self.y*self.damp
+        self.y = self.y*self.damp
         
     def __len__(self):
         return 1
@@ -58,7 +58,7 @@ class SineDataModule(pl.LightningDataModule):
 class Method(pl.LightningModule):
     def __init__(self):
         super().__init__()
-        self.learning_rate = 0.005
+        self.learning_rate = 0.001
         self.model = Sine(device=self.device)
         self.model = self.model.double()
         
@@ -79,7 +79,7 @@ class Method(pl.LightningModule):
 
         y = y.reshape((32,32))
         t0 = y[0, 0:-1].reshape(-1)
-        tn = y[0, :].reshape(-1)
+        tn = y[-1, 1:-1].reshape(-1)
         x0 = y[1:, 0].reshape(-1)
         xn = y[:, -1].reshape(-1)
 
@@ -131,16 +131,17 @@ class Sine(nn.Module):
         dtype = torch.float64
         #self.coord_dims = (64,32)
         #self.coord_dims = (10,15)
-        self.coord_dims = (32,32)
+        #self.coord_dims = (32,32)
+        #self.coord_dims = (8,8)
         #self.coord_dims = (10,10)
-        #self.coord_dims = (64,64)
+        self.coord_dims = (32,32)
         #self.coord_dims = (64,32)
         self.n_iv = 1
         #coord, mi_index, begin, end
         self.iv_list = [(0,0, [0,0],[0,self.coord_dims[1]-2]), 
                         (1,0, [1,0], [self.coord_dims[0]-1, 0]), 
-                        (0,1, [0,0],[0,self.coord_dims[1]-1]), 
-                        #(0,0, [self.coord_dims[0]-1,1],[self.coord_dims[0]-1,self.coord_dims[1]-2]), 
+                        #(0,1, [0,0],[0,self.coord_dims[1]-1]), 
+                        (0,0, [self.coord_dims[0]-1,1],[self.coord_dims[0]-1,self.coord_dims[1]-2]), 
                         #(1,2, [0,0], [self.coord_dims[0]-1, 0]),
                         #(1,3, [0,0], [self.coord_dims[0]-1, 0])
                         (1,0, [0,self.coord_dims[1]-1], [self.coord_dims[0]-1, self.coord_dims[1]-1])
@@ -197,12 +198,12 @@ class Sine(nn.Module):
         #self.steps0 = torch.logit(self.step_size*torch.ones(1,self.pde.step_grid_shape[0][0],1))
         self.steps0 = torch.logit(self.step_size*torch.ones(1,self.coord_dims[0]-1))
         #self.steps0 = torch.logit(self.step_size*torch.ones(1,1,1))
-        self.steps0 = nn.Parameter(self.steps0)
+        #self.steps0 = nn.Parameter(self.steps0)
 
         self.steps1 = torch.logit(self.step_size*torch.ones(1,self.coord_dims[1]-1))
         #self.steps1 = torch.logit(self.step_size*torch.ones(1,*self.pde.step_grid_shape[1]))
         #self.steps1 = torch.logit(self.step_size*torch.ones(1,1,1))
-        self.steps1 = nn.Parameter(self.steps1)
+        #self.steps1 = nn.Parameter(self.steps1)
 
         self._dfnn = nn.Sequential(
             #nn.ReLU(),
@@ -219,8 +220,8 @@ class Sine(nn.Module):
             #nn.Linear(1024,1024),
 
             #nn.ReLU(),
-            nn.Linear(1024,1),
-            #nn.Linear(1024,self.pde.grid_size),
+            #nn.Linear(1024,1),
+            nn.Linear(1024,self.pde.grid_size),
             #nn.Tanh()
         )
 
@@ -230,7 +231,7 @@ class Sine(nn.Module):
         )
 
         self.iv_nn = nn.Sequential(
-            nn.Linear(1024,2*self.coord_dims[0]-1 + 2*self.coord_dims[1]-1),
+            nn.Linear(1024,2*self.coord_dims[0]-1 + 2*self.coord_dims[1]-3),
             #nn.Tanh()
         )
 
@@ -240,12 +241,12 @@ class Sine(nn.Module):
         #print('cin ', self.coeffs)
         _res = self._dfnn(self.coeffs)
         #_coeffs = 3*self.cf_nn(self.coeffs)
-        _coeffs = 5*self.cf_nn(_res)
-        #_coeffs = self.cf_nn(_res)
+        #_coeffs = 3*self.cf_nn(_res)
+        _coeffs = self.cf_nn(_res)
         #_coeffs = self.cf_nn(_res)
         #_coeffs[..., -2] = 1.
         rhs = self.rhs_nn(_res)
-        iv_rhs = self.iv_nn(_res)
+        #iv_rhs = self.iv_nn(_res)
         #_coeffs = self.cf_nn(self.coeffs).clip(min=-5, max=5)
         #cnorm = _coeffs.pow(2).sum(dim=-1,keepdim=True).clip(min=1e-5)
 
@@ -268,7 +269,7 @@ class Sine(nn.Module):
         #coeffs[:,:,:,5] = 0.
 
         #iv_rhs = self.iv_rhs
-        #iv_rhs = torch.cat(init_list, dim=0)
+        iv_rhs = torch.cat(init_list, dim=0)
 
 
         #iv_rhs10[0] = iv_rhs00[0]
@@ -300,7 +301,7 @@ class Sine(nn.Module):
         steps_list = [steps0, steps1]
 
         #rhs = self.rhs#.reshape(1,1).repeat(self.bs, self.pde.grid_size)
-        rhs = rhs.reshape(1,1).repeat(self.bs, self.pde.grid_size)
+        #rhs = rhs.reshape(1,1).repeat(self.bs, self.pde.grid_size)
         #rhs = rhs.type_as(coeffs)
 
         u0,u,eps = self.pde(coeffs, rhs, iv_rhs, steps_list)
