@@ -20,6 +20,7 @@ class PDEConfig:
     pde_gmres_max_iter = 200 
     pde_gmres_repeat = 80 
     ilu_fill_factor= 25.0
+    sindpy_data = '../pysindy/examples/data/'
 
     #uncomment to choose linear solver sparse conjuate gradient
     #linear_solver = SolverType.SPARSE_INDIRECT_BLOCK_CG
