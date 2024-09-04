@@ -77,6 +77,7 @@ class Method(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         y = batch
 
+        #y = y.reshape((128,128))
         y = y.reshape((32,32))
         t0 = y[0, 0:-1].reshape(-1)
         tn = y[-1, 1:-1].reshape(-1)
@@ -131,10 +132,10 @@ class Sine(nn.Module):
         dtype = torch.float64
         #self.coord_dims = (64,32)
         #self.coord_dims = (10,15)
-        #self.coord_dims = (32,32)
+        self.coord_dims = (32,32)
         #self.coord_dims = (8,8)
         #self.coord_dims = (10,10)
-        self.coord_dims = (32,32)
+        #self.coord_dims = (128,128)
         #self.coord_dims = (64,32)
         self.n_iv = 1
         #coord, mi_index, begin, end
