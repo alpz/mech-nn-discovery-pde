@@ -77,7 +77,7 @@ class Method(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         y = batch
 
-        #y = y.reshape((128,128))
+        #y = y.reshape((32,32))
         y = y.reshape((32,32))
         t0 = y[0, 0:-1].reshape(-1)
         tn = y[-1, 1:-1].reshape(-1)
