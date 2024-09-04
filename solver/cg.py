@@ -214,11 +214,11 @@ def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None,
         callback_type = None
 
     #V = torch.empty((n, restart), dtype=A.dtype, order='F')
-    V = torch.empty((bs, n, restart), dtype=A.dtype)
+    V = torch.empty((bs, n, restart), dtype=A.dtype, device=x.device)
     #H = torch.zeros((restart+1, restart), dtype=A.dtype, order='F')
-    H = torch.zeros((bs, restart+1, restart), dtype=A.dtype)
+    H = torch.zeros((bs, restart+1, restart), dtype=A.dtype, device=x.device)
     #e = np.zeros((restart+1,), dtype=A.dtype)
-    e = torch.zeros((bs, restart+1,), dtype=A.dtype)
+    e = torch.zeros((bs, restart+1,), dtype=A.dtype, device=x.device)
 
     def compute_hu(VV, u, j):
         S = VV[:, :, :j+1]
@@ -236,6 +236,7 @@ def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None,
         if M is not None:
             mx = M.solve(x[0].cpu().numpy())
             mx = torch.tensor(mx).unsqueeze(0)
+            mx = mx.to(x.device)
         #r = b - matvec(mx)
         #r = b - torch.mm(A, mx.unsqueeze(1)).squeeze(1)
         #print(A, mx.shape)
@@ -261,6 +262,7 @@ def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None,
                 #z = z*M
                 z = M.solve(z[0].cpu().numpy())
                 z = torch.tensor(z).unsqueeze(0)
+                z = z.to(x.device)
             #u = matvec(z)
             #u = torch.mm(A, z.unsqueeze(1)).squeeze(1)
             u = torch.bmm(A, z.unsqueeze(2)).squeeze(2)
