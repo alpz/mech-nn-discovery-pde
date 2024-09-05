@@ -42,6 +42,7 @@ dtype = torch.float64 if DBL else torch.float32
 cuda=False
 #T = 2000
 #n_step_per_batch = T
+solver_dim=(32,32)
 batch_size= 1
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
@@ -50,7 +51,7 @@ threshold = 0.1
 
 
 class BurgersDataset(Dataset):
-    def __init__(self, n_step_per_batch=100, n_step=1000):
+    def __init__(self, solver_dim=(32,32)):
         #self.n_step_per_batch=n_step_per_batch
         #self.n_step=n_step
 
@@ -59,41 +60,70 @@ class BurgersDataset(Dataset):
         data=loadmat(os.path.join(PDEConfig.sindpy_data, 'burgers.mat'))
 
         print(data.keys())
-        t = data['t']
-        x = data['x']
+        self.t = torch.tensor(np.array(data['t'])).squeeze()
+        self.x = torch.tensor(np.array(data['x'])).squeeze()
 
-        print(t.shape)
-        print(x.shape)
+        self.t_step = self.t[1] - self.t[0]
+        self.x_step = self.x[1] - self.x[0]
+
+        self.t_subsample = 1
+        self.x_subsample = 1
+
+        print(self.t.shape)
+        print(self.x.shape)
         print(data['usol'].shape)
 
-        self.x_train = torch.tensor(data, dtype=dtype) 
+        self.data_dim = data['usol'].shape
+        self.solver_dim = solver_dim
+        self.data = data['usol']
+
+        num_t_idx = self.data_dim[0] - self.solver_dim[0]
+        num_x_idx = self.data_dim[1] - self.solver_dim[1]
+
+        self.num_t_idx = num_t_idx//self.t_subsample 
+        self.num_x_idx = num_x_idx//self.x_subsample 
+        self.length = self.num_t_idx*self.num_x_idx
+
+        self.x_train = torch.tensor(self.data, dtype=dtype) 
 
     def __len__(self):
-        #return (self.n_step-self.n_step_per_batch)//self.down_sample
-        return 1 #self.x_train.shape[0]
+        return self.length #self.x_train.shape[0]
 
     def __getitem__(self, idx):
-        return self.x_train
+        #t_idx = idx//self.num_x_idx
+        #x_idx = idx - t_idx*self.num_x_idx
+        (t_idx, x_idx) = np.unravel_index(idx, (self.num_t_idx, self.num_x_idx))
+
+        t_idx = t_idx*self.t_subsample
+        x_idx = x_idx*self.t_subsample
+
+        t_step = self.solver_dim[0]
+        x_step = self.solver_dim[1]
+
+        t = self.t[t_idx:t_idx+t_step]
+        x = self.x[x_idx:x_idx+x_step]
+
+        data = self.data[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+
+        return data, t, x
 
 
 #ds = BurgersDataset(n_step=T,n_step_per_batch=n_step_per_batch)#.generate()
-ds = BurgersDataset()#.generate()
-train_loader =DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=8, drop_last=False) 
+ds = BurgersDataset(solver_dim=solver_dim)#.generate()
+train_loader =DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=8, drop_last=True) 
 
 
 
 class Model(nn.Module):
-    def __init__(self, bs, n_step,n_step_per_batch, device=None, **kwargs):
+    def __init__(self, bs, solver_dim, device=None, **kwargs):
         super().__init__()
 
-        self.n_step = n_step #+ 1
         self.order = 2
         # state dimension
         self.bs = bs
         self.device = device
         self.n_iv=1
         self.n_ind_dim = 1
-        self.n_step_per_batch = n_step_per_batch
 
 
         #Step size is fixed. Make this a parameter for learned step
@@ -112,7 +142,7 @@ class Model(nn.Module):
         #init_coeffs = torch.rand(1, self.n_ind_dim, 1, 2, dtype=dtype)
         #self.init_coeffs = nn.Parameter(init_coeffs)
 
-        self.coord_dims = (32,32)
+        self.coord_dims = solver_dim
         self.iv_list = [(0,0, [0,0],[0,self.coord_dims[1]-2]), 
                         (1,0, [1,0], [self.coord_dims[0]-1, 0]), 
                         #(0,1, [0,0],[0,self.coord_dims[1]-1]), 
@@ -216,8 +246,8 @@ class Model(nn.Module):
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = Model(bs=batch_size,n_step=T, n_step_per_batch=n_step_per_batch, device=device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.00005)
+model = Model(bs=batch_size,solver_dim=solver_dim, device=device)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
 if DBL:
     model = model.double()
@@ -231,22 +261,22 @@ def print_eq(stdout=False):
     print(xi.squeeze().cpu().numpy())
     #return code
 
-def simulate(gen_code):
-    #simulate learned equation
-    def f(state, t):
-        x0, x1, x2= state
-
-        dx0 = eval(gen_code[0])
-        dx1 = eval(gen_code[1])
-        dx2 = eval(gen_code[2])
-
-        return dx0, dx1, dx2
-        
-    state0 = [1.0, 1.0, 1.0]
-    time_steps = np.linspace(0, T*STEP, T)
-
-    x_sim = odeint(f, state0, time_steps)
-    return x_sim
+#def simulate(gen_code):
+#    #simulate learned equation
+#    def f(state, t):
+#        x0, x1, x2= state
+#
+#        dx0 = eval(gen_code[0])
+#        dx1 = eval(gen_code[1])
+#        dx2 = eval(gen_code[2])
+#
+#        return dx0, dx1, dx2
+#        
+#    state0 = [1.0, 1.0, 1.0]
+#    time_steps = np.linspace(0, T*STEP, T)
+#
+#    x_sim = odeint(f, state0, time_steps)
+#    return x_sim
 
 def train():
     """Optimize and threshold cycle"""

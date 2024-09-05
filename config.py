@@ -18,7 +18,12 @@ class PDEConfig:
     #pde_linear_solver = SolverType.DENSE_CHOLESKY_DUAL
     pde_linear_solver = SolverType.SPARSE_INDIRECT_CG_DUAL
     pde_gmres_max_iter = 200 
-    pde_gmres_repeat = 80 
+    pde_gmres_repeat = 25 
+
+    #pde_gmres_max_iter = 1000 
+    #pde_gmres_repeat = 500
+
+    ilu_preconditioner=True
     ilu_fill_factor= 25.0
     sindpy_data = '../pysindy/examples/data/'
 
