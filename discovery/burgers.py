@@ -1,3 +1,4 @@
+#%%
 from scipy.io import loadmat
 
 from config import PDEConfig
@@ -42,7 +43,7 @@ dtype = torch.float64 if DBL else torch.float32
 cuda=True
 #T = 2000
 #n_step_per_batch = T
-solver_dim=(32,32)
+solver_dim=(10,256)
 batch_size= 1
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
@@ -60,14 +61,22 @@ class BurgersDataset(Dataset):
         data=loadmat(os.path.join(PDEConfig.sindpy_data, 'burgers.mat'))
 
         print(data.keys())
-        self.t = torch.tensor(np.array(data['t'])).squeeze()
-        self.x = torch.tensor(np.array(data['x'])).squeeze()
+        t = torch.tensor(np.array(data['t'])).squeeze()
+        x = torch.tensor(np.array(data['x'])).squeeze()
 
-        self.t_step = self.t[1] - self.t[0]
-        self.x_step = self.x[1] - self.x[0]
+        self._t = t
+        self._x = x
 
-        self.t_subsample = 16
-        self.x_subsample =  16
+        self.t_step = t[1] - t[0]
+        self.x_step = x[1] - x[0]
+
+        self.t = t.unsqueeze(1).expand(-1, x.shape[0])
+        self.x = x.unsqueeze(0).expand(t.shape[0],-1)
+
+        print('t x', self.t.shape, self.x.shape)
+
+        self.t_subsample = 10
+        self.x_subsample = 1
 
         print(self.t.shape)
         print(self.x.shape)
@@ -81,8 +90,8 @@ class BurgersDataset(Dataset):
         self.data_dim = self.data.shape
         self.solver_dim = solver_dim
 
-        num_t_idx = self.data_dim[0] - self.solver_dim[0]
-        num_x_idx = self.data_dim[1] - self.solver_dim[1]
+        num_t_idx = self.data_dim[0] - self.solver_dim[0] + 1
+        num_x_idx = self.data_dim[1] - self.solver_dim[1] + 1
 
         self.num_t_idx = num_t_idx//self.t_subsample 
         self.num_x_idx = num_x_idx//self.x_subsample 
@@ -103,16 +112,36 @@ class BurgersDataset(Dataset):
         t_step = self.solver_dim[0]
         x_step = self.solver_dim[1]
 
-        t = self.t[t_idx:t_idx+t_step]
-        x = self.x[x_idx:x_idx+x_step]
+        t = self.t[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+        x = self.x[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
 
         data = self.data[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
 
         return data, t, x
 
+#%%
 
 #ds = BurgersDataset(n_step=T,n_step_per_batch=n_step_per_batch)#.generate()
 ds = BurgersDataset(solver_dim=solver_dim)#.generate()
+
+#
+##%%
+#import matplotlib.pyplot as plt
+#u = ds.data.cpu().numpy().T
+#t = ds._t.cpu().numpy()
+#x = ds._x.cpu().numpy()
+#plt.figure(figsize=(10, 4))
+#plt.subplot(1, 2, 1)
+#plt.pcolormesh(t, x, u)
+#plt.xlabel('t', fontsize=16)
+#plt.ylabel('x', fontsize=16)
+#plt.title(r'$u(x, t)$', fontsize=16)
+
+
+
+
+
+#%%
 train_loader =DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=8, drop_last=True) 
 
 
@@ -181,16 +210,53 @@ class Model(nn.Module):
             )
 
 
-        self.param_in = nn.Parameter(torch.randn(1,64))
-        self.param_net = nn.Sequential(
-            nn.Linear(64, 1024),
+        self.data_conv2d = nn.Sequential(
+            nn.Conv2d(3, 128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #nn.ReLU(),
+            nn.ELU(),
+            nn.Conv2d(128,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #nn.ReLU(),
+            nn.ELU(),
+            nn.Conv2d(128,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #nn.ReLU(),
+            nn.ELU(),
+            nn.Conv2d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #nn.ReLU(),
+            nn.ELU(),
+            nn.Conv2d(256,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #nn.ReLU(),
+            #nn.ELU(),
+            #nn.Conv2d(128,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #nn.ReLU(),
+            nn.ELU(),
+            nn.Conv2d(128,1, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            )
+
+        self.data_mlp = nn.Sequential(
+            #nn.Linear(32*32, 1024),
+            nn.Linear(self.pde.grid_size, 1024),
             nn.ReLU(),
             nn.Linear(1024, 1024),
             nn.ReLU(),
             nn.Linear(1024, 1024),
             nn.ReLU(),
             #two polynomials, second order
-            nn.Linear(1024, 3*2)
+            nn.Linear(1024,self.pde.grid_size)
+        )
+
+
+        self.param_in = nn.Parameter(torch.randn(1,64))
+        self.param_net = nn.Sequential(
+            nn.Linear(64, 1024),
+            nn.ELU(),
+            nn.Linear(1024, 1024),
+            nn.ELU(),
+            nn.Linear(1024, 1024),
+            nn.ELU(),
+            #two polynomials, second order
+            #nn.Linear(1024, 3*2),
+            nn.Linear(1024, 2*2),
+            #nn.Tanh()
         )
 
 
@@ -200,9 +266,13 @@ class Model(nn.Module):
         self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
         self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
 
+        self.steps0 = nn.Parameter(self.steps0)
+        self.steps1 = nn.Parameter(self.steps1)
+
     def get_params(self):
         params = self.param_net(self.param_in)
-        params = params.reshape(-1,1,2, 3)
+        #params = params.reshape(-1,1,2, 3)
+        params = params.reshape(-1,1,2, 2)
         return params
 
     def get_iv(self, u):
@@ -215,13 +285,33 @@ class Model(nn.Module):
 
         return ub
 
-    def forward(self, u):
+    def forward(self, u, t, x):
         bs = u.shape[0]
-        up = self.data_net(u)
-        up = up.reshape(bs, self.pde.grid_size)
+        #up = self.data_net(u)
+        #up = up.reshape(bs, self.pde.grid_size)
+        #cin = torch.stack([u,t,x], dim=1)
+        cin = u #torch.stack([u,t,x], dim=1)
+        #print(cin.shape)
 
-        p = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
-        q = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
+        #up = self.data_conv2d(cin)
+        up = self.data_net(cin)
+        #up = up.reshape(bs, self.coord_dims[0], self.coord_dims[1])
+
+        #cin = u.reshape(1, self.pde.grid_size)
+        #cin = u.reshape(-1,self.pde.grid_size) #+ t.reshape(-1,self.pde.grid_size) +x.reshape(-1,self.pde.grid_size)
+        #up = self.data_mlp(u.reshape(-1,self.pde.grid_size))
+        #up = self.data_mlp(cin)
+        up = up.reshape(bs, self.pde.grid_size)
+        u = u.reshape(bs, self.pde.grid_size)
+
+        #p = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
+        #q = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
+
+        #p = torch.stack([torch.ones_like(up), up], dim=-1)
+        #q = torch.stack([torch.ones_like(up), up], dim=-1)
+
+        p = torch.stack([torch.ones_like(u), u], dim=-1)
+        q = torch.stack([torch.ones_like(u), u], dim=-1)
 
         params = self.get_params()
 
@@ -239,16 +329,17 @@ class Model(nn.Module):
         coeffs[..., 4] = q
 
         up = up.reshape(bs, *self.coord_dims)
+        u = u.reshape(bs, *self.coord_dims)
 
 
         steps0 = self.steps0.type_as(coeffs)
         steps1 = self.steps1.type_as(coeffs)
-        steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.3)
-        steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.3)
+        steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.1)
+        steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.1)
         steps_list = [steps0, steps1]
 
         rhs = torch.zeros(bs, *self.coord_dims, device=u.device)
-        iv_rhs = self.get_iv(up)
+        iv_rhs = self.get_iv(u)
 
         u0,u,eps = self.pde(coeffs, rhs, iv_rhs, steps_list)
 
@@ -268,7 +359,7 @@ class Model(nn.Module):
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step), device=device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
 
 if DBL:
     model = model.double()
@@ -339,15 +430,19 @@ def optimize(nepoch=5000):
         x_losses = []
         var_losses = []
         losses = []
+        total_loss = 0
+        optimizer.zero_grad()
         for i, batch_in in enumerate(tqdm(train_loader)):
             batch_in,t,x = batch_in[0], batch_in[1], batch_in[2]
             batch_in = batch_in.double().to(device)
+            t = t.double().to(device)
+            x = x.double().to(device)
             #time = time.to(device)
             #print(batch_in.shape)
 
-            optimizer.zero_grad()
+            #optimizer.zero_grad()
             #x0, steps, eps, var,xi = model(index, batch_in)
-            x0, var, eps, p,q = model(batch_in)
+            x0, var, eps, p,q = model(batch_in, t, x)
 
             #print(batch_in.shape, x0.shape, var.shape)
             batch_in = batch_in.reshape(x0.shape)
@@ -355,24 +450,30 @@ def optimize(nepoch=5000):
 
 
             x_loss = (x0- batch_in).pow(2)#.mean()
-            #x_loss = (x0- batch_in).abs().mean()
+            #x_loss = (x0- batch_in).abs()#.mean()
             #x_loss = (x0- batch_in).pow(2).mean()
             var_loss = (var- batch_in).pow(2)#.mean()
-            #var_loss = (var- batch_in).abs().mean()
+            #var_loss = (var- batch_in).abs()#.mean()
+            #var_loss = (var- batch_in).pow(2)#.mean()
             #time_loss = (time- var_time).pow(2).mean()
             #time_loss = (time- var_time).abs().mean()
 
             #loss = x_loss + var_loss + time_loss
-            loss = x_loss.mean() + var_loss.mean()
+            #param_loss = p.abs() + q.abs()
+            #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
+            loss = x_loss.mean() #+ var_loss.mean() #+ 0.01*param_loss.mean()
+            #loss = x_loss.mean() + 0.01*param_loss.mean()
+            #loss = var_loss.mean()
             #loss = x_loss +  (var- batch_in).abs().mean()
             #loss = x_loss +  (var- batch_in).pow(2).mean()
             x_losses.append(x_loss)
             var_losses.append(var_loss)
             losses.append(loss)
+            total_loss = total_loss + loss
             
 
-            loss.backward()
-            optimizer.step()
+            #loss.backward()
+            #optimizer.step()
 
 
             #xi = xi.detach().cpu().numpy()
@@ -380,7 +481,12 @@ def optimize(nepoch=5000):
             #beta = beta.squeeze().item()
         _x_loss = torch.cat(x_losses,dim=0).mean()
         _v_loss = torch.cat(var_losses,dim=0).mean()
+
+        total_loss.backward()
+        optimizer.step()
+
         mean_loss = torch.tensor(losses).mean()
+
         meps = eps.max().item()
             #L.info(f'run {run_id} epoch {epoch}, loss {loss.item():.3E} max eps {meps:.3E} xloss {x_loss:.3E} time_loss {time_loss:.3E}')
             #print(f'\nalpha, beta {xi}')
