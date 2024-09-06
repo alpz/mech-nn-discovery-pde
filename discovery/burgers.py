@@ -348,16 +348,17 @@ def optimize(nepoch=5000):
             batch_in = batch_in.reshape(x0.shape)
             var = var.reshape(x0.shape)
 
-            x_loss = (x0- batch_in).pow(2).mean()
+
+            x_loss = (x0- batch_in).pow(2)#.mean()
             #x_loss = (x0- batch_in).abs().mean()
             #x_loss = (x0- batch_in).pow(2).mean()
-            var_loss = (var- batch_in).pow(2).mean()
+            var_loss = (var- batch_in).pow(2)#.mean()
             #var_loss = (var- batch_in).abs().mean()
             #time_loss = (time- var_time).pow(2).mean()
             #time_loss = (time- var_time).abs().mean()
 
             #loss = x_loss + var_loss + time_loss
-            loss = x_loss + var_loss
+            loss = x_loss.mean() + var_loss.mean()
             #loss = x_loss +  (var- batch_in).abs().mean()
             #loss = x_loss +  (var- batch_in).pow(2).mean()
             x_losses.append(x_loss)
