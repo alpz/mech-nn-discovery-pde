@@ -1,5 +1,6 @@
 
 from enum import Enum
+import os
 
 class SolverType(Enum):
     DENSE_CHOLESKY = 1
@@ -17,15 +18,15 @@ class ODEConfig:
 class PDEConfig:
     #pde_linear_solver = SolverType.DENSE_CHOLESKY_DUAL
     pde_linear_solver = SolverType.SPARSE_INDIRECT_CG_DUAL
-    pde_gmres_max_iter = 200 
-    pde_gmres_repeat = 25 
+    pde_gmres_max_iter = 400 
+    pde_gmres_repeat =  200
 
     #pde_gmres_max_iter = 1000 
     #pde_gmres_repeat = 500
 
     ilu_preconditioner=True
-    ilu_fill_factor= 25.0
-    sindpy_data = '../pysindy/examples/data/'
+    ilu_fill_factor= 20.0
+    sindpy_data = os.path.join(os.path.expanduser('~'),'data/pysindy/')
 
     #uncomment to choose linear solver sparse conjuate gradient
     #linear_solver = SolverType.SPARSE_INDIRECT_BLOCK_CG

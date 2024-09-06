@@ -79,7 +79,7 @@ class Method(pl.LightningModule):
 
         #y = y.reshape((32,32))
         #y = y.reshape((32,32))
-        y = y.reshape((48,48))
+        y = y.reshape((4*128,4*128))
         t0 = y[0, 0:-1].reshape(-1)
         tn = y[-1, 1:-1].reshape(-1)
         x0 = y[1:, 0].reshape(-1)
@@ -134,10 +134,10 @@ class Sine(nn.Module):
         #self.coord_dims = (64,32)
         #self.coord_dims = (10,15)
         #self.coord_dims = (32,32)
-        self.coord_dims = (48,48)
+        #self.coord_dims = (48,48)
         #self.coord_dims = (8,8)
         #self.coord_dims = (10,10)
-        #self.coord_dims = (128,128)
+        self.coord_dims = (4*128,4*128)
         #self.coord_dims = (64,32)
         self.n_iv = 1
         #coord, mi_index, begin, end

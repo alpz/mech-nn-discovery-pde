@@ -844,6 +844,7 @@ class PDESYSLP(nn.Module):
 
         full_A = torch.cat([eq_A, initial_A, derivative_A], dim=0)
 
+        print(f'Constraints Shape eq {eq_A.shape}, init {initial_A.shape}, deriv {derivative_A.shape}')
         #print('first ', eq_A.shape, initial_A.shape, derivative_A.shape)
         self.num_constraints = full_A.shape[0]
         #self.build_block_diag(full_A)

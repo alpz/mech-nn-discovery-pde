@@ -39,7 +39,7 @@ L = logger.setup(log_dir, stdout=False)
 DBL=True
 dtype = torch.float64 if DBL else torch.float32
 #STEP = 0.001
-cuda=False
+cuda=True
 #T = 2000
 #n_step_per_batch = T
 solver_dim=(32,32)
@@ -66,8 +66,8 @@ class BurgersDataset(Dataset):
         self.t_step = self.t[1] - self.t[0]
         self.x_step = self.x[1] - self.x[0]
 
-        self.t_subsample = 1
-        self.x_subsample = 1
+        self.t_subsample = 16
+        self.x_subsample =  16
 
         print(self.t.shape)
         print(self.x.shape)
@@ -115,7 +115,7 @@ train_loader =DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=8,
 
 
 class Model(nn.Module):
-    def __init__(self, bs, solver_dim, device=None, **kwargs):
+    def __init__(self, bs, solver_dim, steps, device=None, **kwargs):
         super().__init__()
 
         self.order = 2
@@ -124,18 +124,17 @@ class Model(nn.Module):
         self.device = device
         self.n_iv=1
         self.n_ind_dim = 1
+        self.n_dim = 1
 
 
         #Step size is fixed. Make this a parameter for learned step
         #self.step_size = (logit(0.01)*torch.ones(1,1,1))
         #_step_size = (logit(0.01)*torch.ones(1,1,1))
-        _step_size = (logit(0.001)*torch.ones(1,1,self.n_step_per_batch-1))
-        self.step_size = nn.Parameter(_step_size)
+        #_step_size = (logit(0.001)*torch.ones(1,1,self.n_step_per_batch-1))
+        #self.step_size = nn.Parameter(_step_size)
         self.param_in = nn.Parameter(torch.randn(1,64))
-        self.param_time = nn.Parameter(torch.randn(1,64))
+        #self.param_time = nn.Parameter(torch.randn(1,64))
 
-        # u, u_t, u_tt, u_x, u_xx
-        self.num_multiindex = self.pde.n_orders
 
         #form of equation u_t + 0*u_tt + p(x,t)u_x + q(x,t)u_xx = 0
 
@@ -156,9 +155,14 @@ class Model(nn.Module):
                                   n_iv=self.n_iv, init_index_mi_list=self.iv_list,  
                                   n_iv_steps=1, double_ret=True, solver_dbl=True)
 
-        pm='circular'
+        # u, u_t, u_tt, u_x, u_xx
+        self.num_multiindex = self.pde.n_orders
+
+        #pm='circular'
+        #TODO add time space dims
+        pm='zeros'
         self.data_net = nn.Sequential(
-            nn.Conv1d(100,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.Conv1d(self.coord_dims[0], 64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             nn.ReLU(),
             nn.Conv1d(64,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             nn.ReLU(),
@@ -170,7 +174,7 @@ class Model(nn.Module):
             nn.ReLU(),
             nn.Conv1d(128,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             nn.ReLU(),
-            nn.Conv1d(64,100, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.Conv1d(64,self.coord_dims[0], kernel_size=5, padding=2, stride=1, padding_mode=pm),
             )
 
 
@@ -187,8 +191,9 @@ class Model(nn.Module):
         )
 
 
-        self.t_step_size = 0.1
-        self.x_step_size = 0.075
+        self.t_step_size = steps[0]
+        self.x_step_size = steps[1]
+        print('steps ', steps)
         self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
         self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
 
@@ -196,6 +201,16 @@ class Model(nn.Module):
         params = self.param_net(self.param_in)
         params = params.reshape(-1,1,2, 3)
         return params
+
+    def get_iv(self, u):
+        u1 = u[:,0, :self.coord_dims[1]-2+1]
+        u2 = u[:, 1:self.coord_dims[0]-1+1:,0]
+        u3 = u[:, self.coord_dims[0]-1, 1:self.coord_dims[1]-2+1]
+        u4 = u[:, 0:self.coord_dims[0]-1+1, self.coord_dims[1]-1]
+
+        ub = torch.cat([u1,u2,u3,u4], dim=-1)
+
+        return ub
 
     def forward(self, u):
         bs = u.shape[0]
@@ -207,15 +222,17 @@ class Model(nn.Module):
 
         params = self.get_params()
 
-        p = p*params[...,0,:].sum(dim=-1)
-        q = q*params[...,1,:].sum(dim=-1)
+        p = (p*params[...,0,:]).sum(dim=-1)
+        q = (q*params[...,1,:]).sum(dim=-1)
 
 
-        coeffs = torch.zeros((bs, self.pde.grid_size, self.pde.n_orders))
+        coeffs = torch.zeros((bs, self.pde.grid_size, self.pde.n_orders), device=u.device)
         #u, u_t, u_x, u_tt, u_xx
         #u_t
         coeffs[..., 1] = 1.
+        #u_x
         coeffs[..., 2] = p
+        #u_xx
         coeffs[..., 4] = q
 
         up = up.reshape(bs, *self.coord_dims)
@@ -223,31 +240,32 @@ class Model(nn.Module):
 
         steps0 = self.steps0.type_as(coeffs)
         steps1 = self.steps1.type_as(coeffs)
-        steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.1)
-        steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.1)
+        steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.3)
+        steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.3)
         steps_list = [steps0, steps1]
 
-        rhs = torch.zeros(bs, *self.coord_dims)
+        rhs = torch.zeros(bs, *self.coord_dims, device=u.device)
+        iv_rhs = self.get_iv(up)
 
         u0,u,eps = self.pde(coeffs, rhs, iv_rhs, steps_list)
 
-        steps = self.step_size.repeat(self.bs, self.n_ind_dim, 1).type_as(net_iv)
+        #steps = self.step_size.repeat(self.bs, self.n_ind_dim, 1).type_as(u)
 
-        steps = torch.sigmoid(steps).clip(min=0.001).detach()
+        #steps = torch.sigmoid(steps).clip(min=0.001).detach()
         #self.steps = self.steps.type_as(net_iv)
 
-        x0,x1,x2,eps,steps = self.ode(coeffs, rhs, init_iv, steps)
-        x0 = x0.permute(0,2,1)
-        var = var.permute(0,2,1)
-        ts = ts.squeeze(1)
+        #x0,x1,x2,eps,steps = self.ode(coeffs, rhs, init_iv, steps)
+        #x0 = x0.permute(0,2,1)
+        #var = var.permute(0,2,1)
+        #ts = ts.squeeze(1)
 
         #return x0, steps, eps, var,_xi
-        return x0, steps, eps, var, ts, xi.squeeze()
+        return u0, up, eps, p.squeeze(),q.squeeze()
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = Model(bs=batch_size,solver_dim=solver_dim, device=device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step), device=device)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 
 if DBL:
     model = model.double()
@@ -258,7 +276,7 @@ model=model.to(device)
 def print_eq(stdout=False):
     #print learned equation
     xi = model.get_params()
-    print(xi.squeeze().cpu().numpy())
+    print(xi.squeeze().detach().cpu().numpy())
     #return code
 
 #def simulate(gen_code):
@@ -311,45 +329,57 @@ def train():
 
 
 def optimize(nepoch=5000):
-    with tqdm(total=nepoch) as pbar:
-        for epoch in range(nepoch):
-            pbar.update(1)
-            #for i, (time, batch_in) in enumerate(train_loader):
-            for i, batch_in in enumerate(train_loader):
-                batch_in = batch_in.to(device)
-                #time = time.to(device)
+    #with tqdm(total=nepoch) as pbar:
+    for epoch in range(nepoch):
+        #pbar.update(1)
+        #for i, (time, batch_in) in enumerate(train_loader):
+        x_losses = []
+        var_losses = []
+        for i, batch_in in enumerate(tqdm(train_loader)):
+            batch_in,t,x = batch_in[0], batch_in[1], batch_in[2]
+            batch_in = batch_in.double().to(device)
+            #time = time.to(device)
 
-                optimizer.zero_grad()
-                #x0, steps, eps, var,xi = model(index, batch_in)
-                x0, steps, eps, var = model(batch_in)
+            optimizer.zero_grad()
+            #x0, steps, eps, var,xi = model(index, batch_in)
+            x0, var, eps, p,q = model(batch_in)
 
-                x_loss = (x0- batch_in).pow(2).mean()
-                #x_loss = (x0- batch_in).abs().mean()
-                #x_loss = (x0- batch_in).pow(2).mean()
-                var_loss = (var- batch_in).pow(2).mean()
-                #var_loss = (var- batch_in).abs().mean()
-                #time_loss = (time- var_time).pow(2).mean()
-                #time_loss = (time- var_time).abs().mean()
+            #print(batch_in.shape, x0.shape, var.shape)
+            batch_in = batch_in.reshape(x0.shape)
+            var = var.reshape(x0.shape)
 
-                #loss = x_loss + var_loss + time_loss
-                loss = x_loss + var_loss
-                #loss = x_loss +  (var- batch_in).abs().mean()
-                #loss = x_loss +  (var- batch_in).pow(2).mean()
-                
+            x_loss = (x0- batch_in).pow(2).mean()
+            #x_loss = (x0- batch_in).abs().mean()
+            #x_loss = (x0- batch_in).pow(2).mean()
+            var_loss = (var- batch_in).pow(2).mean()
+            #var_loss = (var- batch_in).abs().mean()
+            #time_loss = (time- var_time).pow(2).mean()
+            #time_loss = (time- var_time).abs().mean()
 
-                loss.backward()
-                optimizer.step()
+            #loss = x_loss + var_loss + time_loss
+            loss = x_loss + var_loss
+            #loss = x_loss +  (var- batch_in).abs().mean()
+            #loss = x_loss +  (var- batch_in).pow(2).mean()
+            x_losses.append(x_loss)
+            var_losses.append(var_loss)
+            
+
+            loss.backward()
+            optimizer.step()
 
 
             #xi = xi.detach().cpu().numpy()
             #alpha = alpha.squeeze().item() #.detach().cpu().numpy()
             #beta = beta.squeeze().item()
-            meps = eps.max().item()
+        x_loss = torch.cat(x_losses,dim=0).mean()
+        var_loss = torch.cat(var_losses,dim=0).mean()
+        meps = eps.max().item()
             #L.info(f'run {run_id} epoch {epoch}, loss {loss.item():.3E} max eps {meps:.3E} xloss {x_loss:.3E} time_loss {time_loss:.3E}')
             #print(f'\nalpha, beta {xi}')
             #L.info(f'\nparameters {xi}')
-            print_eq()
-            pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item():.3E} max eps {meps}\n xloss {x_loss:.3E} time_loss{time_loss:.3E}\n')
+        print_eq()
+            #pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item():.3E}  xloss {x_loss:.3E} max eps {meps}\n')
+        print(f'run {run_id} epoch {epoch}, loss {loss.item():.3E}  xloss {x_loss:.3E} max eps {meps}\n')
 
 
 if __name__ == "__main__":

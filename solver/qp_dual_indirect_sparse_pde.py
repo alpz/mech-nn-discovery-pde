@@ -93,10 +93,10 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
 
                 #KKTs = KKTs.to_sparse_csc()
                 #if not QPFunctionFn.first:
-                print('begin ilu')
+                #print('begin ilu')
                 M = spla.spilu(KKTs, fill_factor=config.ilu_fill_factor, options=dict(Fact='DOFACT', PrintStat=True))
-                print('end ilu')
-                print('nnz ', M.nnz, KKTs.nnz, KKTs.nnz/(M.shape[0]*M.shape[1]), M.shape, KKTs.shape)
+                #print('end ilu')
+                #print('nnz ', M.nnz, KKTs.nnz, KKTs.nnz/(M.shape[0]*M.shape[1]), M.shape, KKTs.shape)
             #M = spla.spilu(KKTs, fill_factor=config.ilu_fill_factor, options=dict(Fact='SamePattern', PrintStat=True))
             #else:
             #    M = spla.spilu(KKTs, fill_factor=config.ilu_fill_factor, options=dict(PrintStat='YES'))
@@ -117,7 +117,7 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             sol, info = cg.gmres(KKT, R, x0=torch.zeros_like(R), M=M, maxiter=config.pde_gmres_max_iter, 
                                 restart=config.pde_gmres_repeat)
             #sol, info = cg.gmres(KKT, R, x0=x0, maxiter=1, restart=600)
-            print('torch gmres info ', info, sol.shape)
+            #print('torch gmres info ', info, sol.shape)
 
             x = -sol[:, :num_var+num_eps]
             lam = sol[:, num_var+num_eps:]
@@ -187,7 +187,7 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             sol, info = cg.gmres(KKT, R, x0=torch.zeros_like(R), M=M, maxiter=config.pde_gmres_max_iter, 
                                 restart=config.pde_gmres_repeat)
 
-            print('back gmres info ', info)
+            #print('back gmres info ', info)
 
             dx = sol[:, :pde.var_set.num_vars+pde.var_set.num_added_eps_vars]
             dnu = sol[:, pde.var_set.num_vars+pde.var_set.num_added_eps_vars:]
