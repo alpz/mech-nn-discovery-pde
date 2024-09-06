@@ -73,9 +73,13 @@ class BurgersDataset(Dataset):
         print(self.x.shape)
         print(data['usol'].shape)
 
-        self.data_dim = data['usol'].shape
+        data = data['usol']
+        #permute time, x
+        self.data = torch.tensor(data, dtype=dtype).permute(1,0) 
+        print('self ', self.data.shape)
+
+        self.data_dim = self.data.shape
         self.solver_dim = solver_dim
-        self.data = data['usol']
 
         num_t_idx = self.data_dim[0] - self.solver_dim[0]
         num_x_idx = self.data_dim[1] - self.solver_dim[1]
@@ -84,7 +88,6 @@ class BurgersDataset(Dataset):
         self.num_x_idx = num_x_idx//self.x_subsample 
         self.length = self.num_t_idx*self.num_x_idx
 
-        self.x_train = torch.tensor(self.data, dtype=dtype) 
 
     def __len__(self):
         return self.length #self.x_train.shape[0]
@@ -335,10 +338,12 @@ def optimize(nepoch=5000):
         #for i, (time, batch_in) in enumerate(train_loader):
         x_losses = []
         var_losses = []
+        losses = []
         for i, batch_in in enumerate(tqdm(train_loader)):
             batch_in,t,x = batch_in[0], batch_in[1], batch_in[2]
             batch_in = batch_in.double().to(device)
             #time = time.to(device)
+            #print(batch_in.shape)
 
             optimizer.zero_grad()
             #x0, steps, eps, var,xi = model(index, batch_in)
@@ -363,6 +368,7 @@ def optimize(nepoch=5000):
             #loss = x_loss +  (var- batch_in).pow(2).mean()
             x_losses.append(x_loss)
             var_losses.append(var_loss)
+            losses.append(loss)
             
 
             loss.backward()
@@ -372,15 +378,16 @@ def optimize(nepoch=5000):
             #xi = xi.detach().cpu().numpy()
             #alpha = alpha.squeeze().item() #.detach().cpu().numpy()
             #beta = beta.squeeze().item()
-        x_loss = torch.cat(x_losses,dim=0).mean()
-        var_loss = torch.cat(var_losses,dim=0).mean()
+        _x_loss = torch.cat(x_losses,dim=0).mean()
+        _v_loss = torch.cat(var_losses,dim=0).mean()
+        mean_loss = torch.tensor(losses).mean()
         meps = eps.max().item()
             #L.info(f'run {run_id} epoch {epoch}, loss {loss.item():.3E} max eps {meps:.3E} xloss {x_loss:.3E} time_loss {time_loss:.3E}')
             #print(f'\nalpha, beta {xi}')
             #L.info(f'\nparameters {xi}')
         print_eq()
             #pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item():.3E}  xloss {x_loss:.3E} max eps {meps}\n')
-        print(f'run {run_id} epoch {epoch}, loss {loss.item():.3E}  xloss {x_loss:.3E} max eps {meps}\n')
+        print(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E}  xloss {_x_loss:.3E} vloss {_v_loss:.3E} max eps {meps}\n')
 
 
 if __name__ == "__main__":
