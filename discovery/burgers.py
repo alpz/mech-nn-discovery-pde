@@ -211,7 +211,7 @@ class Model(nn.Module):
 
 
         self.data_conv2d = nn.Sequential(
-            nn.Conv2d(3, 128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.Conv2d(1, 128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             #nn.ReLU(),
             nn.ELU(),
             nn.Conv2d(128,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
@@ -255,7 +255,21 @@ class Model(nn.Module):
             nn.ELU(),
             #two polynomials, second order
             #nn.Linear(1024, 3*2),
-            nn.Linear(1024, 2*2),
+            nn.Linear(1024, 3),
+            #nn.Tanh()
+        )
+
+        self.param_in2 = nn.Parameter(torch.randn(1,64))
+        self.param_net2 = nn.Sequential(
+            nn.Linear(64, 1024),
+            nn.ELU(),
+            nn.Linear(1024, 1024),
+            nn.ELU(),
+            nn.Linear(1024, 1024),
+            nn.ELU(),
+            #two polynomials, second order
+            #nn.Linear(1024, 3*2),
+            nn.Linear(1024, 3),
             #nn.Tanh()
         )
 
@@ -271,8 +285,10 @@ class Model(nn.Module):
 
     def get_params(self):
         params = self.param_net(self.param_in)
+        params2 = self.param_net2(self.param_in2)
         #params = params.reshape(-1,1,2, 3)
-        params = params.reshape(-1,1,2, 2)
+        #params = params.reshape(-1,1,2, 2)
+        params = torch.stack([params, params2], dim=-2)
         return params
 
     def get_iv(self, u):
@@ -290,11 +306,11 @@ class Model(nn.Module):
         #up = self.data_net(u)
         #up = up.reshape(bs, self.pde.grid_size)
         #cin = torch.stack([u,t,x], dim=1)
-        cin = u #torch.stack([u,t,x], dim=1)
+        cin = u.unsqueeze(1) #torch.stack([u,t,x], dim=1)
         #print(cin.shape)
 
-        #up = self.data_conv2d(cin)
-        up = self.data_net(cin)
+        up = self.data_conv2d(cin)
+        #up = self.data_net(cin)
         #up = up.reshape(bs, self.coord_dims[0], self.coord_dims[1])
 
         #cin = u.reshape(1, self.pde.grid_size)
@@ -307,11 +323,12 @@ class Model(nn.Module):
         #p = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
         #q = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
 
-        #p = torch.stack([torch.ones_like(up), up], dim=-1)
-        #q = torch.stack([torch.ones_like(up), up], dim=-1)
+        p = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
+        q = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
 
-        p = torch.stack([torch.ones_like(u), u], dim=-1)
-        q = torch.stack([torch.ones_like(u), u], dim=-1)
+        #p = torch.stack([torch.ones_like(u), u], dim=-1)
+        #q = torch.stack([torch.ones_like(u), u], dim=-1)
+
 
         params = self.get_params()
 
@@ -359,7 +376,7 @@ class Model(nn.Module):
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step), device=device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
 
 if DBL:
     model = model.double()
@@ -453,6 +470,7 @@ def optimize(nepoch=5000):
             #x_loss = (x0- batch_in).abs()#.mean()
             #x_loss = (x0- batch_in).pow(2).mean()
             var_loss = (var- batch_in).pow(2)#.mean()
+            #var_loss = (var- batch_in).pow(2)#.mean()
             #var_loss = (var- batch_in).abs()#.mean()
             #var_loss = (var- batch_in).pow(2)#.mean()
             #time_loss = (time- var_time).pow(2).mean()
@@ -461,8 +479,8 @@ def optimize(nepoch=5000):
             #loss = x_loss + var_loss + time_loss
             #param_loss = p.abs() + q.abs()
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
-            loss = x_loss.mean() #+ var_loss.mean() #+ 0.01*param_loss.mean()
-            #loss = x_loss.mean() + 0.01*param_loss.mean()
+            loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
+            #loss = x_loss.mean() #+ 0.01*param_loss.mean()
             #loss = var_loss.mean()
             #loss = x_loss +  (var- batch_in).abs().mean()
             #loss = x_loss +  (var- batch_in).pow(2).mean()
