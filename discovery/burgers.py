@@ -43,7 +43,8 @@ dtype = torch.float64 if DBL else torch.float32
 cuda=True
 #T = 2000
 #n_step_per_batch = T
-solver_dim=(10,256)
+#solver_dim=(10,256)
+solver_dim=(32,32)
 batch_size= 1
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
@@ -75,8 +76,8 @@ class BurgersDataset(Dataset):
 
         print('t x', self.t.shape, self.x.shape)
 
-        self.t_subsample = 10
-        self.x_subsample = 1
+        self.t_subsample = 32
+        self.x_subsample = 32
 
         print(self.t.shape)
         print(self.x.shape)
@@ -255,7 +256,7 @@ class Model(nn.Module):
             nn.ELU(),
             #two polynomials, second order
             #nn.Linear(1024, 3*2),
-            nn.Linear(1024, 3),
+            nn.Linear(1024, 2),
             #nn.Tanh()
         )
 
@@ -269,7 +270,7 @@ class Model(nn.Module):
             nn.ELU(),
             #two polynomials, second order
             #nn.Linear(1024, 3*2),
-            nn.Linear(1024, 3),
+            nn.Linear(1024, 2),
             #nn.Tanh()
         )
 
@@ -277,11 +278,21 @@ class Model(nn.Module):
         self.t_step_size = steps[0]
         self.x_step_size = steps[1]
         print('steps ', steps)
-        self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
-        self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
+        #self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
+        #self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
+
+        self.steps0 = torch.logit(self.t_step_size*torch.ones(1,1))
+        self.steps1 = torch.logit(self.x_step_size*torch.ones(1,1))
 
         self.steps0 = nn.Parameter(self.steps0)
         self.steps1 = nn.Parameter(self.steps1)
+
+
+        up_coeffs = torch.randn((1, 1, self.num_multiindex), dtype=dtype)
+        self.up_coeffs = nn.Parameter(up_coeffs)
+
+        self.stepsup0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
+        self.stepsup1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
 
     def get_params(self):
         params = self.param_net(self.param_in)
@@ -310,6 +321,19 @@ class Model(nn.Module):
         #print(cin.shape)
 
         up = self.data_conv2d(cin)
+
+        #up_coeffs = self.up_coeffs.repeat(self.bs,self.pde.grid_size,1)
+        #up_rhs = up
+
+        #stepsup0 = self.stepsup0.to(u.device)
+        #stepsup1 = self.stepsup1.to(u.device)
+        #stepsup0 = torch.sigmoid(stepsup0).clip(min=0.005, max=0.1)
+        #stepsup1 = torch.sigmoid(stepsup1).clip(min=0.005, max=0.1)
+        #steps_list_up = [stepsup0, stepsup1]
+
+        u = u.reshape(bs, *self.coord_dims)
+
+        #up,_,_ = self.pde(up_coeffs, up_rhs, iv_rhs, steps_list_up)
         #up = self.data_net(cin)
         #up = up.reshape(bs, self.coord_dims[0], self.coord_dims[1])
 
@@ -318,13 +342,23 @@ class Model(nn.Module):
         #up = self.data_mlp(u.reshape(-1,self.pde.grid_size))
         #up = self.data_mlp(cin)
         up = up.reshape(bs, self.pde.grid_size)
+
+        
+        
+
         u = u.reshape(bs, self.pde.grid_size)
 
         #p = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
         #q = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
 
-        p = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
-        q = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
+        up = u + up
+
+        #can use either u or up for boundary conditions
+        upi = up.reshape(bs, *self.coord_dims)
+        iv_rhs = self.get_iv(upi)
+
+        p = torch.stack([torch.ones_like(up), up], dim=-1)
+        q = torch.stack([torch.ones_like(up), up], dim=-1)
 
         #p = torch.stack([torch.ones_like(u), u], dim=-1)
         #q = torch.stack([torch.ones_like(u), u], dim=-1)
@@ -346,17 +380,15 @@ class Model(nn.Module):
         coeffs[..., 4] = q
 
         up = up.reshape(bs, *self.coord_dims)
-        u = u.reshape(bs, *self.coord_dims)
 
 
-        steps0 = self.steps0.type_as(coeffs)
-        steps1 = self.steps1.type_as(coeffs)
+        steps0 = self.steps0.type_as(coeffs).expand(-1, self.coord_dims[0]-1)
+        steps1 = self.steps1.type_as(coeffs).expand(-1, self.coord_dims[1]-1)
         steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.1)
         steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.1)
         steps_list = [steps0, steps1]
 
         rhs = torch.zeros(bs, *self.coord_dims, device=u.device)
-        iv_rhs = self.get_iv(u)
 
         u0,u,eps = self.pde(coeffs, rhs, iv_rhs, steps_list)
 
@@ -377,6 +409,7 @@ class Model(nn.Module):
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step), device=device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
+#optimizer = torch.optim.SGD(model.parameters(), lr=0.0001, momentum =0.9)
 
 if DBL:
     model = model.double()
@@ -479,7 +512,7 @@ def optimize(nepoch=5000):
             #loss = x_loss + var_loss + time_loss
             #param_loss = p.abs() + q.abs()
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
-            loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
+            loss = x_loss.mean() + var_loss.mean()# + 0.0001*param_loss.mean()
             #loss = x_loss.mean() #+ 0.01*param_loss.mean()
             #loss = var_loss.mean()
             #loss = x_loss +  (var- batch_in).abs().mean()
