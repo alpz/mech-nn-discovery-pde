@@ -43,8 +43,8 @@ dtype = torch.float64 if DBL else torch.float32
 cuda=True
 #T = 2000
 #n_step_per_batch = T
-#solver_dim=(10,256)
-solver_dim=(32,32)
+solver_dim=(10,256)
+#solver_dim=(32,32)
 batch_size= 1
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
@@ -76,8 +76,8 @@ class BurgersDataset(Dataset):
 
         print('t x', self.t.shape, self.x.shape)
 
-        self.t_subsample = 32
-        self.x_subsample = 32
+        self.t_subsample = 10
+        self.x_subsample = 1
 
         print(self.t.shape)
         print(self.x.shape)
@@ -384,9 +384,10 @@ class Model(nn.Module):
         up2 = u + up2
 
         #can use either u or up for boundary conditions
-        upi = up.reshape(bs, *self.coord_dims)
-        upi = upi + up2.reshape(bs, *self.coord_dims)
-        upi = upi/2
+        upi = u.reshape(bs, *self.coord_dims)
+        #upi = up.reshape(bs, *self.coord_dims)
+        #upi = upi + up2.reshape(bs, *self.coord_dims)
+        #upi = upi/2
         iv_rhs = self.get_iv(upi)
 
         p = torch.stack([0*torch.ones_like(up), up, up**2, up**3], dim=-1)
@@ -452,7 +453,9 @@ model=model.to(device)
 def print_eq(stdout=False):
     #print learned equation
     xi = model.get_params()
-    print(xi.squeeze().detach().cpu().numpy())
+    params = xi.squeeze().detach().cpu().numpy()
+    print(params)
+    return params
     #return code
 
 #def simulate(gen_code):
@@ -573,12 +576,12 @@ def optimize(nepoch=5000):
         mean_loss = torch.tensor(losses).mean()
 
         meps = eps.max().item()
-            #L.info(f'run {run_id} epoch {epoch}, loss {loss.item():.3E} max eps {meps:.3E} xloss {x_loss:.3E} time_loss {time_loss:.3E}')
             #print(f'\nalpha, beta {xi}')
-            #L.info(f'\nparameters {xi}')
-        print_eq()
+        params=print_eq()
+        L.info(f'\nparameters {params}')
             #pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item():.3E}  xloss {x_loss:.3E} max eps {meps}\n')
         print(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E}  xloss {_x_loss:.3E} vloss {_v_loss:.3E} max eps {meps}\n')
+        L.info(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E} max eps {meps:.3E} xloss {_x_loss.item():.3E}')
 
 
 if __name__ == "__main__":
