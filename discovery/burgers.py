@@ -257,7 +257,7 @@ class Model(nn.Module):
             #two polynomials, second order
             #nn.Linear(1024, 3*2),
             nn.Linear(1024, 2),
-            #nn.Tanh()
+            nn.Tanh()
         )
 
         self.param_in2 = nn.Parameter(torch.randn(1,64))
@@ -271,7 +271,7 @@ class Model(nn.Module):
             #two polynomials, second order
             #nn.Linear(1024, 3*2),
             nn.Linear(1024, 2),
-            #nn.Tanh()
+            nn.Tanh()
         )
 
 
@@ -295,8 +295,8 @@ class Model(nn.Module):
         self.stepsup1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
 
     def get_params(self):
-        params = self.param_net(self.param_in)
-        params2 = self.param_net2(self.param_in2)
+        params = 2*self.param_net(self.param_in)
+        params2 = 2*self.param_net2(self.param_in2)
         #params = params.reshape(-1,1,2, 3)
         #params = params.reshape(-1,1,2, 2)
         params = torch.stack([params, params2], dim=-2)
@@ -354,7 +354,7 @@ class Model(nn.Module):
         up = u + up
 
         #can use either u or up for boundary conditions
-        upi = up.reshape(bs, *self.coord_dims)
+        upi = u.reshape(bs, *self.coord_dims)
         iv_rhs = self.get_iv(upi)
 
         p = torch.stack([torch.ones_like(up), up], dim=-1)
