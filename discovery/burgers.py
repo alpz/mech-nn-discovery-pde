@@ -212,26 +212,53 @@ class Model(nn.Module):
 
 
         self.data_conv2d = nn.Sequential(
-            nn.Conv2d(1, 128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            #nn.ReLU(),
-            nn.ELU(),
-            nn.Conv2d(128,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            #nn.ReLU(),
-            nn.ELU(),
-            nn.Conv2d(128,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.Conv2d(1, 256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             #nn.ReLU(),
             nn.ELU(),
             nn.Conv2d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             #nn.ReLU(),
             nn.ELU(),
-            nn.Conv2d(256,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.Conv2d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #nn.ReLU(),
+            nn.ELU(),
+            nn.Conv2d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.ELU(),
+            nn.Conv2d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #nn.ReLU(),
+            nn.ELU(),
+            nn.Conv2d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             #nn.ReLU(),
             #nn.ELU(),
             #nn.Conv2d(128,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             #nn.ReLU(),
             nn.ELU(),
-            nn.Conv2d(128,1, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.Conv2d(256,1, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             )
+
+        self.data_conv2d2 = nn.Sequential(
+            nn.Conv2d(1, 256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #nn.ReLU(),
+            nn.ELU(),
+            nn.Conv2d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #nn.ReLU(),
+            nn.ELU(),
+            nn.Conv2d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #nn.ReLU(),
+            nn.ELU(),
+            nn.Conv2d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.ELU(),
+            nn.Conv2d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #nn.ReLU(),
+            nn.ELU(),
+            nn.Conv2d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #nn.ReLU(),
+            #nn.ELU(),
+            #nn.Conv2d(128,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #nn.ReLU(),
+            nn.ELU(),
+            nn.Conv2d(256,1, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            )
+
 
         self.data_mlp = nn.Sequential(
             #nn.Linear(32*32, 1024),
@@ -246,9 +273,9 @@ class Model(nn.Module):
         )
 
 
-        self.param_in = nn.Parameter(torch.randn(1,64))
+        self.param_in = nn.Parameter(torch.randn(1,256))
         self.param_net = nn.Sequential(
-            nn.Linear(64, 1024),
+            nn.Linear(256, 1024),
             nn.ELU(),
             nn.Linear(1024, 1024),
             nn.ELU(),
@@ -256,13 +283,13 @@ class Model(nn.Module):
             nn.ELU(),
             #two polynomials, second order
             #nn.Linear(1024, 3*2),
-            nn.Linear(1024, 2),
-            nn.Tanh()
+            nn.Linear(1024, 4),
+            #nn.Tanh()
         )
 
-        self.param_in2 = nn.Parameter(torch.randn(1,64))
+        self.param_in2 = nn.Parameter(torch.randn(1,256))
         self.param_net2 = nn.Sequential(
-            nn.Linear(64, 1024),
+            nn.Linear(256, 1024),
             nn.ELU(),
             nn.Linear(1024, 1024),
             nn.ELU(),
@@ -270,8 +297,8 @@ class Model(nn.Module):
             nn.ELU(),
             #two polynomials, second order
             #nn.Linear(1024, 3*2),
-            nn.Linear(1024, 2),
-            nn.Tanh()
+            nn.Linear(1024, 4),
+            #nn.Tanh()
         )
 
 
@@ -284,8 +311,8 @@ class Model(nn.Module):
         self.steps0 = torch.logit(self.t_step_size*torch.ones(1,1))
         self.steps1 = torch.logit(self.x_step_size*torch.ones(1,1))
 
-        self.steps0 = nn.Parameter(self.steps0)
-        self.steps1 = nn.Parameter(self.steps1)
+        #self.steps0 = nn.Parameter(self.steps0)
+        #self.steps1 = nn.Parameter(self.steps1)
 
 
         up_coeffs = torch.randn((1, 1, self.num_multiindex), dtype=dtype)
@@ -295,8 +322,8 @@ class Model(nn.Module):
         self.stepsup1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
 
     def get_params(self):
-        params = 2*self.param_net(self.param_in)
-        params2 = 2*self.param_net2(self.param_in2)
+        params = self.param_net(self.param_in)
+        params2 =self.param_net2(self.param_in2)
         #params = params.reshape(-1,1,2, 3)
         #params = params.reshape(-1,1,2, 2)
         params = torch.stack([params, params2], dim=-2)
@@ -321,6 +348,7 @@ class Model(nn.Module):
         #print(cin.shape)
 
         up = self.data_conv2d(cin)
+        up2 = self.data_conv2d2(cin)
 
         #up_coeffs = self.up_coeffs.repeat(self.bs,self.pde.grid_size,1)
         #up_rhs = up
@@ -342,6 +370,7 @@ class Model(nn.Module):
         #up = self.data_mlp(u.reshape(-1,self.pde.grid_size))
         #up = self.data_mlp(cin)
         up = up.reshape(bs, self.pde.grid_size)
+        up2 = up2.reshape(bs, self.pde.grid_size)
 
         
         
@@ -352,13 +381,16 @@ class Model(nn.Module):
         #q = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
 
         up = u + up
+        up2 = u + up2
 
         #can use either u or up for boundary conditions
-        upi = u.reshape(bs, *self.coord_dims)
+        upi = up.reshape(bs, *self.coord_dims)
+        upi = upi + up2.reshape(bs, *self.coord_dims)
+        upi = upi/2
         iv_rhs = self.get_iv(upi)
 
-        p = torch.stack([torch.ones_like(up), up], dim=-1)
-        q = torch.stack([torch.ones_like(up), up], dim=-1)
+        p = torch.stack([0*torch.ones_like(up), up, up**2, up**3], dim=-1)
+        q = torch.stack([torch.ones_like(up2), up2, up2**2, up2**3], dim=-1)
 
         #p = torch.stack([torch.ones_like(u), u], dim=-1)
         #q = torch.stack([torch.ones_like(u), u], dim=-1)
@@ -403,13 +435,13 @@ class Model(nn.Module):
         #ts = ts.squeeze(1)
 
         #return x0, steps, eps, var,_xi
-        return u0, up, eps, p.squeeze(),q.squeeze()
+        return u0, up,up2, eps, params
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step), device=device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
-#optimizer = torch.optim.SGD(model.parameters(), lr=0.0001, momentum =0.9)
+#optimizer = torch.optim.SGD(model.parameters(), lr=0.0005, momentum =0.9)
 
 if DBL:
     model = model.double()
@@ -492,17 +524,19 @@ def optimize(nepoch=5000):
 
             #optimizer.zero_grad()
             #x0, steps, eps, var,xi = model(index, batch_in)
-            x0, var, eps, p,q = model(batch_in, t, x)
+            x0, var,var2, eps, params = model(batch_in, t, x)
 
             #print(batch_in.shape, x0.shape, var.shape)
             batch_in = batch_in.reshape(x0.shape)
             var = var.reshape(x0.shape)
+            var2 = var2.reshape(x0.shape)
 
 
-            x_loss = (x0- batch_in).pow(2)#.mean()
+            x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
             #x_loss = (x0- batch_in).abs()#.mean()
             #x_loss = (x0- batch_in).pow(2).mean()
-            var_loss = (var- batch_in).pow(2)#.mean()
+            var_loss = (var- batch_in).abs()#.pow(2)#.mean()
+            var2_loss = (var2- batch_in).abs()#.pow(2)#.mean()
             #var_loss = (var- batch_in).pow(2)#.mean()
             #var_loss = (var- batch_in).abs()#.mean()
             #var_loss = (var- batch_in).pow(2)#.mean()
@@ -510,15 +544,15 @@ def optimize(nepoch=5000):
             #time_loss = (time- var_time).abs().mean()
 
             #loss = x_loss + var_loss + time_loss
-            #param_loss = p.abs() + q.abs()
+            param_loss = params.abs()
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
-            loss = x_loss.mean() + var_loss.mean()# + 0.0001*param_loss.mean()
+            loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.01*param_loss.mean()
             #loss = x_loss.mean() #+ 0.01*param_loss.mean()
             #loss = var_loss.mean()
             #loss = x_loss +  (var- batch_in).abs().mean()
             #loss = x_loss +  (var- batch_in).pow(2).mean()
             x_losses.append(x_loss)
-            var_losses.append(var_loss)
+            var_losses.append(var_loss + var2_loss)
             losses.append(loss)
             total_loss = total_loss + loss
             
