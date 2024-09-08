@@ -18,8 +18,8 @@ class ODEConfig:
 class PDEConfig:
     #pde_linear_solver = SolverType.DENSE_CHOLESKY_DUAL
     pde_linear_solver = SolverType.SPARSE_INDIRECT_CG_DUAL
-    pde_gmres_max_iter = 400 
-    pde_gmres_repeat =  200
+    pde_gmres_max_iter = 100 
+    pde_gmres_repeat =  40
 
     #pde_gmres_max_iter = 1000 
     #pde_gmres_repeat = 500

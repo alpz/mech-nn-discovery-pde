@@ -35,7 +35,7 @@ import discovery.plot as P
 
 log_dir, run_id = create_log_dir(root='logs')
 write_source_files(log_dir)
-L = logger.setup(log_dir, stdout=False)
+L = logger.setup(log_dir, stdout=True)
 
 DBL=True
 dtype = torch.float64 if DBL else torch.float32
@@ -44,13 +44,14 @@ cuda=True
 #T = 2000
 #n_step_per_batch = T
 #solver_dim=(10,256)
-#solver_dim=(50,64)
 solver_dim=(32,32)
+#solver_dim=(50,64)
 batch_size= 1
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
 
 
+L.info(f'Solver dim {solver_dim} ')
 
 
 class BurgersDataset(Dataset):
@@ -80,11 +81,13 @@ class BurgersDataset(Dataset):
         #self.t_subsample = 10
         #self.x_subsample = 1
 
-        #self.t_subsample = 10
-        #self.x_subsample = 256
+        self.t_subsample = 32 #10
+        self.x_subsample = 32 #256
 
-        self.t_subsample = 32
-        self.x_subsample = 32
+
+        L.info(f'subsample {self.t_subsample}, {self.x_subsample} ')
+        #self.t_subsample =50
+        #self.x_subsample =64
 
         print(self.t.shape)
         print(self.x.shape)
@@ -101,12 +104,15 @@ class BurgersDataset(Dataset):
         num_t_idx = self.data_dim[0] #- self.solver_dim[0] + 1
         num_x_idx = self.data_dim[1] #- self.solver_dim[1] + 1
 
-        print(num_t_idx, num_x_idx)
 
         self.num_t_idx = num_t_idx//self.t_subsample  #+ 1
         self.num_x_idx = num_x_idx//self.x_subsample  #+ 1
 
-        print(self.num_t_idx, self.num_x_idx)
+        if self.t_subsample < self.solver_dim[0]:
+            self.num_t_idx = self.num_t_idx - self.solver_dim[0]//self.t_subsample
+        if self.x_subsample < self.solver_dim[1]:
+            self.num_t_idx = self.num_t_idx - self.solver_dim[1]//self.x_subsample
+
         self.length = self.num_t_idx*self.num_x_idx
 
 
@@ -121,8 +127,10 @@ class BurgersDataset(Dataset):
         t_idx = t_idx*self.t_subsample
         x_idx = x_idx*self.x_subsample
 
+
         t_step = self.solver_dim[0]
         x_step = self.solver_dim[1]
+
 
         t = self.t[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
         x = self.x[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
@@ -223,7 +231,7 @@ class Model(nn.Module):
 
 
         self.data_conv2d = nn.Sequential(
-            nn.Conv2d(3, 256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.Conv2d(1, 256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             #nn.ReLU(),
             nn.ELU(),
             nn.Conv2d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
@@ -247,7 +255,7 @@ class Model(nn.Module):
             )
 
         self.data_conv2d2 = nn.Sequential(
-            nn.Conv2d(3, 256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.Conv2d(1, 256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             #nn.ReLU(),
             nn.ELU(),
             nn.Conv2d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
@@ -366,8 +374,8 @@ class Model(nn.Module):
         bs = u.shape[0]
         #up = self.data_net(u)
         #up = up.reshape(bs, self.pde.grid_size)
-        cin = torch.stack([u,t,x], dim=1)
-        #cin = u.unsqueeze(1) #torch.stack([u,t,x], dim=1)
+        #cin = torch.stack([u,t,x], dim=1)
+        cin = u.unsqueeze(1) #torch.stack([u,t,x], dim=1)
         #print(cin.shape)
 
         up = self.data_conv2d(cin)
@@ -480,7 +488,7 @@ def print_eq(stdout=False):
     #print learned equation
     xi = model.get_params()
     params = xi.squeeze().detach().cpu().numpy()
-    print(params)
+    #print(params)
     return params
     #return code
 
@@ -604,9 +612,9 @@ def optimize(nepoch=5000):
         meps = eps.max().item()
             #print(f'\nalpha, beta {xi}')
         params=print_eq()
-        L.info(f'\nparameters {params}')
+        L.info(f'parameters\n{params}')
             #pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item():.3E}  xloss {x_loss:.3E} max eps {meps}\n')
-        print(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E}  xloss {_x_loss:.3E} vloss {_v_loss:.3E} max eps {meps}\n')
+        #print(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E}  xloss {_x_loss:.3E} vloss {_v_loss:.3E} max eps {meps}\n')
         L.info(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E} max eps {meps:.3E} xloss {_x_loss.item():.3E} vloss {_v_loss.item():.3E}')
 
 
