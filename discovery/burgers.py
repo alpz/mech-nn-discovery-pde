@@ -43,8 +43,9 @@ dtype = torch.float64 if DBL else torch.float32
 cuda=True
 #T = 2000
 #n_step_per_batch = T
-solver_dim=(10,256)
-#solver_dim=(32,32)
+#solver_dim=(10,256)
+#solver_dim=(50,64)
+solver_dim=(32,32)
 batch_size= 1
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
@@ -76,8 +77,14 @@ class BurgersDataset(Dataset):
 
         print('t x', self.t.shape, self.x.shape)
 
-        self.t_subsample = 10
-        self.x_subsample = 1
+        #self.t_subsample = 10
+        #self.x_subsample = 1
+
+        #self.t_subsample = 10
+        #self.x_subsample = 256
+
+        self.t_subsample = 32
+        self.x_subsample = 32
 
         print(self.t.shape)
         print(self.x.shape)
@@ -91,11 +98,15 @@ class BurgersDataset(Dataset):
         self.data_dim = self.data.shape
         self.solver_dim = solver_dim
 
-        num_t_idx = self.data_dim[0] - self.solver_dim[0] + 1
-        num_x_idx = self.data_dim[1] - self.solver_dim[1] + 1
+        num_t_idx = self.data_dim[0] #- self.solver_dim[0] + 1
+        num_x_idx = self.data_dim[1] #- self.solver_dim[1] + 1
 
-        self.num_t_idx = num_t_idx//self.t_subsample 
-        self.num_x_idx = num_x_idx//self.x_subsample 
+        print(num_t_idx, num_x_idx)
+
+        self.num_t_idx = num_t_idx//self.t_subsample  #+ 1
+        self.num_x_idx = num_x_idx//self.x_subsample  #+ 1
+
+        print(self.num_t_idx, self.num_x_idx)
         self.length = self.num_t_idx*self.num_x_idx
 
 
@@ -108,7 +119,7 @@ class BurgersDataset(Dataset):
         (t_idx, x_idx) = np.unravel_index(idx, (self.num_t_idx, self.num_x_idx))
 
         t_idx = t_idx*self.t_subsample
-        x_idx = x_idx*self.t_subsample
+        x_idx = x_idx*self.x_subsample
 
         t_step = self.solver_dim[0]
         x_step = self.solver_dim[1]
@@ -212,7 +223,7 @@ class Model(nn.Module):
 
 
         self.data_conv2d = nn.Sequential(
-            nn.Conv2d(1, 256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.Conv2d(3, 256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             #nn.ReLU(),
             nn.ELU(),
             nn.Conv2d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
@@ -236,7 +247,7 @@ class Model(nn.Module):
             )
 
         self.data_conv2d2 = nn.Sequential(
-            nn.Conv2d(1, 256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.Conv2d(3, 256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             #nn.ReLU(),
             nn.ELU(),
             nn.Conv2d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
@@ -260,7 +271,7 @@ class Model(nn.Module):
             )
 
 
-        self.data_mlp = nn.Sequential(
+        self.data_mlp1 = nn.Sequential(
             #nn.Linear(32*32, 1024),
             nn.Linear(self.pde.grid_size, 1024),
             nn.ReLU(),
@@ -272,6 +283,18 @@ class Model(nn.Module):
             nn.Linear(1024,self.pde.grid_size)
         )
 
+
+        self.data_mlp2 = nn.Sequential(
+            #nn.Linear(32*32, 1024),
+            nn.Linear(self.pde.grid_size, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
+            #two polynomials, second order
+            nn.Linear(1024,self.pde.grid_size)
+        )
 
         self.param_in = nn.Parameter(torch.randn(1,256))
         self.param_net = nn.Sequential(
@@ -343,12 +366,15 @@ class Model(nn.Module):
         bs = u.shape[0]
         #up = self.data_net(u)
         #up = up.reshape(bs, self.pde.grid_size)
-        #cin = torch.stack([u,t,x], dim=1)
-        cin = u.unsqueeze(1) #torch.stack([u,t,x], dim=1)
+        cin = torch.stack([u,t,x], dim=1)
+        #cin = u.unsqueeze(1) #torch.stack([u,t,x], dim=1)
         #print(cin.shape)
 
         up = self.data_conv2d(cin)
         up2 = self.data_conv2d2(cin)
+
+        #up = self.data_mlp1(u.reshape(-1, self.pde.grid_size))
+        #up2 = self.data_mlp2(u.reshape(-1, self.pde.grid_size))
 
         #up_coeffs = self.up_coeffs.repeat(self.bs,self.pde.grid_size,1)
         #up_rhs = up
@@ -384,13 +410,13 @@ class Model(nn.Module):
         up2 = u + up2
 
         #can use either u or up for boundary conditions
-        upi = u.reshape(bs, *self.coord_dims)
-        #upi = up.reshape(bs, *self.coord_dims)
-        #upi = upi + up2.reshape(bs, *self.coord_dims)
-        #upi = upi/2
+        #upi = u.reshape(bs, *self.coord_dims)
+        upi = up.reshape(bs, *self.coord_dims)
+        upi = upi + up2.reshape(bs, *self.coord_dims)
+        upi = upi/2
         iv_rhs = self.get_iv(upi)
 
-        p = torch.stack([0*torch.ones_like(up), up, up**2, up**3], dim=-1)
+        p = torch.stack([torch.ones_like(up), up, up**2, up**3], dim=-1)
         q = torch.stack([torch.ones_like(up2), up2, up2**2, up2**3], dim=-1)
 
         #p = torch.stack([torch.ones_like(u), u], dim=-1)
@@ -581,7 +607,7 @@ def optimize(nepoch=5000):
         L.info(f'\nparameters {params}')
             #pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item():.3E}  xloss {x_loss:.3E} max eps {meps}\n')
         print(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E}  xloss {_x_loss:.3E} vloss {_v_loss:.3E} max eps {meps}\n')
-        L.info(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E} max eps {meps:.3E} xloss {_x_loss.item():.3E}')
+        L.info(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E} max eps {meps:.3E} xloss {_x_loss.item():.3E} vloss {_v_loss.item():.3E}')
 
 
 if __name__ == "__main__":
