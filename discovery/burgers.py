@@ -43,8 +43,8 @@ dtype = torch.float64 if DBL else torch.float32
 cuda=True
 #T = 2000
 #n_step_per_batch = T
-#solver_dim=(10,256)
-solver_dim=(32,32)
+solver_dim=(10,256)
+#solver_dim=(32,32)
 #solver_dim=(50,64)
 batch_size= 1
 #weights less than threshold (absolute) are set to 0 after each optimization step.
@@ -81,11 +81,11 @@ class BurgersDataset(Dataset):
         #self.t_subsample = 10
         #self.x_subsample = 1
 
-        self.t_subsample = 32 #10
-        self.x_subsample = 32 #256
+        #self.t_subsample = 32 #10
+        #self.x_subsample = 32 #256
 
 
-        L.info(f'subsample {self.t_subsample}, {self.x_subsample} ')
+        #L.info(f'subsample {self.t_subsample}, {self.x_subsample} ')
         #self.t_subsample =50
         #self.x_subsample =64
 
@@ -391,13 +391,14 @@ class Model(nn.Module):
             # solve each chunk
             #can use either u or up for boundary conditions
             #upi = u.reshape(bs, *self.coord_dims)
-            upi = up.reshape(bs, *self.coord_dims)
+            upi = u.reshape(bs, *self.coord_dims)
             #upi = upi + up2.reshape(bs, *self.coord_dims)
             #upi = upi/2
             iv_rhs = self.get_iv(upi)
 
             basis = torch.stack([torch.ones_like(up), up, up**2, up**3], dim=-1)
-            basis2 = torch.stack([torch.ones_like(up2), up2, up2**2, up2**3], dim=-1)
+            #basis2 = torch.stack([torch.ones_like(up2), up2, up2**2, up2**3], dim=-1)
+            basis2 = torch.stack([torch.ones_like(up), up, up**2, up**3], dim=-1)
             #q = torch.stack([torch.ones_like(up2), up2, up2**2, up2**3], dim=-1)
             #q = torch.stack([torch.ones_like(up), up, up**2, up**3], dim=-1)
 
@@ -550,15 +551,15 @@ def optimize(nepoch=5000):
             var2 = var2.reshape(*data_shape)[-1, :t_end, :x_end]
 
 
-            #x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
-            x_loss = (x0- batch_in).pow(2)#.mean()
+            x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
+            #x_loss = (x0- batch_in).pow(2)#.mean()
             #x_loss = (x0- batch_in).abs()#.mean()
             #x_loss = (x0- batch_in).pow(2).mean()
-            #var_loss = (var- batch_in).abs()#.pow(2)#.mean()
-            #var2_loss = (var2- batch_in).abs()#.pow(2)#.mean()
+            var_loss = (var- batch_in).abs()#.pow(2)#.mean()
+            var2_loss = (var2- batch_in).abs()#.pow(2)#.mean()
 
-            var_loss = (var- batch_in).pow(2)#.mean()
-            var2_loss = (var2- batch_in).pow(2)#.mean()
+            #var_loss = (var- batch_in).pow(2)#.mean()
+            #var2_loss = (var2- batch_in).pow(2)#.mean()
             #var_loss = (var- batch_in).pow(2)#.mean()
             #var_loss = (var- batch_in).abs()#.mean()
             #var_loss = (var- batch_in).pow(2)#.mean()
@@ -568,7 +569,8 @@ def optimize(nepoch=5000):
             #loss = x_loss + var_loss + time_loss
             param_loss = params.abs()
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
-            loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
+            #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
+            loss = x_loss.mean() + var_loss.mean() +  0.01*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + 0.001*param_loss.mean()
             #loss = x_loss.mean() #+ 0.01*param_loss.mean()
             #loss = var_loss.mean()
