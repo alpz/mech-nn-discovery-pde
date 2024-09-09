@@ -101,43 +101,45 @@ class BurgersDataset(Dataset):
         self.data_dim = self.data.shape
         self.solver_dim = solver_dim
 
-        num_t_idx = self.data_dim[0] #- self.solver_dim[0] + 1
-        num_x_idx = self.data_dim[1] #- self.solver_dim[1] + 1
+        #num_t_idx = self.data_dim[0] #- self.solver_dim[0] + 1
+        #num_x_idx = self.data_dim[1] #- self.solver_dim[1] + 1
 
 
-        self.num_t_idx = num_t_idx//self.t_subsample  #+ 1
-        self.num_x_idx = num_x_idx//self.x_subsample  #+ 1
+        #self.num_t_idx = num_t_idx//self.t_subsample  #+ 1
+        #self.num_x_idx = num_x_idx//self.x_subsample  #+ 1
 
-        if self.t_subsample < self.solver_dim[0]:
-            self.num_t_idx = self.num_t_idx - self.solver_dim[0]//self.t_subsample
-        if self.x_subsample < self.solver_dim[1]:
-            self.num_t_idx = self.num_t_idx - self.solver_dim[1]//self.x_subsample
+        #if self.t_subsample < self.solver_dim[0]:
+        #    self.num_t_idx = self.num_t_idx - self.solver_dim[0]//self.t_subsample
+        #if self.x_subsample < self.solver_dim[1]:
+        #    self.num_t_idx = self.num_t_idx - self.solver_dim[1]//self.x_subsample
 
-        self.length = self.num_t_idx*self.num_x_idx
+        #self.length = self.num_t_idx*self.num_x_idx
+        self.length = 1 #self.num_t_idx*self.num_x_idx
 
 
     def __len__(self):
         return self.length #self.x_train.shape[0]
 
     def __getitem__(self, idx):
-        #t_idx = idx//self.num_x_idx
-        #x_idx = idx - t_idx*self.num_x_idx
-        (t_idx, x_idx) = np.unravel_index(idx, (self.num_t_idx, self.num_x_idx))
+        return self.data, self.t, self.x
+        ##t_idx = idx//self.num_x_idx
+        ##x_idx = idx - t_idx*self.num_x_idx
+        #(t_idx, x_idx) = np.unravel_index(idx, (self.num_t_idx, self.num_x_idx))
 
-        t_idx = t_idx*self.t_subsample
-        x_idx = x_idx*self.x_subsample
-
-
-        t_step = self.solver_dim[0]
-        x_step = self.solver_dim[1]
+        #t_idx = t_idx*self.t_subsample
+        #x_idx = x_idx*self.x_subsample
 
 
-        t = self.t[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
-        x = self.x[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+        #t_step = self.solver_dim[0]
+        #x_step = self.solver_dim[1]
 
-        data = self.data[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
 
-        return data, t, x
+        #t = self.t[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+        #x = self.x[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+
+        #data = self.data[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+
+        #return data, t, x
 
 #%%
 
@@ -353,13 +355,20 @@ class Model(nn.Module):
 
         return ub
     
-    def solve_chunk(self, u_patches, up_patches, up2_patches, params):
-        bs = u.shape[0]
+    def solve_chunks(self, u_patches, up_patches, up2_patches, params):
+        bs = u_patches.shape[0]
         n_patches = u_patches.shape[1]
         u0_list = []
         eps_list = []
 
-        for i in range(n_patches):
+        steps0 = self.steps0.type_as(params).expand(-1, self.coord_dims[0]-1)
+        steps1 = self.steps1.type_as(params).expand(-1, self.coord_dims[1]-1)
+        steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.1)
+        steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.1)
+        steps_list = [steps0, steps1]
+
+        #for i in range(n_patches):
+        for i in tqdm(range(n_patches)):
             u = u_patches[:, i]
             up = up_patches[:, i]
             up2 = up2_patches[:, i]
@@ -392,13 +401,6 @@ class Model(nn.Module):
 
             #up = up.reshape(bs, *self.coord_dims)
 
-
-            steps0 = self.steps0.type_as(coeffs).expand(-1, self.coord_dims[0]-1)
-            steps1 = self.steps1.type_as(coeffs).expand(-1, self.coord_dims[1]-1)
-            steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.1)
-            steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.1)
-            steps_list = [steps0, steps1]
-
             rhs = torch.zeros(bs, *self.coord_dims, device=u.device)
 
             u0,_,eps = self.pde(coeffs, rhs, iv_rhs, steps_list)
@@ -419,7 +421,7 @@ class Model(nn.Module):
         n_patch_x = x_patches.shape[2]
 
         #x_patches = x_patches.reshape(-1, n_patch_t*n_patch_x, self.pde.grid_size)
-        x_patches = x_patches.continguous().view(-1, n_patch_t*n_patch_x, self.pde.grid_size)
+        x_patches = x_patches.contiguous().view(-1, n_patch_t*n_patch_x, self.pde.grid_size)
 
         return x_patches, unfold_shape
 
@@ -437,16 +439,16 @@ class Model(nn.Module):
         bs = u.shape[0]
         #up = self.data_net(u)
         #up = up.reshape(bs, self.pde.grid_size)
-        cin = torch.stack([u,t,x], dim=1)
-        #cin = u.unsqueeze(1) #torch.stack([u,t,x], dim=1)
+        #cin = torch.stack([u,t,x], dim=1)
+        cin = u.unsqueeze(1) #torch.stack([u,t,x], dim=1)
         #print(cin.shape)
 
-        up = self.data_conv2d(cin)
-        up2 = self.data_conv2d2(cin)
+        up = self.data_conv2d(cin).squeeze(1)
+        up2 = self.data_conv2d2(cin).squeeze(1)
 
-        u = u.reshape(bs, *self.coord_dims)
-        up = up.reshape(bs, *self.coord_dims)
-        up2 = up2.reshape(bs, *self.coord_dims)
+        #u = u.reshape(bs, *self.coord_dims)
+        #up = up.reshape(bs, *self.coord_dims)
+        #up2 = up2.reshape(bs, *self.coord_dims)
 
         up = u + up
         up2 = u + up2
@@ -502,13 +504,15 @@ def optimize(nepoch=5000):
         losses = []
         total_loss = 0
         optimizer.zero_grad()
-        for i, batch_in in enumerate(tqdm(train_loader)):
+        #for i, batch_in in enumerate(tqdm(train_loader)):
+        for i, batch_in in enumerate((train_loader)):
             batch_in,t,x = batch_in[0], batch_in[1], batch_in[2]
             batch_in = batch_in.double().to(device)
             t = t.double().to(device)
             x = x.double().to(device)
             #time = time.to(device)
             #print(batch_in.shape)
+            data_shape = batch_in.shape
 
             #optimizer.zero_grad()
             #x0, steps, eps, var,xi = model(index, batch_in)
@@ -518,9 +522,9 @@ def optimize(nepoch=5000):
             t_end = x0.shape[1]
             x_end = x0.shape[2]
 
-            batch_in = batch_in.reshape(-1, *model.coord_dims)[-1, :t_end, :x_end]
-            var = var.reshape(-1, *model.coord_dims)[-1, :t_end, :x_end]
-            var2 = var2.reshape(-1, *model.coord_dims)[-1, :t_end, :x_end]
+            batch_in = batch_in.reshape(*data_shape)[-1, :t_end, :x_end]
+            var = var.reshape(*data_shape)[-1, :t_end, :x_end]
+            var2 = var2.reshape(*data_shape)[-1, :t_end, :x_end]
 
 
             x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
