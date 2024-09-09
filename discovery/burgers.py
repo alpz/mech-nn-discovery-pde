@@ -141,7 +141,6 @@ class BurgersDataset(Dataset):
 
 #%%
 
-#ds = BurgersDataset(n_step=T,n_step_per_batch=n_step_per_batch)#.generate()
 ds = BurgersDataset(solver_dim=solver_dim)#.generate()
 
 #
@@ -156,9 +155,6 @@ ds = BurgersDataset(solver_dim=solver_dim)#.generate()
 #plt.xlabel('t', fontsize=16)
 #plt.ylabel('x', fontsize=16)
 #plt.title(r'$u(x, t)$', fontsize=16)
-
-
-
 
 
 #%%
@@ -178,20 +174,7 @@ class Model(nn.Module):
         self.n_ind_dim = 1
         self.n_dim = 1
 
-
-        #Step size is fixed. Make this a parameter for learned step
-        #self.step_size = (logit(0.01)*torch.ones(1,1,1))
-        #_step_size = (logit(0.01)*torch.ones(1,1,1))
-        #_step_size = (logit(0.001)*torch.ones(1,1,self.n_step_per_batch-1))
-        #self.step_size = nn.Parameter(_step_size)
         self.param_in = nn.Parameter(torch.randn(1,64))
-        #self.param_time = nn.Parameter(torch.randn(1,64))
-
-
-        #form of equation u_t + 0*u_tt + p(x,t)u_x + q(x,t)u_xx = 0
-
-        #init_coeffs = torch.rand(1, self.n_ind_dim, 1, 2, dtype=dtype)
-        #self.init_coeffs = nn.Parameter(init_coeffs)
 
         self.coord_dims = solver_dim
         self.iv_list = [(0,0, [0,0],[0,self.coord_dims[1]-2]), 
@@ -346,11 +329,11 @@ class Model(nn.Module):
         #self.steps1 = nn.Parameter(self.steps1)
 
 
-        up_coeffs = torch.randn((1, 1, self.num_multiindex), dtype=dtype)
-        self.up_coeffs = nn.Parameter(up_coeffs)
+        #up_coeffs = torch.randn((1, 1, self.num_multiindex), dtype=dtype)
+        #self.up_coeffs = nn.Parameter(up_coeffs)
 
-        self.stepsup0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
-        self.stepsup1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
+        #self.stepsup0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
+        #self.stepsup1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
 
     def get_params(self):
         params = self.param_net(self.param_in)
@@ -369,107 +352,117 @@ class Model(nn.Module):
         ub = torch.cat([u1,u2,u3,u4], dim=-1)
 
         return ub
+    
+    def solve_chunk(self, u_patches, up_patches, up2_patches, params):
+        bs = u.shape[0]
+        n_patches = u_patches.shape[1]
+        u0_list = []
+        eps_list = []
+
+        for i in range(n_patches):
+            u = u_patches[:, i]
+            up = up_patches[:, i]
+            up2 = up2_patches[:, i]
+            # solve each chunk
+            #can use either u or up for boundary conditions
+            #upi = u.reshape(bs, *self.coord_dims)
+            upi = up.reshape(bs, *self.coord_dims)
+            upi = upi + up2.reshape(bs, *self.coord_dims)
+            upi = upi/2
+            iv_rhs = self.get_iv(upi)
+
+            p = torch.stack([torch.ones_like(up), up, up**2, up**3], dim=-1)
+            q = torch.stack([torch.ones_like(up2), up2, up2**2, up2**3], dim=-1)
+
+            #p = torch.stack([torch.ones_like(u), u], dim=-1)
+            #q = torch.stack([torch.ones_like(u), u], dim=-1)
+
+            p = (p*params[...,0,:]).sum(dim=-1)
+            q = (q*params[...,1,:]).sum(dim=-1)
+
+
+            coeffs = torch.zeros((bs, self.pde.grid_size, self.pde.n_orders), device=u.device)
+            #u, u_t, u_x, u_tt, u_xx
+            #u_t
+            coeffs[..., 1] = 1.
+            #u_x
+            coeffs[..., 2] = p
+            #u_xx
+            coeffs[..., 4] = q
+
+            #up = up.reshape(bs, *self.coord_dims)
+
+
+            steps0 = self.steps0.type_as(coeffs).expand(-1, self.coord_dims[0]-1)
+            steps1 = self.steps1.type_as(coeffs).expand(-1, self.coord_dims[1]-1)
+            steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.1)
+            steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.1)
+            steps_list = [steps0, steps1]
+
+            rhs = torch.zeros(bs, *self.coord_dims, device=u.device)
+
+            u0,_,eps = self.pde(coeffs, rhs, iv_rhs, steps_list)
+            u0_list.append(u0)
+            eps_list.append(eps)
+
+        u0 = torch.stack(u0_list, dim=1)
+        eps = torch.stack(eps_list, dim=1).max()
+
+        return u0, eps
+
+    def make_patches(self, x):
+        x_patches = x.unfold(1, self.coord_dims[0], self.coord_dims[0]) 
+        x_patches = x_patches.unfold(2, self.coord_dims[1], self.coord_dims[1]) 
+        unfold_shape = x_patches.shape
+
+        n_patch_t = x_patches.shape[1]
+        n_patch_x = x_patches.shape[2]
+
+        #x_patches = x_patches.reshape(-1, n_patch_t*n_patch_x, self.pde.grid_size)
+        x_patches = x_patches.continguous().view(-1, n_patch_t*n_patch_x, self.pde.grid_size)
+
+        return x_patches, unfold_shape
+
+    def join_patches(self, patches, unfold_shape):
+        # Reshape back
+        patches= patches.view(unfold_shape)
+        n_t = unfold_shape[1] * unfold_shape[-2]
+        n_x = unfold_shape[2] * unfold_shape[-1]
+        merged = patches.permute(0,1,3,2,4).contiguous()
+        merged = merged.view(-1, n_t, n_x)
+
+        return merged
 
     def forward(self, u, t, x):
         bs = u.shape[0]
         #up = self.data_net(u)
         #up = up.reshape(bs, self.pde.grid_size)
-        #cin = torch.stack([u,t,x], dim=1)
-        cin = u.unsqueeze(1) #torch.stack([u,t,x], dim=1)
+        cin = torch.stack([u,t,x], dim=1)
+        #cin = u.unsqueeze(1) #torch.stack([u,t,x], dim=1)
         #print(cin.shape)
 
         up = self.data_conv2d(cin)
         up2 = self.data_conv2d2(cin)
 
-        #up = self.data_mlp1(u.reshape(-1, self.pde.grid_size))
-        #up2 = self.data_mlp2(u.reshape(-1, self.pde.grid_size))
-
-        #up_coeffs = self.up_coeffs.repeat(self.bs,self.pde.grid_size,1)
-        #up_rhs = up
-
-        #stepsup0 = self.stepsup0.to(u.device)
-        #stepsup1 = self.stepsup1.to(u.device)
-        #stepsup0 = torch.sigmoid(stepsup0).clip(min=0.005, max=0.1)
-        #stepsup1 = torch.sigmoid(stepsup1).clip(min=0.005, max=0.1)
-        #steps_list_up = [stepsup0, stepsup1]
-
         u = u.reshape(bs, *self.coord_dims)
-
-        #up,_,_ = self.pde(up_coeffs, up_rhs, iv_rhs, steps_list_up)
-        #up = self.data_net(cin)
-        #up = up.reshape(bs, self.coord_dims[0], self.coord_dims[1])
-
-        #cin = u.reshape(1, self.pde.grid_size)
-        #cin = u.reshape(-1,self.pde.grid_size) #+ t.reshape(-1,self.pde.grid_size) +x.reshape(-1,self.pde.grid_size)
-        #up = self.data_mlp(u.reshape(-1,self.pde.grid_size))
-        #up = self.data_mlp(cin)
-        up = up.reshape(bs, self.pde.grid_size)
-        up2 = up2.reshape(bs, self.pde.grid_size)
-
-        
-        
-
-        u = u.reshape(bs, self.pde.grid_size)
-
-        #p = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
-        #q = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
+        up = up.reshape(bs, *self.coord_dims)
+        up2 = up2.reshape(bs, *self.coord_dims)
 
         up = u + up
         up2 = u + up2
 
-        #can use either u or up for boundary conditions
-        #upi = u.reshape(bs, *self.coord_dims)
-        upi = up.reshape(bs, *self.coord_dims)
-        upi = upi + up2.reshape(bs, *self.coord_dims)
-        upi = upi/2
-        iv_rhs = self.get_iv(upi)
-
-        p = torch.stack([torch.ones_like(up), up, up**2, up**3], dim=-1)
-        q = torch.stack([torch.ones_like(up2), up2, up2**2, up2**3], dim=-1)
-
-        #p = torch.stack([torch.ones_like(u), u], dim=-1)
-        #q = torch.stack([torch.ones_like(u), u], dim=-1)
-
+        #chunk u, up, up2
+        u_patched, unfold_shape = self.make_patches(u)
+        up_patched, _ = self.make_patches(up)
+        up2_patched, _ = self.make_patches(up2)
 
         params = self.get_params()
 
-        p = (p*params[...,0,:]).sum(dim=-1)
-        q = (q*params[...,1,:]).sum(dim=-1)
+        u0_patches, eps = self.solve_chunks(u_patched, up_patched, up2_patched, params)
 
+        #join chunks into solution
+        u0 = self.join_patches(u0_patches, unfold_shape)
 
-        coeffs = torch.zeros((bs, self.pde.grid_size, self.pde.n_orders), device=u.device)
-        #u, u_t, u_x, u_tt, u_xx
-        #u_t
-        coeffs[..., 1] = 1.
-        #u_x
-        coeffs[..., 2] = p
-        #u_xx
-        coeffs[..., 4] = q
-
-        up = up.reshape(bs, *self.coord_dims)
-
-
-        steps0 = self.steps0.type_as(coeffs).expand(-1, self.coord_dims[0]-1)
-        steps1 = self.steps1.type_as(coeffs).expand(-1, self.coord_dims[1]-1)
-        steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.1)
-        steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.1)
-        steps_list = [steps0, steps1]
-
-        rhs = torch.zeros(bs, *self.coord_dims, device=u.device)
-
-        u0,u,eps = self.pde(coeffs, rhs, iv_rhs, steps_list)
-
-        #steps = self.step_size.repeat(self.bs, self.n_ind_dim, 1).type_as(u)
-
-        #steps = torch.sigmoid(steps).clip(min=0.001).detach()
-        #self.steps = self.steps.type_as(net_iv)
-
-        #x0,x1,x2,eps,steps = self.ode(coeffs, rhs, init_iv, steps)
-        #x0 = x0.permute(0,2,1)
-        #var = var.permute(0,2,1)
-        #ts = ts.squeeze(1)
-
-        #return x0, steps, eps, var,_xi
         return u0, up,up2, eps, params
 
 
@@ -492,51 +485,9 @@ def print_eq(stdout=False):
     return params
     #return code
 
-#def simulate(gen_code):
-#    #simulate learned equation
-#    def f(state, t):
-#        x0, x1, x2= state
-#
-#        dx0 = eval(gen_code[0])
-#        dx1 = eval(gen_code[1])
-#        dx2 = eval(gen_code[2])
-#
-#        return dx0, dx1, dx2
-#        
-#    state0 = [1.0, 1.0, 1.0]
-#    time_steps = np.linspace(0, T*STEP, T)
-#
-#    x_sim = odeint(f, state0, time_steps)
-#    return x_sim
 
 def train():
     """Optimize and threshold cycle"""
-    #model.reset_params()
-
-    #max_iter = 1
-    #for step in range(max_iter):
-    #    print(f'Optimizer iteration {step}/{max_iter}')
-
-    #    #threshold
-    #    if step > 0:
-    #        xi = model.get_xi()
-    #        #mask = (xi.abs() > threshold).float()
-
-    #        L.info(xi)
-    #        #L.info(xi*model.mask)
-    #        #L.info(model.mask)
-    #        #L.info(model.mask*mask)
-
-    #    #code = print_eq(stdout=True)
-    #    #simulate and plot
-
-    #    #x_sim = simulate(code)
-    #    #P.plot_lorenz(x_sim, os.path.join(log_dir, f'sim_{step}.pdf'))
-
-    #    #set mask
-    #    #if step > 0:
-    #    #    model.update_mask(mask)
-    #    #    model.reset_params()
 
     optimize()
 
@@ -564,9 +515,12 @@ def optimize(nepoch=5000):
             x0, var,var2, eps, params = model(batch_in, t, x)
 
             #print(batch_in.shape, x0.shape, var.shape)
-            batch_in = batch_in.reshape(x0.shape)
-            var = var.reshape(x0.shape)
-            var2 = var2.reshape(x0.shape)
+            t_end = x0.shape[1]
+            x_end = x0.shape[2]
+
+            batch_in = batch_in.reshape(-1, *model.coord_dims)[-1, :t_end, :x_end]
+            var = var.reshape(-1, *model.coord_dims)[-1, :t_end, :x_end]
+            var2 = var2.reshape(-1, *model.coord_dims)[-1, :t_end, :x_end]
 
 
             x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
