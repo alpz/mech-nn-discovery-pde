@@ -199,7 +199,7 @@ class Model(nn.Module):
         #TODO add time space dims
         pm='zeros'
         self.data_net = nn.Sequential(
-            nn.Conv1d(self.coord_dims[0], 64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.Conv1d(101, 64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             nn.ReLU(),
             nn.Conv1d(64,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             nn.ReLU(),
@@ -211,7 +211,23 @@ class Model(nn.Module):
             nn.ReLU(),
             nn.Conv1d(128,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             nn.ReLU(),
-            nn.Conv1d(64,self.coord_dims[0], kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.Conv1d(64,101, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            )
+
+        self.data_net2 = nn.Sequential(
+            nn.Conv1d(101, 64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.ReLU(),
+            nn.Conv1d(64,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.ReLU(),
+            nn.Conv1d(128,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.ReLU(),
+            nn.Conv1d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.ReLU(),
+            nn.Conv1d(256,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.ReLU(),
+            nn.Conv1d(128,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.ReLU(),
+            nn.Conv1d(64,101, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             )
 
 
@@ -289,28 +305,28 @@ class Model(nn.Module):
         #    nn.Linear(1024,self.pde.grid_size)
         #)
 
-        self.param_in = nn.Parameter(torch.randn(1,256))
+        self.param_in = nn.Parameter(torch.randn(1,64))
         self.param_net = nn.Sequential(
-            nn.Linear(256, 1024),
+            nn.Linear(64, 1024),
             nn.ELU(),
             nn.Linear(1024, 1024),
             nn.ELU(),
-            nn.Linear(1024, 1024),
-            nn.ELU(),
+            #nn.Linear(1024, 1024),
+            #nn.ELU(),
             #two polynomials, second order
             #nn.Linear(1024, 3*2),
             nn.Linear(1024, 4),
             #nn.Tanh()
         )
 
-        self.param_in2 = nn.Parameter(torch.randn(1,256))
+        self.param_in2 = nn.Parameter(torch.randn(1,64))
         self.param_net2 = nn.Sequential(
-            nn.Linear(256, 1024),
+            nn.Linear(64, 1024),
             nn.ELU(),
             nn.Linear(1024, 1024),
             nn.ELU(),
-            nn.Linear(1024, 1024),
-            nn.ELU(),
+            #nn.Linear(1024, 1024),
+            #nn.ELU(),
             #two polynomials, second order
             #nn.Linear(1024, 3*2),
             nn.Linear(1024, 4),
@@ -443,10 +459,14 @@ class Model(nn.Module):
         #up = up.reshape(bs, self.pde.grid_size)
         #cin = torch.stack([u,t,x], dim=1)
         cin = u.unsqueeze(1) #torch.stack([u,t,x], dim=1)
+        #cin = u
         #print(cin.shape)
 
         up = self.data_conv2d(cin).squeeze(1)
         up2 = self.data_conv2d2(cin).squeeze(1)
+
+        #up = self.data_net(cin)#.squeeze(1)
+        #up2 = self.data_net2(cin)#.squeeze(1)
 
         #u = u.reshape(bs, *self.coord_dims)
         #up = up.reshape(bs, *self.coord_dims)
@@ -548,7 +568,7 @@ def optimize(nepoch=5000):
             #loss = x_loss + var_loss + time_loss
             param_loss = params.abs()
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
-            loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.001*param_loss.mean()
+            loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + 0.001*param_loss.mean()
             #loss = x_loss.mean() #+ 0.01*param_loss.mean()
             #loss = var_loss.mean()
