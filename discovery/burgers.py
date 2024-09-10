@@ -233,50 +233,48 @@ class Model(nn.Module):
 
         self.data_conv2d = nn.Sequential(
             nn.Conv2d(1, 64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            #nn.ReLU(),
-            nn.ELU(),
+            nn.ReLU(),
+            #nn.ELU(),
             nn.Conv2d(64,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            #nn.ReLU(),
-            nn.ELU(),
+            nn.ReLU(),
+            #nn.ELU(),
             nn.Conv2d(64,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            #nn.ReLU(),
-            nn.ELU(),
+            nn.ReLU(),
+            #nn.ELU(),
             nn.Conv2d(64,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ELU(),
+            nn.ReLU(),
+            #nn.ELU(),
             nn.Conv2d(64,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            #nn.ReLU(),
-            nn.ELU(),
+            nn.ReLU(),
+            #nn.ELU(),
             nn.Conv2d(64,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            #nn.ReLU(),
+            nn.ReLU(),
             #nn.ELU(),
             #nn.Conv2d(128,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             #nn.ReLU(),
-            nn.ELU(),
+            #nn.ELU(),
             nn.Conv2d(64,1, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             )
 
         self.data_conv2d2 = nn.Sequential(
-            nn.Conv2d(1, 256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            #nn.ReLU(),
-            nn.ELU(),
-            nn.Conv2d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            #nn.ReLU(),
-            nn.ELU(),
-            nn.Conv2d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            #nn.ReLU(),
-            nn.ELU(),
-            nn.Conv2d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ELU(),
-            nn.Conv2d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            #nn.ReLU(),
-            nn.ELU(),
-            nn.Conv2d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            #nn.ReLU(),
+            nn.Conv2d(1, 64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.ReLU(),
             #nn.ELU(),
-            #nn.Conv2d(128,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            #nn.ReLU(),
-            nn.ELU(),
-            nn.Conv2d(256,1, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.Conv2d(64,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.ReLU(),
+            #nn.ELU(),
+            nn.Conv2d(64,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.ReLU(),
+            #nn.ELU(),
+            nn.Conv2d(64,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.ReLU(),
+            #nn.ELU(),
+            nn.Conv2d(64,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.ReLU(),
+            #nn.ELU(),
+            nn.Conv2d(64,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.ReLU(),
+            nn.Conv2d(64,1, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             )
 
 
@@ -308,9 +306,10 @@ class Model(nn.Module):
         self.param_in = nn.Parameter(torch.randn(1,64))
         self.param_net = nn.Sequential(
             nn.Linear(64, 1024),
-            nn.ELU(),
+            #nn.ELU(),
+            nn.ReLU(),
             nn.Linear(1024, 1024),
-            nn.ELU(),
+            nn.ReLU(),
             #nn.Linear(1024, 1024),
             #nn.ELU(),
             #two polynomials, second order
@@ -322,9 +321,9 @@ class Model(nn.Module):
         self.param_in2 = nn.Parameter(torch.randn(1,64))
         self.param_net2 = nn.Sequential(
             nn.Linear(64, 1024),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(1024, 1024),
-            nn.ELU(),
+            nn.ReLU(),
             #nn.Linear(1024, 1024),
             #nn.ELU(),
             #two polynomials, second order
@@ -403,7 +402,7 @@ class Model(nn.Module):
             #basis2 = torch.stack([torch.ones_like(up), up, up**2, up**3], dim=-1)
             #basis2 = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
             #basis2 = torch.stack([torch.ones_like(up), up, up**2, up**3], dim=-1)
-            basis2 = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
+            basis2 = torch.stack([torch.ones_like(up2), up2, up2**2], dim=-1)
             #q = torch.stack([torch.ones_like(up2), up2, up2**2, up2**3], dim=-1)
             #q = torch.stack([torch.ones_like(up), up, up**2, up**3], dim=-1)
 
@@ -469,7 +468,7 @@ class Model(nn.Module):
         #print(cin.shape)
 
         up = self.data_conv2d(cin).squeeze(1)
-        up2 = up #self.data_conv2d2(cin).squeeze(1)
+        up2 = self.data_conv2d2(cin).squeeze(1)
 
         #up = self.data_net(cin)#.squeeze(1)
         #up2 = self.data_net2(cin)#.squeeze(1)
@@ -561,7 +560,7 @@ def optimize(nepoch=5000):
             #x_loss = (x0- batch_in).abs()#.mean()
             #x_loss = (x0- batch_in).pow(2).mean()
             var_loss = (var- batch_in).abs()#.pow(2)#.mean()
-            #var2_loss = (var2- batch_in).abs()#.pow(2)#.mean()
+            var2_loss = (var2- batch_in).abs()#.pow(2)#.mean()
 
             #var_loss = (var- batch_in).pow(2)#.mean()
             #var2_loss = (var2- batch_in).pow(2)#.mean()
@@ -575,15 +574,15 @@ def optimize(nepoch=5000):
             param_loss = params.abs()
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
-            loss = x_loss.mean() + var_loss.mean() +  0.01*param_loss.mean()
+            loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.01*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + 0.001*param_loss.mean()
             #loss = x_loss.mean() #+ 0.01*param_loss.mean()
             #loss = var_loss.mean()
             #loss = x_loss +  (var- batch_in).abs().mean()
             #loss = x_loss +  (var- batch_in).pow(2).mean()
             x_losses.append(x_loss)
-            #var_losses.append(var_loss + var2_loss)
-            var_losses.append(var_loss)
+            var_losses.append(var_loss + var2_loss)
+            #var_losses.append(var_loss)
             #var_losses.append(var_loss )
             losses.append(loss)
             total_loss = total_loss + loss
