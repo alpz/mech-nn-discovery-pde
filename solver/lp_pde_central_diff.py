@@ -805,8 +805,8 @@ class PDESYSLP(nn.Module):
 
     def build_derivative_constraints(self):
         self.forward_constraints()
-        self.central_constraints_left_edge()
         self.central_constraints()
+        self.central_constraints_left_edge()
         self.central_constraints_right_edge()
         self.backward_constraints()
 

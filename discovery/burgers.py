@@ -351,7 +351,7 @@ class Model(nn.Module):
         #self.up_coeffs = nn.Parameter(up_coeffs)
 
         #self.stepsup0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
-        #self.stepsup1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
+        #self.stepsup1 = torch.logit(self.x_step_size*torch.ones(2,self.coord_dims[1]-1))
 
     def get_params(self):
         params = self.param_net(self.param_in)
@@ -391,13 +391,17 @@ class Model(nn.Module):
             # solve each chunk
             #can use either u or up for boundary conditions
             #upi = u.reshape(bs, *self.coord_dims)
-            upi = u.reshape(bs, *self.coord_dims)
+            upi = up.reshape(bs, *self.coord_dims)
             #upi = upi + up2.reshape(bs, *self.coord_dims)
             #upi = upi/2
             iv_rhs = self.get_iv(upi)
 
+            #basis = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
+            #basis = torch.stack([torch.ones_like(up), up, up**2, up**3], dim=-1)
             basis = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
             #basis2 = torch.stack([torch.ones_like(up2), up2, up2**2, up2**3], dim=-1)
+            #basis2 = torch.stack([torch.ones_like(up), up, up**2, up**3], dim=-1)
+            #basis2 = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
             #basis2 = torch.stack([torch.ones_like(up), up, up**2, up**3], dim=-1)
             basis2 = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
             #q = torch.stack([torch.ones_like(up2), up2, up2**2, up2**3], dim=-1)
@@ -474,8 +478,8 @@ class Model(nn.Module):
         #up = up.reshape(bs, *self.coord_dims)
         #up2 = up2.reshape(bs, *self.coord_dims)
 
-        #up = u + up
-        #up2 = u + up2
+        up = u + up
+        up2 = u + up2
 
         #chunk u, up, up2
         u_patched, unfold_shape = self.make_patches(u)
@@ -557,7 +561,7 @@ def optimize(nepoch=5000):
             #x_loss = (x0- batch_in).abs()#.mean()
             #x_loss = (x0- batch_in).pow(2).mean()
             var_loss = (var- batch_in).abs()#.pow(2)#.mean()
-            var2_loss = (var2- batch_in).abs()#.pow(2)#.mean()
+            #var2_loss = (var2- batch_in).abs()#.pow(2)#.mean()
 
             #var_loss = (var- batch_in).pow(2)#.mean()
             #var2_loss = (var2- batch_in).pow(2)#.mean()
