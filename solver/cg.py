@@ -150,7 +150,7 @@ def apply_M(M, x):
         mx = M[idx].solve(x[idx])
         mx = torch.tensor(mx).unsqueeze(0)
         mx_list.append(mx)
-    torch.cat(mx_list, dim=0)
+    mx = torch.cat(mx_list, dim=0)
     mx = mx.to(device)
     return mx
     
@@ -209,7 +209,7 @@ def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None,
         return torch.empty_like(b), 0
     #b_norm = cupy.linalg.norm(b)
     b_norm = torch.linalg.norm(b, dim=1)
-    if b_norm == 0:
+    if (b_norm==0).all():
         return b, 0
     #if atol is None:
     #    atol = tol * float(b_norm)
@@ -265,7 +265,7 @@ def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None,
         #if r_norm <= atol or iters >= maxiter:
         if (r_norm <= atol).all() or iters >= maxiter:
             break
-        v = r / r_norm
+        v = r / r_norm.unsqueeze(1)
         V[:, :, 0] = v
         e[:, 0] = r_norm
 
@@ -286,7 +286,7 @@ def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None,
             #cublas.nrm2(u, out=H[j+1, j])
             torch.linalg.norm(u, out=H[:, j+1, j], dim=-1)
             if j+1 < restart:
-                v = u / H[:, j+1, j]
+                v = u / H[:, j+1, j].unsqueeze(1)
                 V[:, :, j+1] = v
 
         # Note: The least-square solution to equation Hy = e is computed on CPU

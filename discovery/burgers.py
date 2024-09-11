@@ -44,8 +44,9 @@ cuda=True
 #T = 2000
 #n_step_per_batch = T
 #solver_dim=(10,256)
-solver_dim=(32,32)
+#solver_dim=(32,32)
 #solver_dim=(50,64)
+solver_dim=(32,48)
 batch_size= 1
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
@@ -188,7 +189,12 @@ class Model(nn.Module):
                         (1,0, [0,self.coord_dims[1]-1], [self.coord_dims[0]-1, self.coord_dims[1]-1])
                         ]
 
-        self.pde = PDEINDLayerEPS(bs=bs, coord_dims=self.coord_dims, order=self.order, n_ind_dim=self.n_dim, 
+        self.n_patches_t = ds.data.shape[0]//self.coord_dims[0]
+        self.n_patches_x = ds.data.shape[1]//self.coord_dims[1]
+        self.n_patches = self.n_patches_t*self.n_patches_x
+        print('num patches ', self.n_patches)
+
+        self.pde = PDEINDLayerEPS(bs=bs*self.n_patches, coord_dims=self.coord_dims, order=self.order, n_ind_dim=self.n_dim, 
                                   n_iv=self.n_iv, init_index_mi_list=self.iv_list,  
                                   n_iv_steps=1, double_ret=True, solver_dbl=True)
 
@@ -339,8 +345,8 @@ class Model(nn.Module):
         #self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
         #self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
 
-        self.steps0 = torch.logit(self.t_step_size*torch.ones(1,1))
-        self.steps1 = torch.logit(self.x_step_size*torch.ones(1,1))
+        self.steps0 = torch.logit(self.t_step_size*torch.ones(1,1,1))
+        self.steps1 = torch.logit(self.x_step_size*torch.ones(1,1,1))
 
         #self.steps0 = nn.Parameter(self.steps0)
         #self.steps1 = nn.Parameter(self.steps1)
@@ -369,8 +375,67 @@ class Model(nn.Module):
         ub = torch.cat([u1,u2,u3,u4], dim=-1)
 
         return ub
-    
+
     def solve_chunks(self, u_patches, up_patches, up2_patches, params):
+        bs = u_patches.shape[0]
+        n_patches = u_patches.shape[1]
+        u0_list = []
+        eps_list = []
+
+        steps0 = self.steps0.type_as(params).expand(-1, self.n_patches, self.coord_dims[0]-1)
+        steps1 = self.steps1.type_as(params).expand(-1, self.n_patches, self.coord_dims[1]-1)
+        steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.1)
+        steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.1)
+        steps_list = [steps0, steps1]
+
+        #for i in range(n_patches):
+        #for i in tqdm(range(n_patches)):
+        u = u_patches#[:, i]
+        up = up_patches#[:, i]
+        up2 = up2_patches#[:, i]
+
+        up = up.reshape(bs*n_patches, self.pde.grid_size)
+        up2 = up2.reshape(bs*n_patches, self.pde.grid_size)
+        # solve each chunk
+        #can use either u or up for boundary conditions
+        #upi = u.reshape(bs, *self.coord_dims)
+        upi = up.reshape(bs*n_patches, *self.coord_dims)
+        #upi = upi + up2.reshape(bs, *self.coord_dims)
+        #upi = upi/2
+        iv_rhs = self.get_iv(upi)
+
+        basis = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
+        basis2 = torch.stack([torch.ones_like(up2), up2, up2**2], dim=-1)
+
+        p = (basis*params[...,0,:]).sum(dim=-1)
+        q = (basis2*params[...,1,:]).sum(dim=-1)
+
+
+        coeffs = torch.zeros((bs*n_patches, self.pde.grid_size, self.pde.n_orders), device=u.device)
+        #u, u_t, u_x, u_tt, u_xx
+        #u_t
+        coeffs[..., 1] = 1.
+        #u_x
+        coeffs[..., 2] = p
+        #u_xx
+        coeffs[..., 4] = q
+
+        #up = up.reshape(bs, *self.coord_dims)
+
+        rhs = torch.zeros(bs*n_patches, *self.coord_dims, device=u.device)
+
+        u0,_,eps = self.pde(coeffs, rhs, iv_rhs, steps_list)
+        #u0_list.append(u0)
+        #eps_list.append(eps)
+
+        #u0 = torch.stack(u0_list, dim=1)
+        #eps = torch.stack(eps_list, dim=1).max()
+
+        u0 = u0.reshape(u_patches.shape)
+
+        return u0, eps
+    
+    def solve_chunks_bk(self, u_patches, up_patches, up2_patches, params):
         bs = u_patches.shape[0]
         n_patches = u_patches.shape[1]
         u0_list = []
@@ -498,8 +563,8 @@ class Model(nn.Module):
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step), device=device)
-#optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
+#optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
 #optimizer = torch.optim.SGD(model.parameters(), lr=0.0005, momentum =0.9)
 
 if DBL:

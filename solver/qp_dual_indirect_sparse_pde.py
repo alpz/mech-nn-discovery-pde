@@ -71,9 +71,11 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
 
             G = G.to(rhs.device)
             G = G.unsqueeze(0)
+            G = torch.cat([G]*rhs.shape[0], dim=0)
             GA = torch.cat([G, A], dim=1)
             Z = torch.sparse_coo_tensor(torch.empty([2,0]), [], size=(A.shape[1], A.shape[1]), dtype=A.dtype)
             Z = Z.unsqueeze(0).to(rhs.device)
+            Z = torch.cat([Z]*rhs.shape[0], dim=0)
 
             AtZ = torch.cat([A.transpose(1,2), Z], dim =1)
             KKT = torch.cat([GA, AtZ], dim =2)
