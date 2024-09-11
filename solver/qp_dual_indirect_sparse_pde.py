@@ -83,18 +83,22 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             ##### ilu preconditioner
             M=None
             if config.ilu_preconditioner:
-                KKTs = KKT[0]
-                #print(KKTs._indices().shape, KKTs._values().shape)
-                indices = KKTs._indices().cpu().numpy()
-                values = KKTs._values().cpu().numpy()
-                shape = list(KKTs.shape)
-                #KKTs = SP.coo_matrix((values, (indices[0], indices[1]) ), shape = shape)
-                KKTs = SP.csc_matrix((values, (indices[0], indices[1]) ), shape = shape)
+                indices = KKT[0]._indices().cpu().numpy()
 
-                #KKTs = KKTs.to_sparse_csc()
-                #if not QPFunctionFn.first:
-                #print('begin ilu')
-                M = spla.spilu(KKTs, fill_factor=config.ilu_fill_factor, options=dict(Fact='DOFACT', PrintStat=True))
+                M_list = []
+                for midx in range(bs):
+                    #print(KKTs._indices().shape, KKTs._values().shape)
+                    KKTs = KKT[midx]
+                    values = KKTs._values().cpu().numpy()
+                    shape = list(KKTs.shape)
+                    #KKTs = SP.coo_matrix((values, (indices[0], indices[1]) ), shape = shape)
+                    KKTs = SP.csc_matrix((values, (indices[0], indices[1]) ), shape = shape)
+
+                    #KKTs = KKTs.to_sparse_csc()
+                    #if not QPFunctionFn.first:
+                    #print('begin ilu')
+                    M = spla.spilu(KKTs, fill_factor=config.ilu_fill_factor, options=dict(Fact='DOFACT', PrintStat=True))
+                    M_list.append(M)
                 #print('end ilu')
                 #print('nnz ', M.nnz, KKTs.nnz, KKTs.nnz/(M.shape[0]*M.shape[1]), M.shape, KKTs.shape)
             #M = spla.spilu(KKTs, fill_factor=config.ilu_fill_factor, options=dict(Fact='SamePattern', PrintStat=True))
@@ -102,7 +106,8 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             #    M = spla.spilu(KKTs, fill_factor=config.ilu_fill_factor, options=dict(PrintStat='YES'))
             #    QPFunctionFn.first=False
             #M = spla.spilu(KKTs, fill_factor=40)
-            ctx.M = M
+            #ctx.M = M
+            ctx.M_list = M_list
 
             ###########
 
@@ -114,7 +119,7 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             #x0 = torch.cat([xinit, lam_init], dim=1)
             
             #print('kkt ', KKT.shape)
-            sol, info = cg.gmres(KKT, R, x0=torch.zeros_like(R), M=M, maxiter=config.pde_gmres_max_iter, 
+            sol, info = cg.gmres(KKT, R, x0=torch.zeros_like(R), M=M_list, maxiter=config.pde_gmres_max_iter, 
                                 restart=config.pde_gmres_repeat)
             #sol, info = cg.gmres(KKT, R, x0=x0, maxiter=1, restart=600)
             #print('torch gmres info ', info, sol.shape)
@@ -171,7 +176,7 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
         @staticmethod
         def backward(ctx, dl_dzhat, dl_dlam):
             A,P_diag_inv, _x, _y, KKT = ctx.saved_tensors
-            M = ctx.M
+            M_list = ctx.M_list
             At = A.transpose(1,2)
             #n = A.shape[1]
             #m = A.shape[2]
@@ -184,7 +189,7 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             z = torch.zeros(bs, m, device=dl_dzhat.device).type_as(_x)
             R = torch.cat([dl_dzhat, z], dim=-1)
             
-            sol, info = cg.gmres(KKT, R, x0=torch.zeros_like(R), M=M, maxiter=config.pde_gmres_max_iter, 
+            sol, info = cg.gmres(KKT, R, x0=torch.zeros_like(R), M=M_list, maxiter=config.pde_gmres_max_iter, 
                                 restart=config.pde_gmres_repeat)
 
             #print('back gmres info ', info)

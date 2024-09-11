@@ -139,6 +139,20 @@ def cg_matvec(As, b, x0=None, tol=1e-5, maxiter=None, M=None, callback=None, ato
         info = iters
 
     return x, (info, iters, resid)
+
+def apply_M(M, x):
+    #apply preconditoners on cpu. M is a list
+    device = x.device
+    x = x.cpu().numpy()
+    mx_list = []
+    for idx in range(len(M)):
+        #mx = M.solve(x[0].cpu().numpy())
+        mx = M[idx].solve(x[idx])
+        mx = torch.tensor(mx).unsqueeze(0)
+        mx_list.append(mx)
+    torch.cat(mx_list, dim=0)
+    mx = mx.to(device)
+    return mx
     
 @torch.no_grad()
 def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None,
@@ -234,9 +248,10 @@ def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None,
         #mx = psolve(x)
         mx = x
         if M is not None:
-            mx = M.solve(x[0].cpu().numpy())
-            mx = torch.tensor(mx).unsqueeze(0)
-            mx = mx.to(x.device)
+            #mx = M.solve(x[0].cpu().numpy())
+            #mx = torch.tensor(mx).unsqueeze(0)
+            #mx = mx.to(x.device)
+            mx = apply_M(M, mx)
         #r = b - matvec(mx)
         #r = b - torch.mm(A, mx.unsqueeze(1)).squeeze(1)
         #print(A, mx.shape)
@@ -259,10 +274,10 @@ def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None,
             #z = psolve(v)
             z = v #psolve(v)
             if M is not None:
-                #z = z*M
-                z = M.solve(z[0].cpu().numpy())
-                z = torch.tensor(z).unsqueeze(0)
-                z = z.to(x.device)
+                #z = M.solve(z[0].cpu().numpy())
+                #z = torch.tensor(z).unsqueeze(0)
+                #z = z.to(x.device)
+                z = apply_M(M, z)
             #u = matvec(z)
             #u = torch.mm(A, z.unsqueeze(1)).squeeze(1)
             u = torch.bmm(A, z.unsqueeze(2)).squeeze(2)
