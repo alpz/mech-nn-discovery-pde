@@ -498,7 +498,8 @@ class Model(nn.Module):
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step), device=device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
+#optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
 #optimizer = torch.optim.SGD(model.parameters(), lr=0.0005, momentum =0.9)
 
 if DBL:
