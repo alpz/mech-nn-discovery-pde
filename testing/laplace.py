@@ -1,0 +1,107 @@
+#%%
+from scipy.io import loadmat
+
+from config import PDEConfig
+import os
+import numpy as np
+
+import torch.nn as nn
+import torch
+from torch.nn.parameter import Parameter
+import numpy as np
+
+import matplotlib.pyplot as plt
+import torch
+import torch.optim as optim
+
+
+from torch.utils.data import Dataset, DataLoader
+from scipy.integrate import odeint
+
+from extras.source import write_source_files, create_log_dir
+
+from solver.pde_layer import PDEINDLayerEPS
+#from solver.ode_layer import ODEINDLayer
+#import discovery.basis as B
+import ipdb
+import extras.logger as logger
+import os
+
+from scipy.special import logit
+import torch.nn.functional as F
+from tqdm import tqdm
+import discovery.plot as P
+
+
+
+
+def solve():
+    bs = 1
+    coord_dims = (32,32)
+    iv_list = [(0,0, [0,0],[0,coord_dims[1]-2]), 
+                (1,0, [1,0], [coord_dims[0]-1, 0]), 
+                #(0,1, [0,0],[0,self.coord_dims[1]-1]), 
+                (0,0, [coord_dims[0]-1,1],[coord_dims[0]-1,coord_dims[1]-2]), 
+                #(1,2, [0,0], [self.coord_dims[0]-1, 0]),
+                #(1,3, [0,0], [self.coord_dims[0]-1, 0])
+                (1,0, [0,coord_dims[1]-1], [coord_dims[0]-1, coord_dims[1]-1])
+                ]
+
+    pde = PDEINDLayerEPS(bs=1, coord_dims=coord_dims, order=2, n_ind_dim=1, n_iv=1, 
+                        init_index_mi_list=iv_list,  n_iv_steps=1, double_ret=True, solver_dbl=True)
+
+
+    t_step_size = 0.1 
+    x_step_size = 0.1
+    #self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
+    #self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
+
+    steps0 = torch.logit(t_step_size*torch.ones(1,1))
+    steps1 = torch.logit(x_step_size*torch.ones(1,1))
+
+    steps0 = steps0.expand(-1, coord_dims[0]-1)
+    steps1 = steps1.expand(-1, coord_dims[1]-1)
+    steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.1)
+    steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.1)
+    steps_list = [steps0, steps1]
+
+
+    coeffs = torch.zeros((bs, pde.grid_size, pde.n_orders))
+    #u, u_t, u_x, u_tt, u_xx
+    #u_tt + u_xx = 0
+    coeffs[..., 3] = 1.
+    #u_x
+    coeffs[..., 4] = 1.
+
+    #up = up.reshape(bs, *self.coord_dims)
+
+    rhs = torch.zeros(bs, *coord_dims)
+
+    #iv
+    x_steps = torch.linspace(0, 2*np.pi, coord_dims[0])
+    y_steps = torch.linspace(0, 2*np.pi, coord_dims[1])
+
+    x_bc = torch.sin(x_steps) 
+    y_bc = torch.sin(y_steps) 
+    
+    iv0 = x_bc[:-1]
+    iv1 = y_bc[1:]
+    iv2 = x_bc[1:-1]
+    iv3 = y_bc[:]
+
+    iv_rhs = torch.cat([iv0,iv1, iv2, iv3], dim =-1)
+
+    u0,_,eps = pde(coeffs, rhs, iv_rhs, steps_list)
+    
+    print(eps.max())
+    print(u0.shape)
+    u0 = u0.reshape(*coord_dims)
+    return u0
+
+#%%
+solve()
+# %%
+
+plot = plt.pcolormesh(target, cmap='RdBu', shading='gouraud')
+
+# %%
