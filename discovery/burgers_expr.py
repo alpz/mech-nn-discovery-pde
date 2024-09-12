@@ -509,6 +509,9 @@ def optimize(nepoch=5000):
             #x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
             #eq_loss = (eq_loss).abs()#.pow(2)#.pow(2)#.mean()
 
+            #x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
+            #eq_loss = (eq_loss).abs()#.pow(2)#.pow(2)#.mean()
+
             x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
             eq_loss = (eq_loss).abs()#.pow(2)#.pow(2)#.mean()
 

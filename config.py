@@ -25,7 +25,7 @@ class PDEConfig:
     #pde_gmres_repeat = 500
 
     ilu_preconditioner=True
-    ilu_fill_factor= 20.0
+    ilu_fill_factor= 30.0
     sindpy_data = os.path.join(os.path.expanduser('~'),'data/pysindy/')
 
     #uncomment to choose linear solver sparse conjuate gradient

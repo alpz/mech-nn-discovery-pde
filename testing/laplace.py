@@ -99,9 +99,11 @@ def solve():
     return u0
 
 #%%
-solve()
+u0=solve()
 # %%
 
-plot = plt.pcolormesh(target, cmap='RdBu', shading='gouraud')
+#plot = plt.pcolormesh(u0, cmap='RdBu', shading='gouraud')
+#plot = plt.pcolormesh(u0, cmap='RdBu', shading='gouraud')
+plot = plt.pcolormesh(u0, cmap='viridis', shading='gouraud')
 
 # %%

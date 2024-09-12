@@ -866,6 +866,7 @@ class PDESYSLP(nn.Module):
         if initial_A is not None:
             initial_A = initial_A.unsqueeze(0)
             initial_A = torch.cat([initial_A]*self.bs, dim=0)
+            print ('Initial/boundary Constraints shape ', initial_A.shape)
 
         #(b, r3, c)
         derivative_A = derivative_A.unsqueeze(0)
