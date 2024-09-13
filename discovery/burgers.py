@@ -10,7 +10,7 @@ import torch
 from torch.nn.parameter import Parameter
 import numpy as np
 
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import torch
 import torch.optim as optim
 
@@ -30,7 +30,7 @@ import os
 from scipy.special import logit
 import torch.nn.functional as F
 from tqdm import tqdm
-import discovery.plot as P
+#import discovery.plot as P
 from sklearn.metrics import mean_squared_error
 
 
@@ -318,9 +318,9 @@ class Model(nn.Module):
         #    nn.Linear(1024,self.pde.grid_size)
         #)
 
-        self.param_in = nn.Parameter(torch.randn(1,64))
+        self.param_in = nn.Parameter(torch.randn(1,128))
         self.param_net = nn.Sequential(
-            nn.Linear(64, 1024),
+            nn.Linear(128, 1024),
             #nn.ELU(),
             nn.ReLU(),
             nn.Linear(1024, 1024),
@@ -333,9 +333,9 @@ class Model(nn.Module):
             #nn.Tanh()
         )
 
-        self.param_in2 = nn.Parameter(torch.randn(1,64))
+        self.param_in2 = nn.Parameter(torch.randn(1,128))
         self.param_net2 = nn.Sequential(
-            nn.Linear(64, 1024),
+            nn.Linear(128, 1024),
             nn.ReLU(),
             nn.Linear(1024, 1024),
             nn.ReLU(),
@@ -551,8 +551,8 @@ class Model(nn.Module):
         #up = up.reshape(bs, *self.coord_dims)
         #up2 = up2.reshape(bs, *self.coord_dims)
 
-        up = u + up
-        up2 = u + up2
+        #up = u + up
+        #up2 = u + up2
 
         #chunk u, up, up2
         u_patched, unfold_shape = self.make_patches(u)
@@ -630,15 +630,15 @@ def optimize(nepoch=5000):
             var2 = var2.reshape(*data_shape)[-1, :t_end, :x_end]
 
 
-            x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
-            #x_loss = (x0- batch_in).pow(2)#.mean()
+            #x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
+            x_loss = (x0- batch_in).pow(2)#.mean()
             #x_loss = (x0- batch_in).abs()#.mean()
             #x_loss = (x0- batch_in).pow(2).mean()
-            var_loss = (var- batch_in).abs()#.pow(2)#.mean()
-            var2_loss = (var2- batch_in).abs()#.pow(2)#.mean()
+            #var_loss = (var- batch_in).abs()#.pow(2)#.mean()
+            #var2_loss = (var2- batch_in).abs()#.pow(2)#.mean()
 
-            #var_loss = (var- batch_in).pow(2)#.mean()
-            #var2_loss = (var2- batch_in).pow(2)#.mean()
+            var_loss = (var- batch_in).pow(2)#.mean()
+            var2_loss = (var2- batch_in).pow(2)#.mean()
             #var_loss = (var- batch_in).pow(2)#.mean()
             #var_loss = (var- batch_in).abs()#.mean()
             #var_loss = (var- batch_in).pow(2)#.mean()
@@ -649,7 +649,7 @@ def optimize(nepoch=5000):
             param_loss = params.abs()
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
-            loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.001*param_loss.mean()
+            loss = 8*x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.001*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean()  +  0.001*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + 0.001*param_loss.mean()
             #loss = x_loss.mean() #+ 0.01*param_loss.mean()
