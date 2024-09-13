@@ -35,7 +35,7 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
         #def forward(ctx, coeffs, rhs, iv_rhs):
             #bs = coeffs.shape[0]
             bs = rhs.shape[0]
-            print(eq_A.shape, rhs.shape, iv_rhs.shape, derivative_A.shape )
+            #print(eq_A.shape, rhs.shape, iv_rhs.shape, derivative_A.shape )
             #ode.build_ode(coeffs, rhs, iv_rhs, derivative_A)
             #At, ub = ode.fill_block_constraints_torch(eq_A, rhs, iv_rhs, derivative_A)
             A, A_rhs = pde.fill_constraints_torch(eq_A, rhs, iv_rhs, derivative_A)

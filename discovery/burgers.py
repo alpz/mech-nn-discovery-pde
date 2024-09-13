@@ -31,6 +31,7 @@ from scipy.special import logit
 import torch.nn.functional as F
 from tqdm import tqdm
 import discovery.plot as P
+from sklearn.metrics import mean_squared_error
 
 
 log_dir, run_id = create_log_dir(root='logs')
@@ -45,12 +46,13 @@ cuda=True
 #n_step_per_batch = T
 #solver_dim=(10,256)
 #solver_dim=(32,32)
-#solver_dim=(50,64)
-solver_dim=(32,48)
+solver_dim=(50,64)
+#solver_dim=(32,48)
 batch_size= 1
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
 
+noise =True
 
 L.info(f'Solver dim {solver_dim} ')
 
@@ -94,7 +96,14 @@ class BurgersDataset(Dataset):
         print(self.x.shape)
         print(data['usol'].shape)
 
-        data = data['usol']
+        data = np.real(data['usol'])
+
+        if noise:
+            print('adding noise')
+            rmse = mean_squared_error(data, np.zeros(data.shape), squared=False)
+            # add 20% noise (note the impact on derivatives depends on step size...)
+            data = data + np.random.normal(0, rmse / 5.0, data.shape) 
+
         #permute time, x
         self.data = torch.tensor(data, dtype=dtype).permute(1,0) 
         print('self ', self.data.shape)
@@ -435,70 +444,70 @@ class Model(nn.Module):
 
         return u0, eps
     
-    def solve_chunks_bk(self, u_patches, up_patches, up2_patches, params):
-        bs = u_patches.shape[0]
-        n_patches = u_patches.shape[1]
-        u0_list = []
-        eps_list = []
+    #def solve_chunks_bk(self, u_patches, up_patches, up2_patches, params):
+    #    bs = u_patches.shape[0]
+    #    n_patches = u_patches.shape[1]
+    #    u0_list = []
+    #    eps_list = []
 
-        steps0 = self.steps0.type_as(params).expand(-1, self.coord_dims[0]-1)
-        steps1 = self.steps1.type_as(params).expand(-1, self.coord_dims[1]-1)
-        steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.1)
-        steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.1)
-        steps_list = [steps0, steps1]
+    #    steps0 = self.steps0.type_as(params).expand(-1, self.coord_dims[0]-1)
+    #    steps1 = self.steps1.type_as(params).expand(-1, self.coord_dims[1]-1)
+    #    steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.1)
+    #    steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.1)
+    #    steps_list = [steps0, steps1]
 
-        #for i in range(n_patches):
-        for i in tqdm(range(n_patches)):
-            u = u_patches[:, i]
-            up = up_patches[:, i]
-            up2 = up2_patches[:, i]
-            # solve each chunk
-            #can use either u or up for boundary conditions
-            #upi = u.reshape(bs, *self.coord_dims)
-            upi = up.reshape(bs, *self.coord_dims)
-            #upi = upi + up2.reshape(bs, *self.coord_dims)
-            #upi = upi/2
-            iv_rhs = self.get_iv(upi)
+    #    #for i in range(n_patches):
+    #    for i in tqdm(range(n_patches)):
+    #        u = u_patches[:, i]
+    #        up = up_patches[:, i]
+    #        up2 = up2_patches[:, i]
+    #        # solve each chunk
+    #        #can use either u or up for boundary conditions
+    #        #upi = u.reshape(bs, *self.coord_dims)
+    #        upi = up.reshape(bs, *self.coord_dims)
+    #        #upi = upi + up2.reshape(bs, *self.coord_dims)
+    #        #upi = upi/2
+    #        iv_rhs = self.get_iv(upi)
 
-            #basis = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
-            #basis = torch.stack([torch.ones_like(up), up, up**2, up**3], dim=-1)
-            basis = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
-            #basis2 = torch.stack([torch.ones_like(up2), up2, up2**2, up2**3], dim=-1)
-            #basis2 = torch.stack([torch.ones_like(up), up, up**2, up**3], dim=-1)
-            #basis2 = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
-            #basis2 = torch.stack([torch.ones_like(up), up, up**2, up**3], dim=-1)
-            basis2 = torch.stack([torch.ones_like(up2), up2, up2**2], dim=-1)
-            #q = torch.stack([torch.ones_like(up2), up2, up2**2, up2**3], dim=-1)
-            #q = torch.stack([torch.ones_like(up), up, up**2, up**3], dim=-1)
+    #        #basis = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
+    #        #basis = torch.stack([torch.ones_like(up), up, up**2, up**3], dim=-1)
+    #        basis = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
+    #        #basis2 = torch.stack([torch.ones_like(up2), up2, up2**2, up2**3], dim=-1)
+    #        #basis2 = torch.stack([torch.ones_like(up), up, up**2, up**3], dim=-1)
+    #        #basis2 = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
+    #        #basis2 = torch.stack([torch.ones_like(up), up, up**2, up**3], dim=-1)
+    #        basis2 = torch.stack([torch.ones_like(up2), up2, up2**2], dim=-1)
+    #        #q = torch.stack([torch.ones_like(up2), up2, up2**2, up2**3], dim=-1)
+    #        #q = torch.stack([torch.ones_like(up), up, up**2, up**3], dim=-1)
 
-            #p = torch.stack([torch.ones_like(u), u], dim=-1)
-            #q = torch.stack([torch.ones_like(u), u], dim=-1)
+    #        #p = torch.stack([torch.ones_like(u), u], dim=-1)
+    #        #q = torch.stack([torch.ones_like(u), u], dim=-1)
 
-            p = (basis*params[...,0,:]).sum(dim=-1)
-            q = (basis2*params[...,1,:]).sum(dim=-1)
+    #        p = (basis*params[...,0,:]).sum(dim=-1)
+    #        q = (basis2*params[...,1,:]).sum(dim=-1)
 
 
-            coeffs = torch.zeros((bs, self.pde.grid_size, self.pde.n_orders), device=u.device)
-            #u, u_t, u_x, u_tt, u_xx
-            #u_t
-            coeffs[..., 1] = 1.
-            #u_x
-            coeffs[..., 2] = p
-            #u_xx
-            coeffs[..., 4] = q
+    #        coeffs = torch.zeros((bs, self.pde.grid_size, self.pde.n_orders), device=u.device)
+    #        #u, u_t, u_x, u_tt, u_xx
+    #        #u_t
+    #        coeffs[..., 1] = 1.
+    #        #u_x
+    #        coeffs[..., 2] = p
+    #        #u_xx
+    #        coeffs[..., 4] = q
 
-            #up = up.reshape(bs, *self.coord_dims)
+    #        #up = up.reshape(bs, *self.coord_dims)
 
-            rhs = torch.zeros(bs, *self.coord_dims, device=u.device)
+    #        rhs = torch.zeros(bs, *self.coord_dims, device=u.device)
 
-            u0,_,eps = self.pde(coeffs, rhs, iv_rhs, steps_list)
-            u0_list.append(u0)
-            eps_list.append(eps)
+    #        u0,_,eps = self.pde(coeffs, rhs, iv_rhs, steps_list)
+    #        u0_list.append(u0)
+    #        eps_list.append(eps)
 
-        u0 = torch.stack(u0_list, dim=1)
-        eps = torch.stack(eps_list, dim=1).max()
+    #    u0 = torch.stack(u0_list, dim=1)
+    #    eps = torch.stack(eps_list, dim=1).max()
 
-        return u0, eps
+    #    return u0, eps
 
     def make_patches(self, x):
         x_patches = x.unfold(1, self.coord_dims[0], self.coord_dims[0]) 
@@ -640,7 +649,7 @@ def optimize(nepoch=5000):
             param_loss = params.abs()
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
-            loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.01*param_loss.mean()
+            loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.001*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean()  +  0.001*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + 0.001*param_loss.mean()
             #loss = x_loss.mean() #+ 0.01*param_loss.mean()

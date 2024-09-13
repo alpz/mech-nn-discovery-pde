@@ -32,6 +32,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 #import discovery.plot as P
 
+from sklearn.metrics import mean_squared_error
 
 log_dir, run_id = create_log_dir(root='logs')
 write_source_files(log_dir)
@@ -44,12 +45,13 @@ cuda=True
 #T = 2000
 #n_step_per_batch = T
 #solver_dim=(10,256)
-solver_dim=(32,32)
-#solver_dim=(30,64)
+#solver_dim=(32,32)
+solver_dim=(30,64)
 batch_size= 1
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
 
+noise=True
 
 L.info(f'Solver dim {solver_dim} ')
 
@@ -93,7 +95,14 @@ class BurgersDataset(Dataset):
         print(self.x.shape)
         print(data['usol'].shape)
 
-        data = data['usol']
+        data = np.real(data['usol'])
+
+        if noise:
+            print('adding noise')
+            rmse = mean_squared_error(data, np.zeros(data.shape), squared=False)
+            # add 20% noise (note the impact on derivatives depends on step size...)
+            data = data + np.random.normal(0, rmse / 5.0, data.shape) 
+
         #permute time, x
         self.data = torch.tensor(data, dtype=dtype).permute(1,0) 
         print('self ', self.data.shape)
