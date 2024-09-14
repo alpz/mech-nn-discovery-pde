@@ -4,23 +4,20 @@ import torch.nn.functional as F
 
 
 class ResNet(nn.Module):
-    def __init__(self, output_len=100, device=None, **kwargs):
+    def __init__(self, output_len=100,in_channels=1, out_channels=32, device=None, **kwargs):
         super().__init__()
 
-        nc = 256
-        self.c1 = nn.Conv2d(in_channels=1, out_channels=nc, kernel_size=5, stride=1, padding=2)
-
+        nc = 128*2
+        self.c1 = nn.Conv2d(in_channels=in_channels, out_channels=nc, kernel_size=5, stride=1, padding=2)
         self.c2 = nn.Conv2d(in_channels=nc, out_channels=nc, kernel_size=5, stride=1, padding=2)
-
         self.c3 = nn.Conv2d(in_channels=nc, out_channels=nc, kernel_size=5, stride=1, padding=2)
-
         #self.d4 = nn.Conv1d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1)
         self.c4 = nn.Conv2d(in_channels=nc, out_channels=nc, kernel_size=5, stride=1, padding=2)
         self.c41 = nn.Conv2d(in_channels=nc, out_channels=nc, kernel_size=5, stride=1, padding=2)
         self.c42 = nn.Conv2d(in_channels=nc, out_channels=nc, kernel_size=5, stride=1, padding=2)
         self.c43 = nn.Conv2d(in_channels=nc, out_channels=nc, kernel_size=5, stride=1, padding=2)
 
-        self.c5 = nn.Conv2d(in_channels=nc, out_channels=32, kernel_size=5, stride=1, padding=2)
+        self.c5 = nn.Conv2d(in_channels=nc, out_channels=out_channels, kernel_size=5, stride=1, padding=2)
         
         #self.conv_net_global = nn.Sequential(
         #    #2048 -> 1024
