@@ -52,6 +52,7 @@ solver_dim=(32,32)
 batch_size= 1
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.01
+counter_threshold = 30
 
 noise =False
 
@@ -190,6 +191,7 @@ class Model(nn.Module):
         self.n_basis = 3
         self.n_poly = 2
         self.mask = torch.ones(1, self.n_poly, self.n_basis).to(device)
+        self.counter = torch.zeros(1, self.n_poly, self.n_basis).to(device).int()
 
         self.param_in = nn.Parameter(torch.randn(1,64))
 
@@ -458,10 +460,22 @@ class Model(nn.Module):
         #params = params.reshape(-1,1,2, 2)
         params = torch.stack([params, params2], dim=-2)
         mask = self.mask.reshape(params.shape)
-        return params*mask
+        return params*mask, mask
 
-    def update_mask(self, mask):
-        self.mask = self.mask*mask
+    def update_mask(self):
+        #self.mask = self.mask*mask
+        new_mask = self.mask
+        new_mask[self.counter>counter_threshold] = 0.
+        self.mask = self.mask*new_mask
+
+    def reset_counter(self, params):
+        #mask = self.counter>threshold_steps
+        self.counter[params.abs()>=threshold] = 0.
+
+    def inc_counter(self, params):
+        #mask = self.counter>threshold_steps
+        self.counter = self.counter + (params.abs() < threshold).int()
+        
 
     def get_iv(self, u):
         #u1 = u[:,0, :self.coord_dims[1]-2+1]
@@ -604,7 +618,7 @@ class Model(nn.Module):
         up_patched = up.unsqueeze(1)
         up2_patched= up2.unsqueeze(1)
 
-        params = self.get_params()
+        params, mask = self.get_params()
 
         u0, eps = self.solve_chunks(u_patched, up_patched, up2_patched, params)
 
@@ -612,7 +626,7 @@ class Model(nn.Module):
         #u0 = self.join_patches(u0_patches, unfold_shape)
         u0 = u0.squeeze(1)
 
-        return u0, up,up2, eps, params
+        return u0, up,up2, eps, params, mask
         #return u0, up,eps, params
 
 
@@ -631,10 +645,11 @@ model=model.to(device)
 
 def print_eq(stdout=False):
     #print learned equation
-    xi = model.get_params()
+    xi,mask = model.get_params()
     params = xi.squeeze().detach().cpu().numpy()
+    mask = mask.squeeze().detach().cpu().numpy()
     #print(params)
-    return params
+    return params,mask
     #return code
 
 
@@ -642,34 +657,34 @@ def train():
     """Optimize and threshold cycle"""
     #model.reset_params()
 
-    max_iter = 10
-    for step in range(max_iter):
-        print(f'Optimizer iteration {step}/{max_iter}')
-        #threshold
-        xi = model.get_params()
+    #max_iter = 10
+    #for step in range(max_iter):
+        #print(f'Optimizer iteration {step}/{max_iter}')
+        ##threshold
+        #xi = model.get_params()
 
-        L.info('Current params, mask')
-        L.info(xi)
-        #L.info(xi*model.mask)
-        L.info(model.mask)
-        #L.info(model.mask*mask)
+        #L.info('Current params, mask')
+        #L.info(xi)
+        ##L.info(xi*model.mask)
+        #L.info(model.mask)
+        ##L.info(model.mask*mask)
 
-        #code = print_eq(stdout=True)
-        #simulate and plot
+        ##code = print_eq(stdout=True)
+        ##simulate and plot
 
-        #x_sim = simulate(code)
-        #P.plot_lorenz(x_sim, os.path.join(log_dir, f'sim_{step}.pdf'))
+        ##x_sim = simulate(code)
+        ##P.plot_lorenz(x_sim, os.path.join(log_dir, f'sim_{step}.pdf'))
 
-        #set mask
-        if step > 0:
-            mask = (xi.abs() > threshold).float()
-            model.update_mask(mask)
-            #model.reset_params()
+        ##set mask
+        #if step > 0:
+        #    mask = (xi.abs() > threshold).float()
+        #    model.update_mask(mask)
+        #    #model.reset_params()
 
-        optimize(step)
+    optimize(0)
 
 
-def optimize(opt_step, nepoch=200):
+def optimize(opt_step, nepoch=500):
     #with tqdm(total=nepoch) as pbar:
 
     #params=print_eq()
@@ -694,7 +709,7 @@ def optimize(opt_step, nepoch=200):
 
             #optimizer.zero_grad()
             #x0, steps, eps, var,xi = model(index, batch_in)
-            x0, var, var2, eps, params = model(batch_in, t, x)
+            x0, var, var2, eps, params, mask = model(batch_in, t, x)
 
             #print(batch_in.shape, x0.shape, var.shape)
             t_end = x0.shape[1]
@@ -742,10 +757,18 @@ def optimize(opt_step, nepoch=200):
             loss.backward()
             optimizer.step()
 
+            
+            #
+
 
             #xi = xi.detach().cpu().numpy()
             #alpha = alpha.squeeze().item() #.detach().cpu().numpy()
             #beta = beta.squeeze().item()
+
+        model.inc_counter(params)
+        model.reset_counter(params)
+        model.update_mask()
+
         _x_loss = torch.cat(x_losses,dim=0).mean()
         _v_loss = torch.cat(var_losses,dim=0).mean()
 
@@ -756,8 +779,11 @@ def optimize(opt_step, nepoch=200):
 
         meps = eps.max().item()
             #print(f'\nalpha, beta {xi}')
-        params=print_eq()
-        L.info(f'parameters\n{params}')
+        #params=print_eq()
+        params = params.detach().cpu().numpy()
+        mask = mask.detach().cpu().numpy()
+        counter = model.counter.detach().cpu().numpy()
+        L.info(f'parameters, mask, counter\n{params}\n{mask}\n{counter}')
             #pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item():.3E}  xloss {x_loss:.3E} max eps {meps}\n')
         #print(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E}  xloss {_x_loss:.3E} vloss {_v_loss:.3E} max eps {meps}\n')
         L.info(f'run {run_id} epoch {epoch}/{opt_step}, loss {mean_loss.item():.3E} max eps {meps:.3E} xloss {_x_loss.item():.3E} vloss {_v_loss.item():.3E}')

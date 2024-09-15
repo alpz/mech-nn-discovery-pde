@@ -42,3 +42,12 @@ TOOD
 1. pde systems
 2. test initial variation.
 
+
+############ 2 space dim
+
+8,16,16
+
+1. random 32x32 space chunk for random time.
+2. random 5x5 chunk over space.
+3. solve rhs pde for parameter ub_t = NN. rhs = ub_t
+4. solve
