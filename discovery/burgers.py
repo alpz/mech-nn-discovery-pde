@@ -53,7 +53,7 @@ batch_size= 1
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
 
-noise =True
+noise =False
 
 L.info(f'Solver dim {solver_dim} ')
 
@@ -112,12 +112,12 @@ class BurgersDataset(Dataset):
         self.data_dim = self.data.shape
         self.solver_dim = solver_dim
 
-        #num_t_idx = self.data_dim[0] #- self.solver_dim[0] + 1
-        #num_x_idx = self.data_dim[1] #- self.solver_dim[1] + 1
+        num_t_idx = self.data_dim[0] #- self.solver_dim[0] + 1
+        num_x_idx = self.data_dim[1] #- self.solver_dim[1] + 1
 
 
-        #self.num_t_idx = num_t_idx//self.t_subsample  #+ 1
-        #self.num_x_idx = num_x_idx//self.x_subsample  #+ 1
+        self.num_t_idx = num_t_idx//solver_dim[0]  #+ 1
+        self.num_x_idx = num_x_idx//solver_dim[1]  #+ 1
 
         #if self.t_subsample < self.solver_dim[0]:
         #    self.num_t_idx = self.num_t_idx - self.solver_dim[0]//self.t_subsample
@@ -125,32 +125,32 @@ class BurgersDataset(Dataset):
         #    self.num_t_idx = self.num_t_idx - self.solver_dim[1]//self.x_subsample
 
         #self.length = self.num_t_idx*self.num_x_idx
-        self.length = 1 #self.num_t_idx*self.num_x_idx
+        self.length = self.num_t_idx*self.num_x_idx
 
 
     def __len__(self):
         return self.length #self.x_train.shape[0]
 
     def __getitem__(self, idx):
-        return self.data, self.t, self.x
+        #return self.data, self.t, self.x
         ##t_idx = idx//self.num_x_idx
         ##x_idx = idx - t_idx*self.num_x_idx
-        #(t_idx, x_idx) = np.unravel_index(idx, (self.num_t_idx, self.num_x_idx))
+        (t_idx, x_idx) = np.unravel_index(idx, (self.num_t_idx, self.num_x_idx))
 
-        #t_idx = t_idx*self.t_subsample
-        #x_idx = x_idx*self.x_subsample
-
-
-        #t_step = self.solver_dim[0]
-        #x_step = self.solver_dim[1]
+        t_idx = t_idx*solver_dim[0]
+        x_idx = x_idx*solver_dim[1]
 
 
-        #t = self.t[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
-        #x = self.x[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+        t_step = solver_dim[0]
+        x_step = solver_dim[1]
 
-        #data = self.data[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
 
-        #return data, t, x
+        t = self.t[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+        x = self.x[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+
+        data = self.data[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+
+        return data, t, x
 
 #%%
 
@@ -190,22 +190,22 @@ class Model(nn.Module):
         self.param_in = nn.Parameter(torch.randn(1,64))
 
         self.coord_dims = solver_dim
-        self.iv_list = [(0,0, [0,0],[0,self.coord_dims[1]-2]), 
+        self.iv_list = [(0,0, [0,0],[0,self.coord_dims[1]-1]), 
                         (1,0, [1,0], [self.coord_dims[0]-1, 0]), 
                         #(0,1, [0,0],[0,self.coord_dims[1]-1]), 
                         #(0,0, [self.coord_dims[0]-1,1],[self.coord_dims[0]-1,self.coord_dims[1]-2]), 
                         #(1,2, [0,0], [self.coord_dims[0]-1, 0]),
                         #(1,3, [0,0], [self.coord_dims[0]-1, 0])
-                        (1,0, [0,self.coord_dims[1]-1], [self.coord_dims[0]-1, self.coord_dims[1]-1])
+                        (1,0, [1,self.coord_dims[1]-1], [self.coord_dims[0]-1, self.coord_dims[1]-1])
                         ]
 
         #self.iv_len = self.coord_dims[1]-1 + self.coord_dims[0]-1 + self.coord_dims[1]-2 + self.coord_dims[0]
-        self.iv_len = self.coord_dims[1]-1 + self.coord_dims[0]-1 + self.coord_dims[0]
-        print('iv len', self.iv_len)
+        #self.iv_len = self.coord_dims[1]-1 + self.coord_dims[0]-1 + self.coord_dims[0]
+        #print('iv len', self.iv_len)
 
-        self.n_patches_t = ds.data.shape[0]//self.coord_dims[0]
-        self.n_patches_x = ds.data.shape[1]//self.coord_dims[1]
-        self.n_patches = self.n_patches_t*self.n_patches_x
+        self.n_patches_t = 1 #ds.data.shape[0]//self.coord_dims[0]
+        self.n_patches_x = 1 #ds.data.shape[1]//self.coord_dims[1]
+        self.n_patches = 1 #self.n_patches_t*self.n_patches_x
         print('num patches ', self.n_patches)
 
         self.pde = PDEINDLayerEPS(bs=bs*self.n_patches, coord_dims=self.coord_dims, order=self.order, n_ind_dim=self.n_dim, 
@@ -252,7 +252,7 @@ class Model(nn.Module):
 
 
         self.data_conv2d = nn.Sequential(
-            nn.Conv2d(1, 128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.Conv2d(3, 128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             nn.ReLU(),
             #nn.ELU(),
             nn.Conv2d(128,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
@@ -277,7 +277,7 @@ class Model(nn.Module):
             )
 
         self.data_conv2d2 = nn.Sequential(
-            nn.Conv2d(1, 128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.Conv2d(3, 128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             nn.ReLU(),
             #nn.ELU(),
             nn.Conv2d(128,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
@@ -298,47 +298,47 @@ class Model(nn.Module):
             )
 
 
-        self.iv_conv1d = nn.Sequential(
-            nn.Conv1d(101, 64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            nn.Conv1d(64,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            nn.Conv1d(128,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            nn.Conv1d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            nn.Conv1d(256,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            nn.Conv1d(128,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            nn.Conv1d(64,8, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            )
+        #self.iv_conv1d = nn.Sequential(
+        #    nn.Conv1d(101, 64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+        #    nn.ReLU(),
+        #    nn.Conv1d(64,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+        #    nn.ReLU(),
+        #    nn.Conv1d(128,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+        #    nn.ReLU(),
+        #    nn.Conv1d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+        #    nn.ReLU(),
+        #    nn.Conv1d(256,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+        #    nn.ReLU(),
+        #    nn.Conv1d(128,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+        #    nn.ReLU(),
+        #    nn.Conv1d(64,8, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+        #    )
 
-        self.iv_conv2d = nn.Sequential(
-            nn.Conv2d(1, 128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            #nn.ELU(),
-            nn.Conv2d(128,128, kernel_size=5, padding=2, stride=2, padding_mode=pm),
-            nn.ReLU(),
-            #nn.ELU(),
-            nn.Conv2d(128,128, kernel_size=5, padding=2, stride=2, padding_mode=pm),
-            nn.ReLU(),
-            #nn.ELU(),
-            nn.Conv2d(128,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            #nn.ELU(),
-            nn.Conv2d(128,128, kernel_size=5, padding=2, stride=2, padding_mode=pm),
-            nn.ReLU(),
-            #nn.ELU(),
-            nn.Conv2d(128,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            nn.Conv2d(128,self.n_patches, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            )
+        #self.iv_conv2d = nn.Sequential(
+        #    nn.Conv2d(1, 128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+        #    nn.ReLU(),
+        #    #nn.ELU(),
+        #    nn.Conv2d(128,128, kernel_size=5, padding=2, stride=2, padding_mode=pm),
+        #    nn.ReLU(),
+        #    #nn.ELU(),
+        #    nn.Conv2d(128,128, kernel_size=5, padding=2, stride=2, padding_mode=pm),
+        #    nn.ReLU(),
+        #    #nn.ELU(),
+        #    nn.Conv2d(128,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+        #    nn.ReLU(),
+        #    #nn.ELU(),
+        #    nn.Conv2d(128,128, kernel_size=5, padding=2, stride=2, padding_mode=pm),
+        #    nn.ReLU(),
+        #    #nn.ELU(),
+        #    nn.Conv2d(128,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+        #    nn.ReLU(),
+        #    nn.Conv2d(128,self.n_patches, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+        #    )
 
-        self.iv_out = nn.Linear(13*32, self.iv_len)
+        #self.iv_out = nn.Linear(13*32, self.iv_len)
 
-        self.rnet1 = N.ResNet(out_channels=1)
-        self.rnet2 = N.ResNet(out_channels=1)
+        self.rnet1 = N.ResNet(out_channels=1, in_channels=3)
+        self.rnet2 = N.ResNet(out_channels=1, in_channels=3)
         #self.data_mlp1 = nn.Sequential(
         #    #nn.Linear(32*32, 1024),
         #    nn.Linear(self.pde.grid_size, 1024),
@@ -394,19 +394,25 @@ class Model(nn.Module):
             #nn.Tanh()
         )
 
-        self.in_iv = nn.Parameter(torch.randn(1,512))
-        self.iv_mlp = nn.Sequential(
-            nn.Linear(self.n_patches*self.iv_len, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, 1024),
-            nn.ReLU(),
-            #two polynomials, second order
-            #nn.Linear(1024, 3*2),
-            nn.Linear(1024, self.n_patches*self.iv_len),
-            #nn.Tanh()
-        )
+        self.param_net[-1].weight.data.fill_(0.)
+        self.param_net[-1].bias = nn.Parameter(0.05*torch.randn(3))
+
+        self.param_net2[-1].weight.data.fill_(0.)
+        self.param_net2[-1].bias = nn.Parameter(0.05*torch.randn(3))
+
+        #self.in_iv = nn.Parameter(torch.randn(1,512))
+        #self.iv_mlp = nn.Sequential(
+        #    nn.Linear(self.n_patches*self.iv_len, 1024),
+        #    nn.ReLU(),
+        #    nn.Linear(1024, 1024),
+        #    nn.ReLU(),
+        #    nn.Linear(1024, 1024),
+        #    nn.ReLU(),
+        #    #two polynomials, second order
+        #    #nn.Linear(1024, 3*2),
+        #    nn.Linear(1024, self.n_patches*self.iv_len),
+        #    #nn.Tanh()
+        #)
 
 
         #self.param_net2_out = nn.Linear(1024, 3)
@@ -450,10 +456,12 @@ class Model(nn.Module):
         return params
 
     def get_iv(self, u):
-        u1 = u[:,0, :self.coord_dims[1]-2+1]
+        #u1 = u[:,0, :self.coord_dims[1]-2+1]
+        u1 = u[:,0, :self.coord_dims[1]]
         u2 = u[:, 1:self.coord_dims[0]-1+1:,0]
         #u3 = u[:, self.coord_dims[0]-1, 1:self.coord_dims[1]-2+1]
-        u4 = u[:, 0:self.coord_dims[0]-1+1, self.coord_dims[1]-1]
+        #u4 = u[:, 0:self.coord_dims[0]-1+1, self.coord_dims[1]-1]
+        u4 = u[:, 1:self.coord_dims[0]-1+1, self.coord_dims[1]-1]
 
         #ub = torch.cat([u1,u2,u3,u4], dim=-1)
         ub = torch.cat([u1,u2,u4], dim=-1)
@@ -495,7 +503,8 @@ class Model(nn.Module):
 
         basis = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
         #basis2 = torch.stack([torch.ones_like(up2), up2, up2**2], dim=-1)
-        basis2 = torch.stack([torch.ones_like(up2), up2, up2**2], dim=-1)
+        #basis2 = torch.stack([torch.ones_like(up2), up2, up2**2], dim=-1)
+        basis2 = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
         #basis2 = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
 
         p = (basis*params[...,0,:]).sum(dim=-1)
@@ -553,8 +562,8 @@ class Model(nn.Module):
         bs = u.shape[0]
         #up = self.data_net(u)
         #up = up.reshape(bs, self.pde.grid_size)
-        #cin = torch.stack([u,t,x], dim=1)
-        cin = u.unsqueeze(1) #torch.stack([u,t,x], dim=1)
+        cin = torch.stack([u,t,x], dim=1)
+        #cin = u.unsqueeze(1) #torch.stack([u,t,x], dim=1)
         #cin = u
         #print(cin.shape)
 
@@ -576,20 +585,24 @@ class Model(nn.Module):
         #up = up.reshape(bs, *self.coord_dims)
         #up2 = up2.reshape(bs, *self.coord_dims)
 
-        up = u + up
-        up2 = u + up2
+        #up = u + up
+        #up2 = u + up2
 
         #chunk u, up, up2
-        u_patched, unfold_shape = self.make_patches(u)
-        up_patched, _ = self.make_patches(up)
-        up2_patched, _ = self.make_patches(up2)
+        #u_patched, unfold_shape = self.make_patches(u)
+        #up_patched, _ = self.make_patches(up)
+        #up2_patched, _ = self.make_patches(up2)
+        u_patched = u.unsqueeze(1)
+        up_patched = up.unsqueeze(1)
+        up2_patched= up2.unsqueeze(1)
 
         params = self.get_params()
 
-        u0_patches, eps = self.solve_chunks(u_patched, up_patched, up2_patched, params)
+        u0, eps = self.solve_chunks(u_patched, up_patched, up2_patched, params)
 
         #join chunks into solution
-        u0 = self.join_patches(u0_patches, unfold_shape)
+        #u0 = self.join_patches(u0_patches, unfold_shape)
+        u0 = u0.squeeze(1)
 
         return u0, up,up2, eps, params
         #return u0, up,eps, params
@@ -635,8 +648,8 @@ def optimize(nepoch=5000):
         var_losses = []
         losses = []
         total_loss = 0
-        #for i, batch_in in enumerate(tqdm(train_loader)):
-        for i, batch_in in enumerate((train_loader)):
+        for i, batch_in in enumerate(tqdm(train_loader)):
+        #for i, batch_in in enumerate((train_loader)):
             optimizer.zero_grad()
             batch_in,t,x = batch_in[0], batch_in[1], batch_in[2]
             batch_in = batch_in.double().to(device)
@@ -678,16 +691,16 @@ def optimize(nepoch=5000):
             param_loss = params.abs()
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
-            loss = 6*x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.001*param_loss.mean()
-            #loss = 2*x_loss.mean() + var_loss.mean()  +  0.01*param_loss.mean()
+            #loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.001*param_loss.mean()
+            loss = 2*x_loss.mean() + var_loss.mean()  +  0.001*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + 0.001*param_loss.mean()
             #loss = x_loss.mean() #+ 0.01*param_loss.mean()
             #loss = var_loss.mean()
             #loss = x_loss +  (var- batch_in).abs().mean()
             #loss = x_loss +  (var- batch_in).pow(2).mean()
             x_losses.append(x_loss)
-            var_losses.append(var_loss + var2_loss)
-            #var_losses.append(var_loss)
+            #var_losses.append(var_loss + var2_loss)
+            var_losses.append(var_loss)
             #var_losses.append(var_loss )
             losses.append(loss)
             total_loss = total_loss + loss
