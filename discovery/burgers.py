@@ -54,7 +54,7 @@ batch_size= 1
 threshold = 0.01
 counter_threshold = 30
 
-noise =False
+noise =True
 
 L.info(f'Solver dim {solver_dim} ')
 
@@ -449,6 +449,30 @@ class Model(nn.Module):
 
         #self.stepsup0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
         #self.stepsup1 = torch.logit(self.x_step_size*torch.ones(2,self.coord_dims[1]-1))
+    def reset_params(self):
+        def weights_init(m):
+            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+                torch.nn.init.xavier_uniform(m.weight.data)
+                m.bias.data.fill_(0.)
+
+        self.param_net.apply(weights_init)
+        self.param_net2.apply(weights_init)
+        self.rnet1.apply(weights_init)
+        self.rnet2.apply(weights_init)
+
+        self.param_net[-1].weight.data.fill_(0.)
+        self.param_net[-1].bias= nn.Parameter(0.05*torch.randn(3, device=self.device))
+
+        self.param_net2[-1].weight.data.fill_(0.)
+        self.param_net2[-1].bias = nn.Parameter(0.05*torch.randn(3, device=self.device))
+
+        self.param_net = self.param_net.double()
+        self.param_net2 = self.param_net2.double()
+        self.rnet1 = self.rnet1.double()
+        self.rnet2 = self.rnet2.double()
+
+        self.counter = torch.zeros(1, self.n_poly, self.n_basis).to(device).int()
+
 
     def get_params(self):
         #params = self.param_net_out(self.param_net(self.param_in))
@@ -525,8 +549,8 @@ class Model(nn.Module):
 
         basis = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
         #basis2 = torch.stack([torch.ones_like(up2), up2, up2**2], dim=-1)
-        #basis2 = torch.stack([torch.ones_like(up2), up2, up2**2], dim=-1)
-        basis2 = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
+        basis2 = torch.stack([torch.ones_like(up2), up2, up2**2], dim=-1)
+        #basis2 = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
         #basis2 = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
 
         p = (basis*params[...,0,:]).sum(dim=-1)
@@ -593,7 +617,8 @@ class Model(nn.Module):
         #up2 = self.data_conv2d2(cin).squeeze(1)
 
         up = self.rnet1(cin).squeeze(1)
-        up2 = up #self.rnet2(cin).squeeze(1)
+        #up2 = up #self.rnet2(cin).squeeze(1)
+        up2 = self.rnet2(cin).squeeze(1)
 
         #iv = self.iv_conv2d(u)
         #iv = iv.reshape(-1, self.n_patches, 13*32)
@@ -632,7 +657,6 @@ class Model(nn.Module):
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step), device=device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
 #optimizer = torch.optim.SGD(model.parameters(), lr=0.0001, momentum =0.9)
@@ -655,10 +679,11 @@ def print_eq(stdout=False):
 
 def train():
     """Optimize and threshold cycle"""
-    #model.reset_params()
+    model.reset_params()
 
-    #max_iter = 10
-    #for step in range(max_iter):
+    max_iter = 10
+    l1_weight = 0.01
+    for step in range(max_iter):
         #print(f'Optimizer iteration {step}/{max_iter}')
         ##threshold
         #xi = model.get_params()
@@ -676,16 +701,19 @@ def train():
         ##P.plot_lorenz(x_sim, os.path.join(log_dir, f'sim_{step}.pdf'))
 
         ##set mask
-        #if step > 0:
-        #    mask = (xi.abs() > threshold).float()
-        #    model.update_mask(mask)
-        #    #model.reset_params()
+        if step > 0:
+            #mask = (xi.abs() > threshold).float()
+            #model.update_mask(mask)
+            model.reset_params()
 
-    optimize(0)
+        optimize(step, params_l1=l1_weight)
+        l1_weight = l1_weight/10
 
 
-def optimize(opt_step, nepoch=500):
+def optimize(opt_step, params_l1=0.001, nepoch=80):
     #with tqdm(total=nepoch) as pbar:
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
 
     #params=print_eq()
     #L.info(f'parameters\n{params}')
@@ -728,7 +756,7 @@ def optimize(opt_step, nepoch=500):
             #var2_loss = (var2- batch_in).abs()#.pow(2)#.mean()
 
             var_loss = (var- batch_in).pow(2)#.mean()
-            #var2_loss = (var2- batch_in).pow(2)#.mean()
+            var2_loss = (var2- batch_in).pow(2)#.mean()
             #var_loss = (var- batch_in).pow(2)#.mean()
             #var_loss = (var- batch_in).abs()#.mean()
             #var_loss = (var- batch_in).pow(2)#.mean()
@@ -739,16 +767,17 @@ def optimize(opt_step, nepoch=500):
             param_loss = params.abs()
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
-            #loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.001*param_loss.mean()
-            loss = 2*x_loss.mean() + var_loss.mean()  +  0.001*param_loss.mean()
+            #loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() #+  0.0001*param_loss.mean()
+            loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() +  params_l1*param_loss.mean()
+            #loss = 2*x_loss.mean() + var_loss.mean()  +  0.001*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + 0.001*param_loss.mean()
             #loss = x_loss.mean() #+ 0.01*param_loss.mean()
             #loss = var_loss.mean()
             #loss = x_loss +  (var- batch_in).abs().mean()
             #loss = x_loss +  (var- batch_in).pow(2).mean()
             x_losses.append(x_loss)
-            #var_losses.append(var_loss + var2_loss)
-            var_losses.append(var_loss)
+            var_losses.append(var_loss + var2_loss)
+            #var_losses.append(var_loss)
             #var_losses.append(var_loss )
             losses.append(loss)
             total_loss = total_loss + loss
@@ -783,7 +812,9 @@ def optimize(opt_step, nepoch=500):
         params = params.detach().cpu().numpy()
         mask = mask.detach().cpu().numpy()
         counter = model.counter.detach().cpu().numpy()
+        #pmc = [params, mask, counter]
         L.info(f'parameters, mask, counter\n{params}\n{mask}\n{counter}')
+        #L.info(f'parameters, mask, counter\n{pmc}')
             #pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item():.3E}  xloss {x_loss:.3E} max eps {meps}\n')
         #print(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E}  xloss {_x_loss:.3E} vloss {_v_loss:.3E} max eps {meps}\n')
         L.info(f'run {run_id} epoch {epoch}/{opt_step}, loss {mean_loss.item():.3E} max eps {meps:.3E} xloss {_x_loss.item():.3E} vloss {_v_loss.item():.3E}')
