@@ -141,7 +141,7 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             ##lam = lam.squeeze(2)
             #############
 
-            ##print('torch cg info ', info)
+            print('torch cg info ', info)
             ##lam,info = SPSLG.lgmres(pdmat, pd_rhs)
             ##xl = -Pinv_s@(A_s.T@lam -q)
 
