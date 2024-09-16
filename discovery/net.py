@@ -7,7 +7,7 @@ class ResNet(nn.Module):
     def __init__(self, output_len=100,in_channels=1, out_channels=32, device=None, **kwargs):
         super().__init__()
 
-        nc = 128*2
+        nc = 80
         self.c1 = nn.Conv2d(in_channels=in_channels, out_channels=nc, kernel_size=5, stride=1, padding=2)
         self.c2 = nn.Conv2d(in_channels=nc, out_channels=nc, kernel_size=5, stride=1, padding=2)
         self.c3 = nn.Conv2d(in_channels=nc, out_channels=nc, kernel_size=5, stride=1, padding=2)

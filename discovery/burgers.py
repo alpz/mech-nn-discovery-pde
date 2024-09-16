@@ -52,9 +52,9 @@ solver_dim=(32,32)
 batch_size= 1
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.01
-counter_threshold = 30
+counter_threshold = 20
 
-noise =True
+noise =False
 
 L.info(f'Solver dim {solver_dim} ')
 
@@ -221,215 +221,8 @@ class Model(nn.Module):
         # u, u_t, u_tt, u_x, u_xx
         self.num_multiindex = self.pde.n_orders
 
-        pm='circular'
-        #TODO add time space dims
-        #pm='zeros'
-        self.data_net = nn.Sequential(
-            nn.Conv1d(101, 64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            nn.Conv1d(64,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            nn.Conv1d(128,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            nn.Conv1d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            nn.Conv1d(256,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            nn.Conv1d(128,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            nn.Conv1d(64,101, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            )
+        self.create_networks()
 
-        self.data_net2 = nn.Sequential(
-            nn.Conv1d(101, 64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            nn.Conv1d(64,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            nn.Conv1d(128,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            nn.Conv1d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            nn.Conv1d(256,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            nn.Conv1d(128,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            nn.Conv1d(64,101, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            )
-
-
-        self.data_conv2d = nn.Sequential(
-            nn.Conv2d(3, 128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            #nn.ELU(),
-            nn.Conv2d(128,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            #nn.ELU(),
-            nn.Conv2d(128,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            #nn.ELU(),
-            nn.Conv2d(128,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            #nn.ELU(),
-            nn.Conv2d(128,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            #nn.ELU(),
-            nn.Conv2d(128,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            #nn.ELU(),
-            #nn.Conv2d(128,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            #nn.ReLU(),
-            #nn.ELU(),
-            nn.Conv2d(128,1, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            )
-
-        self.data_conv2d2 = nn.Sequential(
-            nn.Conv2d(3, 128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            #nn.ELU(),
-            nn.Conv2d(128,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            #nn.ELU(),
-            nn.Conv2d(128,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            #nn.ELU(),
-            nn.Conv2d(128,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            #nn.ELU(),
-            nn.Conv2d(128,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            #nn.ELU(),
-            nn.Conv2d(128,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            nn.ReLU(),
-            nn.Conv2d(128,1, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            )
-
-
-        #self.iv_conv1d = nn.Sequential(
-        #    nn.Conv1d(101, 64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-        #    nn.ReLU(),
-        #    nn.Conv1d(64,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-        #    nn.ReLU(),
-        #    nn.Conv1d(128,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-        #    nn.ReLU(),
-        #    nn.Conv1d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-        #    nn.ReLU(),
-        #    nn.Conv1d(256,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-        #    nn.ReLU(),
-        #    nn.Conv1d(128,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-        #    nn.ReLU(),
-        #    nn.Conv1d(64,8, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-        #    )
-
-        #self.iv_conv2d = nn.Sequential(
-        #    nn.Conv2d(1, 128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-        #    nn.ReLU(),
-        #    #nn.ELU(),
-        #    nn.Conv2d(128,128, kernel_size=5, padding=2, stride=2, padding_mode=pm),
-        #    nn.ReLU(),
-        #    #nn.ELU(),
-        #    nn.Conv2d(128,128, kernel_size=5, padding=2, stride=2, padding_mode=pm),
-        #    nn.ReLU(),
-        #    #nn.ELU(),
-        #    nn.Conv2d(128,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-        #    nn.ReLU(),
-        #    #nn.ELU(),
-        #    nn.Conv2d(128,128, kernel_size=5, padding=2, stride=2, padding_mode=pm),
-        #    nn.ReLU(),
-        #    #nn.ELU(),
-        #    nn.Conv2d(128,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-        #    nn.ReLU(),
-        #    nn.Conv2d(128,self.n_patches, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-        #    )
-
-        #self.iv_out = nn.Linear(13*32, self.iv_len)
-
-        self.rnet1 = N.ResNet(out_channels=1, in_channels=1)
-        self.rnet2 = N.ResNet(out_channels=1, in_channels=1)
-        #self.data_mlp1 = nn.Sequential(
-        #    #nn.Linear(32*32, 1024),
-        #    nn.Linear(self.pde.grid_size, 1024),
-        #    nn.ReLU(),
-        #    nn.Linear(1024, 1024),
-        #    nn.ReLU(),
-        #    nn.Linear(1024, 1024),
-        #    nn.ReLU(),
-        #    #two polynomials, second order
-        #    nn.Linear(1024,self.pde.grid_size)
-        #)
-
-
-        #self.data_mlp2 = nn.Sequential(
-        #    #nn.Linear(32*32, 1024),
-        #    nn.Linear(self.pde.grid_size, 1024),
-        #    nn.ReLU(),
-        #    nn.Linear(1024, 1024),
-        #    nn.ReLU(),
-        #    nn.Linear(1024, 1024),
-        #    nn.ReLU(),
-        #    #two polynomials, second order
-        #    nn.Linear(1024,self.pde.grid_size)
-        #)
-
-        self.param_in = nn.Parameter(torch.randn(1,512))
-        self.param_net = nn.Sequential(
-            nn.Linear(512, 1024),
-            #nn.ELU(),
-            nn.ReLU(),
-            nn.Linear(1024, 1024),
-            nn.ReLU(),
-            #nn.Linear(1024, 1024),
-            #nn.ReLU(),
-            #two polynomials, second order
-            #nn.Linear(1024, 3*2),
-            nn.Linear(1024, 3),
-            #nn.Tanh()
-        )
-        #self.param_net_out = nn.Linear(1024, 3)
-
-        self.param_in2 = nn.Parameter(torch.randn(1,512))
-        self.param_net2 = nn.Sequential(
-            nn.Linear(512, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, 1024),
-            nn.ReLU(),
-            #nn.Linear(1024, 1024),
-            #nn.ReLU(),
-            #two polynomials, second order
-            #nn.Linear(1024, 3*2),
-            nn.Linear(1024, 3),
-            #nn.Tanh()
-        )
-
-        self.param_net[-1].weight.data.fill_(0.)
-        self.param_net[-1].bias = nn.Parameter(0.05*torch.randn(3))
-
-        self.param_net2[-1].weight.data.fill_(0.)
-        self.param_net2[-1].bias = nn.Parameter(0.05*torch.randn(3))
-
-        #self.in_iv = nn.Parameter(torch.randn(1,512))
-        #self.iv_mlp = nn.Sequential(
-        #    nn.Linear(self.n_patches*self.iv_len, 1024),
-        #    nn.ReLU(),
-        #    nn.Linear(1024, 1024),
-        #    nn.ReLU(),
-        #    nn.Linear(1024, 1024),
-        #    nn.ReLU(),
-        #    #two polynomials, second order
-        #    #nn.Linear(1024, 3*2),
-        #    nn.Linear(1024, self.n_patches*self.iv_len),
-        #    #nn.Tanh()
-        #)
-
-
-        #self.param_net2_out = nn.Linear(1024, 3)
-
-        #self.param_net_out.weight.data.fill_(0.0)
-        #self.param_net2_out.weight.data.fill_(0.0)
-
-        #param_init = torch.randn(3)
-        #self.param_net_out.bias.data.fill_(param_init)
-        #self.param_net_out.bias = nn.Parameter(0.1*torch.randn(3))
-        #self.param_net2_out.bias = nn.Parameter(0.1*torch.randn(3))
 
         self.t_step_size = steps[0]
         self.x_step_size = steps[1]
@@ -449,27 +242,61 @@ class Model(nn.Module):
 
         #self.stepsup0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
         #self.stepsup1 = torch.logit(self.x_step_size*torch.ones(2,self.coord_dims[1]-1))
-    def reset_params(self):
-        def weights_init(m):
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
-                torch.nn.init.xavier_uniform(m.weight.data)
-                m.bias.data.fill_(0.)
+    def create_networks(self):
+        pm='circular'
+        #TODO add time space dims
+        #pm='zeros'
 
-        self.param_net.apply(weights_init)
-        self.param_net2.apply(weights_init)
-        self.rnet1.apply(weights_init)
-        self.rnet2.apply(weights_init)
+        self.rnet1 = N.ResNet(out_channels=1, in_channels=1)
+        self.rnet2 = N.ResNet(out_channels=1, in_channels=1)
+
+        self.param_in = nn.Parameter(torch.randn(1,512, device=self.device, dtype=torch.float64))
+        self.param_net = nn.Sequential(
+            nn.Linear(512, 1024),
+            nn.ELU(),
+            #nn.ReLU(),
+            nn.Linear(1024, 1024),
+            #nn.ReLU(),
+            nn.ELU(),
+            nn.Linear(1024, 1024),
+            #nn.ReLU(),
+            nn.ELU(),
+            #two polynomials, second order
+            #nn.Linear(1024, 3*2),
+            #nn.Linear(1024, 3),
+            nn.Linear(1024, self.n_poly*self.n_basis),
+            #nn.Tanh()
+        )
+        #self.param_net_out = nn.Linear(1024, 3)
 
         self.param_net[-1].weight.data.fill_(0.)
-        self.param_net[-1].bias= nn.Parameter(0.05*torch.randn(3, device=self.device))
+        #self.param_net[-1].bias= nn.Parameter(0.05*torch.randn(3, device=self.device))
+        self.param_net[-1].bias= nn.Parameter(0.05*torch.randn(self.n_poly*self.n_basis, device=self.device))
 
-        self.param_net2[-1].weight.data.fill_(0.)
-        self.param_net2[-1].bias = nn.Parameter(0.05*torch.randn(3, device=self.device))
+        #self.param_net2[-1].weight.data.fill_(0.)
+        #self.param_net2[-1].bias = nn.Parameter(0.05*torch.randn(3, device=self.device))
 
-        self.param_net = self.param_net.double()
-        self.param_net2 = self.param_net2.double()
-        self.rnet1 = self.rnet1.double()
-        self.rnet2 = self.rnet2.double()
+        #self.param_in = self.param_in.double().to(self.device)
+        self.param_net = self.param_net.double().to(self.device)
+        #self.param_net2 = self.param_net2.double()
+        self.rnet1 = self.rnet1.double().to(self.device)
+        self.rnet2 = self.rnet2.double().to(self.device)
+
+
+    def reset_params(self):
+        #def weights_init(m):
+        #    if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+        #        torch.nn.init.xavier_uniform_(m.weight.data)
+        #        #torch.nn.init.xavier_normal_(m.weight.data)
+        #        m.bias.data.fill_(0.)
+
+        #self.param_net.apply(weights_init)
+        ##self.param_net2.apply(weights_init)
+        #self.rnet1.apply(weights_init)
+        #self.rnet2.apply(weights_init)
+
+
+        self.create_networks()
 
         self.counter = torch.zeros(1, self.n_poly, self.n_basis).to(device).int()
 
@@ -479,10 +306,10 @@ class Model(nn.Module):
         #params2 =self.param_net2_out(self.param_net2(self.param_in2))
 
         params = (self.param_net(self.param_in))
-        params2 =(self.param_net2(self.param_in2))
+        #params2 =(self.param_net2(self.param_in2))
         #params = params.reshape(-1,1,2, 3)
-        #params = params.reshape(-1,1,2, 2)
-        params = torch.stack([params, params2], dim=-2)
+        params = params.reshape(-1,self.n_poly, self.n_basis)
+        #params = torch.stack([params, params2], dim=-2)
         mask = self.mask.reshape(params.shape)
         return params*mask, mask
 
@@ -617,8 +444,13 @@ class Model(nn.Module):
         #up2 = self.data_conv2d2(cin).squeeze(1)
 
         up = self.rnet1(cin).squeeze(1)
-        #up2 = up #self.rnet2(cin).squeeze(1)
         up2 = self.rnet2(cin).squeeze(1)
+
+        #_up = self.rnet1(cin)#.squeeze(1)
+        #up = _up[:, 0]
+        #up2 = _up[:, 1]
+        #up2 = self.rnet2(cin).squeeze(1)
+        #up2 = self.rnet2(cin).squeeze(1)
 
         #iv = self.iv_conv2d(u)
         #iv = iv.reshape(-1, self.n_patches, 13*32)
@@ -682,7 +514,7 @@ def train():
     model.reset_params()
 
     max_iter = 10
-    l1_weight = 0.01
+    l1_weight = 0.001
     for step in range(max_iter):
         #print(f'Optimizer iteration {step}/{max_iter}')
         ##threshold
@@ -705,9 +537,9 @@ def train():
             #mask = (xi.abs() > threshold).float()
             #model.update_mask(mask)
             model.reset_params()
-
-        optimize(step, params_l1=l1_weight)
-        l1_weight = l1_weight/10
+        print('opt step ', step)
+        optimize(step, params_l1=l1_weight, nepoch=min(100*(step+1),250))
+        l1_weight = l1_weight/5
 
 
 def optimize(opt_step, params_l1=0.001, nepoch=80):
@@ -768,7 +600,8 @@ def optimize(opt_step, params_l1=0.001, nepoch=80):
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() #+  0.0001*param_loss.mean()
-            loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() +  params_l1*param_loss.mean()
+            loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() +  params_l1*param_loss.mean()
+            #loss = 2*x_loss.mean() + var_loss.mean() + params_l1*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean()  +  0.001*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + 0.001*param_loss.mean()
             #loss = x_loss.mean() #+ 0.01*param_loss.mean()
