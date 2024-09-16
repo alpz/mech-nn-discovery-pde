@@ -308,7 +308,7 @@ class Model(nn.Module):
         params = (self.param_net(self.param_in))
         #params2 =(self.param_net2(self.param_in2))
         #params = params.reshape(-1,1,2, 3)
-        params = params.reshape(-1,self.n_poly, self.n_basis)
+        params = params.reshape(1,self.n_poly, self.n_basis)
         #params = torch.stack([params, params2], dim=-2)
         mask = self.mask.reshape(params.shape)
         return params*mask, mask
@@ -317,6 +317,14 @@ class Model(nn.Module):
         #self.mask = self.mask*mask
         new_mask = self.mask
         new_mask[self.counter>counter_threshold] = 0.
+        self.mask = self.mask*new_mask
+
+    def update_mask_end(self):
+        #self.mask = self.mask*mask
+        params,mask = self.get_params()
+
+        new_mask = self.mask
+        new_mask[params.abs()<threshold] = 0.
         self.mask = self.mask*new_mask
 
     def reset_counter(self, params):
@@ -347,8 +355,8 @@ class Model(nn.Module):
         u0_list = []
         eps_list = []
 
-        steps0 = self.steps0.type_as(params).expand(-1, self.n_patches, self.coord_dims[0]-1)
-        steps1 = self.steps1.type_as(params).expand(-1, self.n_patches, self.coord_dims[1]-1)
+        steps0 = self.steps0.type_as(params).expand(self.bs, self.n_patches, self.coord_dims[0]-1)
+        steps1 = self.steps1.type_as(params).expand(self.bs, self.n_patches, self.coord_dims[1]-1)
         steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.5)
         steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.5)
         steps_list = [steps0, steps1]
@@ -379,6 +387,7 @@ class Model(nn.Module):
         basis2 = torch.stack([torch.ones_like(up2), up2, up2**2], dim=-1)
         #basis2 = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
         #basis2 = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
+        #print(basis.shape, params.shape)
 
         p = (basis*params[...,0,:]).sum(dim=-1)
         q = (basis2*params[...,1,:]).sum(dim=-1)
@@ -438,7 +447,6 @@ class Model(nn.Module):
         #cin = torch.stack([u,t,x], dim=1)
         cin = u.unsqueeze(1) #torch.stack([u,t,x], dim=1)
         #cin = u
-        #print(cin.shape)
 
         #up = self.data_conv2d(cin).squeeze(1)
         #up2 = self.data_conv2d2(cin).squeeze(1)
@@ -538,14 +546,18 @@ def train():
             #model.update_mask(mask)
             model.reset_params()
         print('opt step ', step)
-        optimize(step, params_l1=l1_weight, nepoch=min(100*(step+1),250))
+        optimize(step, params_l1=l1_weight, nepoch=min(200*(step+1),250))
         l1_weight = l1_weight/5
+
+        print('End step. Updating mask')
+        model.update_mask_end()
+
 
 
 def optimize(opt_step, params_l1=0.001, nepoch=80):
     #with tqdm(total=nepoch) as pbar:
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.00002)
 
     #params=print_eq()
     #L.info(f'parameters\n{params}')
@@ -600,7 +612,7 @@ def optimize(opt_step, params_l1=0.001, nepoch=80):
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() #+  0.0001*param_loss.mean()
-            loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() +  params_l1*param_loss.mean()
+            loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() #+  params_l1*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean() + params_l1*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean()  +  0.001*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + 0.001*param_loss.mean()
