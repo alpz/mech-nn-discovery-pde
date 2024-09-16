@@ -73,9 +73,12 @@ class RD2DDataset(Dataset):
 
         self.data_u = torch.tensor(data_u, dtype=dtype)
         self.data_v = torch.tensor(data_u, dtype=dtype)
-        print('self ', self.data.shape)
 
-        self.data_dim = self.data.shape
+        self.t_step = 0.05
+        self.x_step = 0.1
+        self.y_step = 0.1
+
+        self.data_dim = self.data_u.shape
         self.solver_dim = solver_dim
 
         num_t_idx = self.data_dim[0] #- self.solver_dim[0] + 1
@@ -160,7 +163,7 @@ class Model(nn.Module):
         self.n_dim = 1
 
         self.n_basis = 2
-        self.n_poly = 3
+        self.n_poly = 8
         self.mask = torch.ones(1, self.n_poly, self.n_basis).to(device)
         self.counter = torch.zeros(1, self.n_poly, self.n_basis).to(device).int()
 
@@ -169,13 +172,13 @@ class Model(nn.Module):
         self.coord_dims = solver_dim
         self.iv_list = [(0,0, [0,0,0],[0,self.coord_dims[1]-1,self.coord_dims[2]-1]), 
                         (1,0, [1,0,0], [self.coord_dims[0]-1, 0, self.coord_dims[2]-1]), 
-                        (2,0, [1,0,1], [self.coord_dims[0]-1, 0, self.coord_dims[2]-1]), 
+                        (2,0, [1,1,0], [self.coord_dims[0]-1, self.coord_dims[1]-1, 0]), 
                         #(0,1, [0,0],[0,self.coord_dims[1]-1]), 
                         #(0,0, [self.coord_dims[0]-1,1],[self.coord_dims[0]-1,self.coord_dims[1]-2]), 
                         #(1,2, [0,0], [self.coord_dims[0]-1, 0]),
                         #(1,3, [0,0], [self.coord_dims[0]-1, 0])
-                        (1,0, [1,self.coord_dims[1]-1,0], [self.coord_dims[0]-1, self.coord_dims[1]-1, self.coord_dims[1]-1])
-                        (2,0, [1,1, self.coord_dims[2]-1], [self.coord_dims[0]-2, self.coord_dims[1]-2])
+                        (1,0, [1,self.coord_dims[1]-1,1], [self.coord_dims[0]-1, self.coord_dims[1]-1, self.coord_dims[2]-1]),
+                        (2,0, [1,1, self.coord_dims[2]-1], [self.coord_dims[0]-1, self.coord_dims[1]-2, self.coord_dims[2]-1])
                         ]
 
         #self.iv_len = self.coord_dims[1]-1 + self.coord_dims[0]-1 + self.coord_dims[1]-2 + self.coord_dims[0]
@@ -225,7 +228,7 @@ class Model(nn.Module):
         self.rnet1 = N.ResNet(out_channels=solver_dim[0], in_channels=solver_dim[0])
         self.rnet2 = N.ResNet(out_channels=solver_dim[0], in_channels=solver_dim[0])
 
-        self.param_in = nn.Parameter(torch.randn(1,2,128, device=self.device, dtype=torch.float64))
+        self.param_in = nn.Parameter(torch.randn(1,128, device=self.device, dtype=torch.float64))
         self.param_net = nn.Sequential(
             nn.Linear(128, 1024),
             nn.ELU(),
@@ -300,23 +303,23 @@ class Model(nn.Module):
         
 
     def get_iv(self, u):
-        bs = u.shape
+        bs = u.shape[0]
         #u1 = u[:,0, :self.coord_dims[1]-2+1]
         u1 = u[:,0, :self.coord_dims[1], :self.coord_dims[2]].reshape(bs, -1)
         u2 = u[:, 1:self.coord_dims[0],0, :self.coord_dims[2] ].reshape(bs, -1)
         u3 = u[:, 1:self.coord_dims[0], 1:self.coord_dims[1], 0 ].reshape(bs, -1)
 
-        u4 = u[:, 1:self.coord_dims[0]:, self.coord_dims[1]-1, :self.coord_dims[2]].reshape(bs, -1)
-        u5 = u[:, 1:self.coord_dims[0]-1, 1:self.coord_dims[1]-1, self.coord_dims[2]-1].reshape(bs, -1)
+        u4 = u[:, 1:self.coord_dims[0], self.coord_dims[1]-1, 1:self.coord_dims[2]].reshape(bs, -1)
+        u5 = u[:, 1:self.coord_dims[0], 1:self.coord_dims[1]-1, self.coord_dims[2]-1].reshape(bs, -1)
 
         #ub = torch.cat([u1,u2,u3,u4], dim=-1)
         ub = torch.cat([u1,u2,u3,u4,u5], dim=-1)
 
         return ub
 
-    def solve_chunks(self, u_patches, up_patches, up2_patches, params):
-        bs = u_patches.shape[0]
-        n_patches = u_patches.shape[1]
+    def solve_chunks(self, uv_patches, up_patches, up2_patches, params):
+        bs = uv_patches.shape[0]
+        n_patches = 1 #uv_patches.shape[1]
         #u0_list = []
         #eps_list = []
 
@@ -331,7 +334,7 @@ class Model(nn.Module):
 
         #for i in range(n_patches):
         #for i in tqdm(range(n_patches)):
-        u = u_patches#[:, i]
+        u = uv_patches#[:, i]
         up = up_patches#[:, i]
         up2 = up2_patches#[:, i]
 
@@ -399,7 +402,7 @@ class Model(nn.Module):
         #u0 = torch.stack(u0_list, dim=1)
         #eps = torch.stack(eps_list, dim=1).max()
 
-        u0 = u0.reshape(u_patches.shape)
+        u0 = u0.reshape(uv_patches.shape)
 
         return u0, eps
     
@@ -426,19 +429,20 @@ class Model(nn.Module):
 
         return merged
 
-    def forward(self, u, t, x):
+    def forward(self, u, v):
         bs = u.shape[0]
         #up = self.data_net(u)
         #up = up.reshape(bs, self.pde.grid_size)
         #cin = torch.stack([u,t,x], dim=1)
-        cin = u.unsqueeze(1) #torch.stack([u,t,x], dim=1)
+        cinu = u #torch.stack([u,t,x], dim=1)
+        cinv = v #torch.stack([u,t,x], dim=1)
         #cin = u
 
         #up = self.data_conv2d(cin).squeeze(1)
         #up2 = self.data_conv2d2(cin).squeeze(1)
 
-        up = self.rnet1(cin).squeeze(1)
-        up2 = self.rnet2(cin).squeeze(1)
+        up = self.rnet1(cinu)#.squeeze(1)
+        up2 = self.rnet2(cinv)#.squeeze(1)
 
         #_up = self.rnet1(cin)#.squeeze(1)
         #up = _up[:, 0]
@@ -465,24 +469,26 @@ class Model(nn.Module):
         #u_patched, unfold_shape = self.make_patches(u)
         #up_patched, _ = self.make_patches(up)
         #up2_patched, _ = self.make_patches(up2)
-        u_patched = u.unsqueeze(1)
+        uv = torch.stack([u,v], dim=1)
+        uvp = torch.stack([up,up2], dim=1)
+
         up_patched = up.unsqueeze(1)
         up2_patched= up2.unsqueeze(1)
 
         params, mask = self.get_params()
 
-        u0, eps = self.solve_chunks(u_patched, up_patched, up2_patched, params)
+        u0, eps = self.solve_chunks(uv, up_patched, up2_patched, params)
 
         #join chunks into solution
         #u0 = self.join_patches(u0_patches, unfold_shape)
         u0 = u0.squeeze(1)
 
-        return u0, up,up2, eps, params, mask
+        return u0, uvp, eps, params, mask
         #return u0, up,eps, params
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step), device=device)
+model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step, ds.y_step), device=device)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
 #optimizer = torch.optim.SGD(model.parameters(), lr=0.0001, momentum =0.9)
@@ -559,7 +565,7 @@ def optimize(opt_step, params_l1=0.001, nepoch=80):
         for i, batch_in in enumerate(tqdm(train_loader)):
         #for i, batch_in in enumerate((train_loader)):
             optimizer.zero_grad()
-            batch_u, batch_v = batch_in[0], batch_in[1], batch_in[2]
+            batch_u, batch_v = batch_in[0], batch_in[1]
             batch_u = batch_u.double().to(device)
             batch_v = batch_v.double().to(device)
 
