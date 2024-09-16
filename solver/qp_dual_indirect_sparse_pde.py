@@ -125,7 +125,6 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             sol, info = cg.gmres(KKT, R, x0=torch.zeros_like(R), M=M_list, maxiter=config.pde_gmres_max_iter, 
                                 restart=config.pde_gmres_repeat)
             #sol, info = cg.gmres(KKT, R, x0=x0, maxiter=1, restart=600)
-            #print('torch gmres info ', info, sol.shape)
 
             x = -sol[:, :num_var+num_eps]
             lam = sol[:, num_var+num_eps:]
@@ -195,7 +194,6 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             sol, info = cg.gmres(KKT, R, x0=torch.zeros_like(R), M=M_list, maxiter=config.pde_gmres_max_iter, 
                                 restart=config.pde_gmres_repeat)
 
-            #print('back gmres info ', info)
 
             dx = sol[:, :pde.var_set.num_vars+pde.var_set.num_added_eps_vars]
             dnu = sol[:, pde.var_set.num_vars+pde.var_set.num_added_eps_vars:]

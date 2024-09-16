@@ -46,7 +46,7 @@ cuda=True
 #T = 2000
 #n_step_per_batch = T
 #solver_dim=(10,256)
-solver_dim=(32,32)
+solver_dim=(12,12,12)
 #solver_dim=(50,64)
 #solver_dim=(32,48)
 batch_size= 1
@@ -136,22 +136,25 @@ class BurgersDataset(Dataset):
         #return self.data, self.t, self.x
         ##t_idx = idx//self.num_x_idx
         ##x_idx = idx - t_idx*self.num_x_idx
-        (t_idx, x_idx) = np.unravel_index(idx, (self.num_t_idx, self.num_x_idx))
+        (t_idx, x_idx, y_idx) = np.unravel_index(idx, (self.num_t_idx, self.num_x_idx, self.num_y_idx))
 
         t_idx = t_idx*solver_dim[0]
         x_idx = x_idx*solver_dim[1]
+        y_idx = y_idx*solver_dim[2]
 
 
         t_step = solver_dim[0]
         x_step = solver_dim[1]
+        y_step = solver_dim[2]
 
 
-        t = self.t[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
-        x = self.x[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+        #t = self.t[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+        #x = self.x[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+        #y = self.y[t_idx:t_idx+t_step, y_idx:x_idx+x_step]
 
-        data = self.data[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+        data = self.data[t_idx:t_idx+t_step, x_idx:x_idx+x_step, y_idx:y_idx+y_step]
 
-        return data, t, x
+        return data#, t, x
 
 #%%
 
@@ -185,24 +188,26 @@ class Model(nn.Module):
         self.bs = bs
         self.device = device
         self.n_iv=1
-        self.n_ind_dim = 1
+        self.n_ind_dim = 2
         self.n_dim = 1
 
-        self.n_basis = 3
-        self.n_poly = 2
+        self.n_basis = 2
+        self.n_poly = 3
         self.mask = torch.ones(1, self.n_poly, self.n_basis).to(device)
         self.counter = torch.zeros(1, self.n_poly, self.n_basis).to(device).int()
 
         self.param_in = nn.Parameter(torch.randn(1,64))
 
         self.coord_dims = solver_dim
-        self.iv_list = [(0,0, [0,0],[0,self.coord_dims[1]-1]), 
-                        (1,0, [1,0], [self.coord_dims[0]-1, 0]), 
+        self.iv_list = [(0,0, [0,0,0],[0,self.coord_dims[1]-1,self.coord_dims[2]-1]), 
+                        (1,0, [1,0,0], [self.coord_dims[0]-1, 0, self.coord_dims[2]-1]), 
+                        (2,0, [1,0,1], [self.coord_dims[0]-1, 0, self.coord_dims[2]-1]), 
                         #(0,1, [0,0],[0,self.coord_dims[1]-1]), 
                         #(0,0, [self.coord_dims[0]-1,1],[self.coord_dims[0]-1,self.coord_dims[1]-2]), 
                         #(1,2, [0,0], [self.coord_dims[0]-1, 0]),
                         #(1,3, [0,0], [self.coord_dims[0]-1, 0])
-                        (1,0, [1,self.coord_dims[1]-1], [self.coord_dims[0]-1, self.coord_dims[1]-1])
+                        (1,0, [1,self.coord_dims[1]-1,0], [self.coord_dims[0]-1, self.coord_dims[1]-1, self.coord_dims[1]-1])
+                        (2,0, [1,1, self.coord_dims[2]-1], [self.coord_dims[0]-2, self.coord_dims[1]-2])
                         ]
 
         #self.iv_len = self.coord_dims[1]-1 + self.coord_dims[0]-1 + self.coord_dims[1]-2 + self.coord_dims[0]
@@ -214,7 +219,7 @@ class Model(nn.Module):
         self.n_patches = 1 #self.n_patches_t*self.n_patches_x
         print('num patches ', self.n_patches)
 
-        self.pde = PDEINDLayerEPS(bs=bs*self.n_patches, coord_dims=self.coord_dims, order=self.order, n_ind_dim=self.n_dim, 
+        self.pde = PDEINDLayerEPS(bs=bs*self.n_patches, coord_dims=self.coord_dims, order=self.order, n_ind_dim=self.n_ind_dim, 
                                   n_iv=self.n_iv, init_index_mi_list=self.iv_list,  
                                   n_iv_steps=1, double_ret=True, solver_dbl=True)
 
@@ -250,28 +255,28 @@ class Model(nn.Module):
         self.rnet1 = N.ResNet(out_channels=1, in_channels=1)
         self.rnet2 = N.ResNet(out_channels=1, in_channels=1)
 
-        self.param_in = nn.Parameter(torch.randn(1,512, device=self.device, dtype=torch.float64))
+        self.param_in = nn.Parameter(torch.randn(1,2,128, device=self.device, dtype=torch.float64))
         self.param_net = nn.Sequential(
-            nn.Linear(512, 1024),
-            #nn.ELU(),
-            nn.ReLU(),
+            nn.Linear(128, 1024),
+            nn.ELU(),
+            #nn.ReLU(),
             nn.Linear(1024, 1024),
-            nn.ReLU(),
-            #nn.ELU(),
+            #nn.ReLU(),
+            nn.ELU(),
             nn.Linear(1024, 1024),
-            nn.ReLU(),
-            #nn.ELU(),
+            #nn.ReLU(),
+            nn.ELU(),
             #two polynomials, second order
             #nn.Linear(1024, 3*2),
             #nn.Linear(1024, 3),
             nn.Linear(1024, self.n_poly*self.n_basis),
-            nn.Tanh()
+            #nn.Tanh()
         )
         #self.param_net_out = nn.Linear(1024, 3)
 
-        #self.param_net[-2].weight.data.fill_(0.)
+        self.param_net[-1].weight.data.fill_(0.)
         #self.param_net[-1].bias= nn.Parameter(0.05*torch.randn(3, device=self.device))
-        #self.param_net[-2].bias= nn.Parameter(0.05*torch.randn(self.n_poly*self.n_basis, device=self.device))
+        self.param_net[-1].bias= nn.Parameter(0.05*torch.randn(self.n_poly*self.n_basis, device=self.device))
 
         #self.param_net2[-1].weight.data.fill_(0.)
         #self.param_net2[-1].bias = nn.Parameter(0.05*torch.randn(3, device=self.device))
@@ -284,18 +289,6 @@ class Model(nn.Module):
 
 
     def reset_params(self):
-        #def weights_init(m):
-        #    if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
-        #        torch.nn.init.xavier_uniform_(m.weight.data)
-        #        #torch.nn.init.xavier_normal_(m.weight.data)
-        #        m.bias.data.fill_(0.)
-
-        #self.param_net.apply(weights_init)
-        ##self.param_net2.apply(weights_init)
-        #self.rnet1.apply(weights_init)
-        #self.rnet2.apply(weights_init)
-
-
         self.create_networks()
 
         self.counter = torch.zeros(1, self.n_poly, self.n_basis).to(device).int()
@@ -305,7 +298,7 @@ class Model(nn.Module):
         #params = self.param_net_out(self.param_net(self.param_in))
         #params2 =self.param_net2_out(self.param_net2(self.param_in2))
 
-        params = 2*(self.param_net(self.param_in))
+        params = (self.param_net(self.param_in))
         #params2 =(self.param_net2(self.param_in2))
         #params = params.reshape(-1,1,2, 3)
         params = params.reshape(1,self.n_poly, self.n_basis)
@@ -352,14 +345,17 @@ class Model(nn.Module):
     def solve_chunks(self, u_patches, up_patches, up2_patches, params):
         bs = u_patches.shape[0]
         n_patches = u_patches.shape[1]
-        u0_list = []
-        eps_list = []
+        #u0_list = []
+        #eps_list = []
 
-        steps0 = self.steps0.type_as(params).expand(self.bs, self.n_patches, self.coord_dims[0]-1)
-        steps1 = self.steps1.type_as(params).expand(self.bs, self.n_patches, self.coord_dims[1]-1)
+        steps0 = self.steps0.type_as(params).expand(self.bs, self.n_ind_dim, self.coord_dims[0]-1)
+        steps1 = self.steps1.type_as(params).expand(self.bs, self.n_ind_dim, self.coord_dims[1]-1)
+        steps2 = self.steps2.type_as(params).expand(self.bs, self.n_ind_dim, self.coord_dims[2]-1)
+
         steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.5)
         steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.5)
-        steps_list = [steps0, steps1]
+        steps2 = torch.sigmoid(steps2).clip(min=0.005, max=0.5)
+        steps_list = [steps0, steps1, steps2]
 
         #for i in range(n_patches):
         #for i in tqdm(range(n_patches)):
@@ -381,30 +377,44 @@ class Model(nn.Module):
         #iv_rhs = iv_rhs.reshape(bs, n_patches*self.iv_len)
         #iv_rhs = self.iv_mlp(iv_rhs)
 
+        A = up.pow(2) + up2.pow(2)
 
-        basis = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
-        #basis2 = torch.stack([torch.ones_like(up2), up2, up2**2], dim=-1)
-        basis2 = torch.stack([torch.ones_like(up2), up2, up2**2], dim=-1)
-        #basis2 = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
-        #basis2 = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
-        #print(basis.shape, params.shape)
+        basis = torch.stack([torch.ones_like(A), A], dim=-1)
+        #basis_list = [basis for i in range(self.n_poly)]
+        #basis2 = torch.stack([torch.ones_like(A), up2, up2**2], dim=-1)
+        #basis3 = torch.stack([torch.ones_like(A), up2, up2**2], dim=-1)
 
-        p = (basis*params[...,0,:]).sum(dim=-1)
-        q = (basis2*params[...,1,:]).sum(dim=-1)
+        poly_list = [(basis*params[...,i,:]).sum(dim=-1) for i in range(self.n_poly) ]
 
 
-        coeffs = torch.zeros((bs*n_patches, self.pde.grid_size, self.pde.n_orders), device=u.device)
-        #u, u_t, u_x, u_tt, u_xx
+        coeffs = torch.zeros((bs*n_patches, self.n_ind_dim, self.pde.grid_size, self.pde.n_orders), device=u.device)
+        rhs = torch.zeros(bs*n_patches,self.n_ind_dim, self.pde.grid_size, device=u.device)
+        #u, u_t, u_x, u_y, u_tt, u_xx, u_yy
+        #u
+        coeffs[:,0,:, 0] = poly_list[0]
         #u_t
-        coeffs[..., 1] = 1.
+        coeffs[:,0,:, 1] = 1.
         #u_x
-        coeffs[..., 2] = p
+        #coeffs[:,0,:, 2] = p
         #u_xx
-        coeffs[..., 4] = q
+        coeffs[:,0,:, 5] = poly_list[1]
+        #u_yy
+        coeffs[:,0,:, 6] = poly_list[2]
 
-        #up = up.reshape(bs, *self.coord_dims)
+        rhs[:,0,:] = poly_list[3]*up2
 
-        rhs = torch.zeros(bs*n_patches, *self.coord_dims, device=u.device)
+        #u
+        coeffs[:,1,:, 0] = poly_list[4]
+        #u_t
+        coeffs[:,1,:, 1] = 1.
+        #u_x
+        #coeffs[:,0,:, 2] = p
+        #u_xx
+        coeffs[:,1,:, 5] = poly_list[5]
+        #u_yy
+        coeffs[:,1,:, 6] = poly_list[6]
+
+        rhs[:,1,:] = poly_list[7]*up
 
         u0,_,eps = self.pde(coeffs, rhs, iv_rhs, steps_list)
         #u0_list.append(u0)
@@ -452,7 +462,7 @@ class Model(nn.Module):
         #up2 = self.data_conv2d2(cin).squeeze(1)
 
         up = self.rnet1(cin).squeeze(1)
-        up2 = up# self.rnet2(cin).squeeze(1)
+        up2 = self.rnet2(cin).squeeze(1)
 
         #_up = self.rnet1(cin)#.squeeze(1)
         #up = _up[:, 0]
@@ -521,8 +531,8 @@ def train():
     """Optimize and threshold cycle"""
     model.reset_params()
 
-    max_iter = 1
-    l1_weight = 0.01
+    max_iter = 10
+    l1_weight = 0.001
     for step in range(max_iter):
         #print(f'Optimizer iteration {step}/{max_iter}')
         ##threshold
@@ -546,8 +556,7 @@ def train():
             #model.update_mask(mask)
             model.reset_params()
         print('opt step ', step)
-        #optimize(step, params_l1=l1_weight, nepoch=min(800*(step+1),250))
-        optimize(step, params_l1=l1_weight, nepoch=800)
+        optimize(step, params_l1=l1_weight, nepoch=min(200*(step+1),250))
         l1_weight = l1_weight/5
 
         print('End step. Updating mask')
@@ -609,13 +618,11 @@ def optimize(opt_step, params_l1=0.001, nepoch=80):
             #time_loss = (time- var_time).abs().mean()
 
             #loss = x_loss + var_loss + time_loss
-            #param_loss = params.abs()
-            param_loss = params.pow(2)
+            param_loss = params.abs()
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() #+  0.0001*param_loss.mean()
-            #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() +  params_l1*param_loss.mean()
-            loss = x_loss.mean() + var_loss.mean() +  params_l1*param_loss.mean()
+            loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() +  params_l1*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean() + params_l1*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean()  +  0.001*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + 0.001*param_loss.mean()
@@ -624,8 +631,8 @@ def optimize(opt_step, params_l1=0.001, nepoch=80):
             #loss = x_loss +  (var- batch_in).abs().mean()
             #loss = x_loss +  (var- batch_in).pow(2).mean()
             x_losses.append(x_loss)
-            #var_losses.append(var_loss + var2_loss)
-            var_losses.append(var_loss)
+            var_losses.append(var_loss + var2_loss)
+            #var_losses.append(var_loss)
             #var_losses.append(var_loss )
             losses.append(loss)
             total_loss = total_loss + loss
