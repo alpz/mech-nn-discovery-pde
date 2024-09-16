@@ -59,55 +59,20 @@ noise =False
 L.info(f'Solver dim {solver_dim} ')
 
 
-class BurgersDataset(Dataset):
-    def __init__(self, solver_dim=(32,32)):
+class RD2DDataset(Dataset):
+    def __init__(self, solver_dim=(12,12,12)):
         #self.n_step_per_batch=n_step_per_batch
         #self.n_step=n_step
 
         self.down_sample = 1
 
-        data=loadmat(os.path.join(PDEConfig.sindpy_data, 'burgers.mat'))
+        data_u=np.load(os.path.join(PDEConfig.sindpy_data, 'gen', 'rdiff2d_u.npy'))
+        data_v=np.load(os.path.join(PDEConfig.sindpy_data, 'gen', 'rdiff2d_v.npy'))
 
-        print(data.keys())
-        t = torch.tensor(np.array(data['t'])).squeeze()
-        x = torch.tensor(np.array(data['x'])).squeeze()
+        print(data_u.shape, data_v.shape)
 
-        self._t = t
-        self._x = x
-
-        self.t_step = t[1] - t[0]
-        self.x_step = x[1] - x[0]
-
-        self.t = t.unsqueeze(1).expand(-1, x.shape[0])
-        self.x = x.unsqueeze(0).expand(t.shape[0],-1)
-
-        print('t x', self.t.shape, self.x.shape)
-
-        #self.t_subsample = 10
-        #self.x_subsample = 1
-
-        #self.t_subsample = 32 #10
-        #self.x_subsample = 32 #256
-
-
-        #L.info(f'subsample {self.t_subsample}, {self.x_subsample} ')
-        #self.t_subsample =50
-        #self.x_subsample =64
-
-        print(self.t.shape)
-        print(self.x.shape)
-        print(data['usol'].shape)
-
-        data = np.real(data['usol'])
-
-        if noise:
-            print('adding noise')
-            rmse = mean_squared_error(data, np.zeros(data.shape), squared=False)
-            # add 20% noise (note the impact on derivatives depends on step size...)
-            data = data + np.random.normal(0, rmse / 5.0, data.shape) 
-
-        #permute time, x
-        self.data = torch.tensor(data, dtype=dtype).permute(1,0) 
+        self.data_u = torch.tensor(data_u, dtype=dtype)
+        self.data_v = torch.tensor(data_u, dtype=dtype)
         print('self ', self.data.shape)
 
         self.data_dim = self.data.shape
@@ -115,10 +80,12 @@ class BurgersDataset(Dataset):
 
         num_t_idx = self.data_dim[0] #- self.solver_dim[0] + 1
         num_x_idx = self.data_dim[1] #- self.solver_dim[1] + 1
+        num_y_idx = self.data_dim[2] #- self.solver_dim[1] + 1
 
 
         self.num_t_idx = num_t_idx//solver_dim[0]  #+ 1
         self.num_x_idx = num_x_idx//solver_dim[1]  #+ 1
+        self.num_y_idx = num_y_idx//solver_dim[2]  #+ 1
 
         #if self.t_subsample < self.solver_dim[0]:
         #    self.num_t_idx = self.num_t_idx - self.solver_dim[0]//self.t_subsample
@@ -126,7 +93,7 @@ class BurgersDataset(Dataset):
         #    self.num_t_idx = self.num_t_idx - self.solver_dim[1]//self.x_subsample
 
         #self.length = self.num_t_idx*self.num_x_idx
-        self.length = self.num_t_idx*self.num_x_idx
+        self.length = self.num_t_idx*self.num_x_idx*self.num_y_idx
 
 
     def __len__(self):
@@ -152,13 +119,14 @@ class BurgersDataset(Dataset):
         #x = self.x[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
         #y = self.y[t_idx:t_idx+t_step, y_idx:x_idx+x_step]
 
-        data = self.data[t_idx:t_idx+t_step, x_idx:x_idx+x_step, y_idx:y_idx+y_step]
+        data_u = self.data_u[t_idx:t_idx+t_step, x_idx:x_idx+x_step, y_idx:y_idx+y_step]
+        data_v = self.data_v[t_idx:t_idx+t_step, x_idx:x_idx+x_step, y_idx:y_idx+y_step]
 
-        return data#, t, x
+        return data_u, data_v#, t, x
 
 #%%
 
-ds = BurgersDataset(solver_dim=solver_dim)#.generate()
+ds = RD2DDataset(solver_dim=solver_dim)#.generate()
 
 #
 ##%%
@@ -196,7 +164,7 @@ class Model(nn.Module):
         self.mask = torch.ones(1, self.n_poly, self.n_basis).to(device)
         self.counter = torch.zeros(1, self.n_poly, self.n_basis).to(device).int()
 
-        self.param_in = nn.Parameter(torch.randn(1,64))
+        #self.param_in = nn.Parameter(torch.randn(1,64))
 
         self.coord_dims = solver_dim
         self.iv_list = [(0,0, [0,0,0],[0,self.coord_dims[1]-1,self.coord_dims[2]-1]), 
@@ -231,12 +199,14 @@ class Model(nn.Module):
 
         self.t_step_size = steps[0]
         self.x_step_size = steps[1]
+        self.y_step_size = steps[2]
         print('steps ', steps)
         #self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
         #self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
 
         self.steps0 = torch.logit(self.t_step_size*torch.ones(1,1,1))
         self.steps1 = torch.logit(self.x_step_size*torch.ones(1,1,1))
+        self.steps2 = torch.logit(self.x_step_size*torch.ones(1,1,1))
 
         #self.steps0 = nn.Parameter(self.steps0)
         #self.steps1 = nn.Parameter(self.steps1)
@@ -252,8 +222,8 @@ class Model(nn.Module):
         #TODO add time space dims
         #pm='zeros'
 
-        self.rnet1 = N.ResNet(out_channels=1, in_channels=1)
-        self.rnet2 = N.ResNet(out_channels=1, in_channels=1)
+        self.rnet1 = N.ResNet(out_channels=solver_dim[0], in_channels=solver_dim[0])
+        self.rnet2 = N.ResNet(out_channels=solver_dim[0], in_channels=solver_dim[0])
 
         self.param_in = nn.Parameter(torch.randn(1,2,128, device=self.device, dtype=torch.float64))
         self.param_net = nn.Sequential(
@@ -270,13 +240,13 @@ class Model(nn.Module):
             #nn.Linear(1024, 3*2),
             #nn.Linear(1024, 3),
             nn.Linear(1024, self.n_poly*self.n_basis),
-            #nn.Tanh()
+            nn.Tanh()
         )
         #self.param_net_out = nn.Linear(1024, 3)
 
-        self.param_net[-1].weight.data.fill_(0.)
+        #self.param_net[-1].weight.data.fill_(0.)
         #self.param_net[-1].bias= nn.Parameter(0.05*torch.randn(3, device=self.device))
-        self.param_net[-1].bias= nn.Parameter(0.05*torch.randn(self.n_poly*self.n_basis, device=self.device))
+        #self.param_net[-1].bias= nn.Parameter(0.05*torch.randn(self.n_poly*self.n_basis, device=self.device))
 
         #self.param_net2[-1].weight.data.fill_(0.)
         #self.param_net2[-1].bias = nn.Parameter(0.05*torch.randn(3, device=self.device))
@@ -298,7 +268,7 @@ class Model(nn.Module):
         #params = self.param_net_out(self.param_net(self.param_in))
         #params2 =self.param_net2_out(self.param_net2(self.param_in2))
 
-        params = (self.param_net(self.param_in))
+        params = 2*(self.param_net(self.param_in))
         #params2 =(self.param_net2(self.param_in2))
         #params = params.reshape(-1,1,2, 3)
         params = params.reshape(1,self.n_poly, self.n_basis)
@@ -330,15 +300,17 @@ class Model(nn.Module):
         
 
     def get_iv(self, u):
+        bs = u.shape
         #u1 = u[:,0, :self.coord_dims[1]-2+1]
-        u1 = u[:,0, :self.coord_dims[1]]
-        u2 = u[:, 1:self.coord_dims[0]-1+1:,0]
-        #u3 = u[:, self.coord_dims[0]-1, 1:self.coord_dims[1]-2+1]
-        #u4 = u[:, 0:self.coord_dims[0]-1+1, self.coord_dims[1]-1]
-        u4 = u[:, 1:self.coord_dims[0]-1+1, self.coord_dims[1]-1]
+        u1 = u[:,0, :self.coord_dims[1], :self.coord_dims[2]].reshape(bs, -1)
+        u2 = u[:, 1:self.coord_dims[0],0, :self.coord_dims[2] ].reshape(bs, -1)
+        u3 = u[:, 1:self.coord_dims[0], 1:self.coord_dims[1], 0 ].reshape(bs, -1)
+
+        u4 = u[:, 1:self.coord_dims[0]:, self.coord_dims[1]-1, :self.coord_dims[2]].reshape(bs, -1)
+        u5 = u[:, 1:self.coord_dims[0]-1, 1:self.coord_dims[1]-1, self.coord_dims[2]-1].reshape(bs, -1)
 
         #ub = torch.cat([u1,u2,u3,u4], dim=-1)
-        ub = torch.cat([u1,u2,u4], dim=-1)
+        ub = torch.cat([u1,u2,u3,u4,u5], dim=-1)
 
         return ub
 
@@ -370,9 +342,13 @@ class Model(nn.Module):
         #upi = u.reshape(bs, *self.coord_dims)
         #upi = up.reshape(bs*n_patches, *self.coord_dims)
         upi = up.reshape(bs*n_patches, *self.coord_dims)
+        up2i = up2.reshape(bs*n_patches, *self.coord_dims)
         #upi = upi + up2.reshape(bs, *self.coord_dims)
         #upi = upi/2
-        iv_rhs = self.get_iv(upi)
+        iv_rhs1 = self.get_iv(upi)
+        iv_rhs2 = self.get_iv(up2i)
+        # stack along n_ind_dim
+        iv_rhs = torch.stack([iv_rhs1, iv_rhs2], dim=1)
         #iv_rhs = upi + up2.reshape(bs, *self.coord_dims)
         #iv_rhs = iv_rhs.reshape(bs, n_patches*self.iv_len)
         #iv_rhs = self.iv_mlp(iv_rhs)
@@ -523,6 +499,8 @@ def print_eq(stdout=False):
     params = xi.squeeze().detach().cpu().numpy()
     mask = mask.squeeze().detach().cpu().numpy()
     #print(params)
+    params = params.reshape(2,4,2)
+    mask = mask.reshape(params.shape)
     return params,mask
     #return code
 
@@ -581,23 +559,22 @@ def optimize(opt_step, params_l1=0.001, nepoch=80):
         for i, batch_in in enumerate(tqdm(train_loader)):
         #for i, batch_in in enumerate((train_loader)):
             optimizer.zero_grad()
-            batch_in,t,x = batch_in[0], batch_in[1], batch_in[2]
-            batch_in = batch_in.double().to(device)
-            t = t.double().to(device)
-            x = x.double().to(device)
+            batch_u, batch_v = batch_in[0], batch_in[1], batch_in[2]
+            batch_u = batch_u.double().to(device)
+            batch_v = batch_v.double().to(device)
+
             #time = time.to(device)
             #print(batch_in.shape)
-            data_shape = batch_in.shape
 
             #optimizer.zero_grad()
             #x0, steps, eps, var,xi = model(index, batch_in)
-            x0, var, var2, eps, params, mask = model(batch_in, t, x)
+            x0, var, eps, params, mask = model(batch_u, batch_v)
 
             #print(batch_in.shape, x0.shape, var.shape)
-            t_end = x0.shape[1]
-            x_end = x0.shape[2]
+            batch_in = torch.stack([batch_u, batch_v], dim=1)
 
-            batch_in = batch_in.reshape(*data_shape)#[-1, :t_end, :x_end]
+            data_shape = batch_in.shape
+            #batch_in = batch_in.reshape(*data_shape)#[-1, :t_end, :x_end]
             var = var.reshape(*data_shape)#[-1, :t_end, :x_end]
             #var2 = var2.reshape(*data_shape)[-1, :t_end, :x_end]
 
@@ -610,7 +587,6 @@ def optimize(opt_step, params_l1=0.001, nepoch=80):
             #var2_loss = (var2- batch_in).abs()#.pow(2)#.mean()
 
             var_loss = (var- batch_in).pow(2)#.mean()
-            var2_loss = (var2- batch_in).pow(2)#.mean()
             #var_loss = (var- batch_in).pow(2)#.mean()
             #var_loss = (var- batch_in).abs()#.mean()
             #var_loss = (var- batch_in).pow(2)#.mean()
@@ -622,7 +598,7 @@ def optimize(opt_step, params_l1=0.001, nepoch=80):
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() #+  0.0001*param_loss.mean()
-            loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() +  params_l1*param_loss.mean()
+            loss = x_loss.mean() + var_loss.mean() +  params_l1*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean() + params_l1*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean()  +  0.001*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + 0.001*param_loss.mean()
@@ -631,7 +607,7 @@ def optimize(opt_step, params_l1=0.001, nepoch=80):
             #loss = x_loss +  (var- batch_in).abs().mean()
             #loss = x_loss +  (var- batch_in).pow(2).mean()
             x_losses.append(x_loss)
-            var_losses.append(var_loss + var2_loss)
+            var_losses.append(var_loss)
             #var_losses.append(var_loss)
             #var_losses.append(var_loss )
             losses.append(loss)
@@ -664,11 +640,11 @@ def optimize(opt_step, params_l1=0.001, nepoch=80):
         meps = eps.max().item()
             #print(f'\nalpha, beta {xi}')
         #params=print_eq()
-        params = params.detach().cpu().numpy()
-        mask = mask.detach().cpu().numpy()
-        counter = model.counter.detach().cpu().numpy()
+        params = params.detach().cpu().reshape(2,4,2).numpy()
+        #mask = mask.detach().cpu().reshape(2,4,2).numpy()
         #pmc = [params, mask, counter]
-        L.info(f'parameters, mask, counter\n{params}\n{mask}\n{counter}')
+        #L.info(f'parameters, mask, counter\n{params}\n{mask}')
+        L.info(f'parameters, mask, counter\n{params}')
         #L.info(f'parameters, mask, counter\n{pmc}')
             #pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item():.3E}  xloss {x_loss:.3E} max eps {meps}\n')
         #print(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E}  xloss {_x_loss:.3E} vloss {_v_loss:.3E} max eps {meps}\n')

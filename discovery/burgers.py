@@ -116,14 +116,19 @@ class BurgersDataset(Dataset):
         num_t_idx = self.data_dim[0] #- self.solver_dim[0] + 1
         num_x_idx = self.data_dim[1] #- self.solver_dim[1] + 1
 
+        self.x_subsample = 16
+        self.t_subsample = 16
 
-        self.num_t_idx = num_t_idx//solver_dim[0]  #+ 1
-        self.num_x_idx = num_x_idx//solver_dim[1]  #+ 1
+        #self.num_t_idx = num_t_idx//solver_dim[0]  #+ 1
+        #self.num_x_idx = num_x_idx//solver_dim[1]  #+ 1
 
-        #if self.t_subsample < self.solver_dim[0]:
-        #    self.num_t_idx = self.num_t_idx - self.solver_dim[0]//self.t_subsample
-        #if self.x_subsample < self.solver_dim[1]:
-        #    self.num_t_idx = self.num_t_idx - self.solver_dim[1]//self.x_subsample
+        self.num_t_idx = num_t_idx//self.t_subsample
+        self.num_x_idx = num_x_idx//self.x_subsample
+
+        if self.t_subsample < self.solver_dim[0]:
+            self.num_t_idx = self.num_t_idx - self.solver_dim[0]//self.t_subsample
+        if self.x_subsample < self.solver_dim[1]:
+            self.num_x_idx = self.num_x_idx - self.solver_dim[1]//self.x_subsample
 
         #self.length = self.num_t_idx*self.num_x_idx
         self.length = self.num_t_idx*self.num_x_idx
@@ -138,8 +143,11 @@ class BurgersDataset(Dataset):
         ##x_idx = idx - t_idx*self.num_x_idx
         (t_idx, x_idx) = np.unravel_index(idx, (self.num_t_idx, self.num_x_idx))
 
-        t_idx = t_idx*solver_dim[0]
-        x_idx = x_idx*solver_dim[1]
+        #t_idx = t_idx*solver_dim[0]
+        #x_idx = x_idx*solver_dim[1]
+
+        t_idx = t_idx*self.t_subsample
+        x_idx = x_idx*self.x_subsample
 
 
         t_step = solver_dim[0]
@@ -522,7 +530,7 @@ def train():
     model.reset_params()
 
     max_iter = 1
-    l1_weight = 0.01
+    l1_weight = 0.001
     for step in range(max_iter):
         #print(f'Optimizer iteration {step}/{max_iter}')
         ##threshold
