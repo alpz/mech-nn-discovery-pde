@@ -46,13 +46,14 @@ cuda=True
 #T = 2000
 #n_step_per_batch = T
 #solver_dim=(10,256)
+#solver_dim=(18,18,18)
 solver_dim=(12,12,12)
 #solver_dim=(50,64)
 #solver_dim=(32,48)
-batch_size= 1
+batch_size= 30
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.01
-counter_threshold = 20
+counter_threshold = 100
 
 noise =False
 
@@ -68,6 +69,9 @@ class RD2DDataset(Dataset):
 
         data_u=np.load(os.path.join(PDEConfig.sindpy_data, 'gen', 'rdiff2d_u.npy'))
         data_v=np.load(os.path.join(PDEConfig.sindpy_data, 'gen', 'rdiff2d_v.npy'))
+
+        data_u = data_u[:100]
+        data_v = data_v[:100]
 
         print(data_u.shape, data_v.shape)
 
@@ -243,7 +247,7 @@ class Model(nn.Module):
             #nn.Linear(1024, 3*2),
             #nn.Linear(1024, 3),
             nn.Linear(1024, self.n_poly*self.n_basis),
-            nn.Tanh()
+            #nn.Tanh()
         )
         #self.param_net_out = nn.Linear(1024, 3)
 
@@ -271,7 +275,7 @@ class Model(nn.Module):
         #params = self.param_net_out(self.param_net(self.param_in))
         #params2 =self.param_net2_out(self.param_net2(self.param_in2))
 
-        params = 2*(self.param_net(self.param_in))
+        params = (self.param_net(self.param_in))
         #params2 =(self.param_net2(self.param_in2))
         #params = params.reshape(-1,1,2, 3)
         params = params.reshape(1,self.n_poly, self.n_basis)

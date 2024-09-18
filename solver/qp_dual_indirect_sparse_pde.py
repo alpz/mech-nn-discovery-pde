@@ -85,6 +85,7 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
 
             ##### ilu preconditioner
             M=None
+            M_list=None
             if config.ilu_preconditioner:
                 indices = KKT[0]._indices().cpu().numpy()
 
@@ -99,7 +100,6 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
 
                     #KKTs = KKTs.to_sparse_csc()
                     #if not QPFunctionFn.first:
-                    #print('begin ilu')
                     M = spla.spilu(KKTs, fill_factor=config.ilu_fill_factor, options=dict(Fact='DOFACT', PrintStat=True))
                     M_list.append(M)
                 #print('end ilu')
@@ -125,6 +125,7 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             sol, info = cg.gmres(KKT, R, x0=torch.zeros_like(R), M=M_list, maxiter=config.pde_gmres_max_iter, 
                                 restart=config.pde_gmres_repeat)
             #sol, info = cg.gmres(KKT, R, x0=x0, maxiter=1, restart=600)
+            #print('gmres', info)
 
             x = -sol[:, :num_var+num_eps]
             lam = sol[:, num_var+num_eps:]
@@ -141,7 +142,6 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             ##lam = lam.squeeze(2)
             #############
 
-            print('torch cg info ', info)
             ##lam,info = SPSLG.lgmres(pdmat, pd_rhs)
             ##xl = -Pinv_s@(A_s.T@lam -q)
 

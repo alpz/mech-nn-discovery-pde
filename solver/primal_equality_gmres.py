@@ -126,7 +126,7 @@ def test_primal_equality_cg_torch():
     #KKT = torch.cat([GA, AtZ], dim =1)
     R = torch.cat([torch.zeros(G.shape[1]), -rhs[0]])
     #lam, info = gmres(APAtd, rhs[0], x0=torch.zeros_like(rhs[0]), maxiter=500, restart=40)
-    sol, info = gmres(KKT, R.unsqueeze(0), x0=torch.zeros_like(R).unsqueeze(0), M=M, 
+    sol, info = gmres(KKT, R.unsqueeze(0), x0=torch.zeros_like(R).unsqueeze(0), M=[M], 
                       maxiter=20, restart=10)
     #sol = sol.unsqueeze(0)
     sol = -sol.squeeze()

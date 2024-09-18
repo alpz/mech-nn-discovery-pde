@@ -45,13 +45,13 @@ cuda=True
 #T = 2000
 #n_step_per_batch = T
 #solver_dim=(10,256)
-#solver_dim=(32,32)
-solver_dim=(30,64)
+solver_dim=(32,32)
+#solver_dim=(30,64)
 batch_size= 1
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
 
-noise=True
+noise=False
 
 L.info(f'Solver dim {solver_dim} ')
 
@@ -190,14 +190,16 @@ class Model(nn.Module):
         #self.init_coeffs = nn.Parameter(init_coeffs)
 
         self.coord_dims = solver_dim
-        self.iv_list = [(0,0, [0,0],[0,self.coord_dims[1]-2]), 
+
+        self.iv_list = [(0,0, [0,0],[0,self.coord_dims[1]-1]), 
                         (1,0, [1,0], [self.coord_dims[0]-1, 0]), 
                         #(0,1, [0,0],[0,self.coord_dims[1]-1]), 
-                        (0,0, [self.coord_dims[0]-1,1],[self.coord_dims[0]-1,self.coord_dims[1]-2]), 
+                        #(0,0, [self.coord_dims[0]-1,1],[self.coord_dims[0]-1,self.coord_dims[1]-2]), 
                         #(1,2, [0,0], [self.coord_dims[0]-1, 0]),
                         #(1,3, [0,0], [self.coord_dims[0]-1, 0])
-                        (1,0, [0,self.coord_dims[1]-1], [self.coord_dims[0]-1, self.coord_dims[1]-1])
+                        (1,0, [1,self.coord_dims[1]-1], [self.coord_dims[0]-1, self.coord_dims[1]-1])
                         ]
+
 
         self.n_patches_t = ds.data.shape[0]//self.coord_dims[0]
         self.n_patches_x = ds.data.shape[1]//self.coord_dims[1]
@@ -357,13 +359,26 @@ class Model(nn.Module):
         params = torch.stack([params, params2], dim=-2)
         return params
 
-    def get_iv(self, u):
-        u1 = u[:,0, :self.coord_dims[1]-2+1]
-        u2 = u[:, 1:self.coord_dims[0]-1+1:,0]
-        u3 = u[:, self.coord_dims[0]-1, 1:self.coord_dims[1]-2+1]
-        u4 = u[:, 0:self.coord_dims[0]-1+1, self.coord_dims[1]-1]
+    #def get_iv(self, u):
+    #    u1 = u[:,0, :self.coord_dims[1]-2+1]
+    #    u2 = u[:, 1:self.coord_dims[0]-1+1:,0]
+    #    u3 = u[:, self.coord_dims[0]-1, 1:self.coord_dims[1]-2+1]
+    #    u4 = u[:, 0:self.coord_dims[0]-1+1, self.coord_dims[1]-1]
 
-        ub = torch.cat([u1,u2,u3,u4], dim=-1)
+    #    ub = torch.cat([u1,u2,u3,u4], dim=-1)
+
+    #    return ub
+
+    def get_iv(self, u):
+        #u1 = u[:,0, :self.coord_dims[1]-2+1]
+        u1 = u[:,0, :self.coord_dims[1]]
+        u2 = u[:, 1:self.coord_dims[0]-1+1:,0]
+        #u3 = u[:, self.coord_dims[0]-1, 1:self.coord_dims[1]-2+1]
+        #u4 = u[:, 0:self.coord_dims[0]-1+1, self.coord_dims[1]-1]
+        u4 = u[:, 1:self.coord_dims[0]-1+1, self.coord_dims[1]-1]
+
+        #ub = torch.cat([u1,u2,u3,u4], dim=-1)
+        ub = torch.cat([u1,u2,u4], dim=-1)
 
         return ub
 
@@ -515,18 +530,18 @@ def optimize(nepoch=5000):
             batch_in = batch_in.reshape(x0.shape)
             eq_loss = eq_loss.reshape(x0.shape)
 
-            #x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
-            #eq_loss = (eq_loss).abs()#.pow(2)#.pow(2)#.mean()
+            x_loss = (x0- batch_in).pow(2)#.mean()
+            eq_loss = (eq_loss).pow(2)#.pow(2)#.mean()
 
             #x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
             #eq_loss = (eq_loss).abs()#.pow(2)#.pow(2)#.mean()
 
-            x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
-            eq_loss = (eq_loss).abs()#.pow(2)#.pow(2)#.mean()
+            #x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
+            #eq_loss = (eq_loss).abs()#.pow(2)#.pow(2)#.mean()
 
             param_loss = params.abs()
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
-            loss = x_loss.mean() + eq_loss.mean() +  0.01*param_loss.mean()
+            loss = x_loss.mean() + eq_loss.mean() #+  0.001*param_loss.mean()
             #loss = x_loss.mean() #+ 0.01*param_loss.mean()
             #loss = var_loss.mean()
             #loss = x_loss +  (var- batch_in).abs().mean()
