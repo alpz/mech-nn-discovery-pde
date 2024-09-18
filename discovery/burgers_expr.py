@@ -45,8 +45,8 @@ cuda=True
 #T = 2000
 #n_step_per_batch = T
 #solver_dim=(10,256)
-solver_dim=(32,32)
-#solver_dim=(30,64)
+#solver_dim=(32,32)
+solver_dim=(30,64)
 batch_size= 1
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
@@ -345,6 +345,8 @@ class Model(nn.Module):
 
 
         up_coeffs = torch.randn((1, 1, self.num_multiindex), dtype=dtype)
+        #up_coeffs = torch.ones((1, 1, self.num_multiindex), dtype=dtype, device=self.device)
+        #self.up_coeffs = up_coeffs #nn.Parameter(up_coeffs)
         self.up_coeffs = nn.Parameter(up_coeffs)
 
         #self.stepsup0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
@@ -541,7 +543,7 @@ def optimize(nepoch=5000):
 
             param_loss = params.abs()
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
-            loss = x_loss.mean() + eq_loss.mean() #+  0.001*param_loss.mean()
+            loss = x_loss.mean() + eq_loss.mean() +  0.001*param_loss.mean()
             #loss = x_loss.mean() #+ 0.01*param_loss.mean()
             #loss = var_loss.mean()
             #loss = x_loss +  (var- batch_in).abs().mean()
