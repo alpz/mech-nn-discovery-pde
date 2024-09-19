@@ -16,6 +16,11 @@ class ResNet(nn.Module):
         self.c41 = nn.Conv2d(in_channels=nc, out_channels=nc, kernel_size=5, stride=1, padding=2)
         self.c42 = nn.Conv2d(in_channels=nc, out_channels=nc, kernel_size=5, stride=1, padding=2)
         self.c43 = nn.Conv2d(in_channels=nc, out_channels=nc, kernel_size=5, stride=1, padding=2)
+        self.c44 = nn.Conv2d(in_channels=nc, out_channels=nc, kernel_size=5, stride=1, padding=2)
+        self.c45 = nn.Conv2d(in_channels=nc, out_channels=nc, kernel_size=5, stride=1, padding=2)
+        self.c46 = nn.Conv2d(in_channels=nc, out_channels=nc, kernel_size=5, stride=1, padding=2)
+        self.c47 = nn.Conv2d(in_channels=nc, out_channels=nc, kernel_size=5, stride=1, padding=2)
+        self.c48 = nn.Conv2d(in_channels=nc, out_channels=nc, kernel_size=5, stride=1, padding=2)
 
         self.c5 = nn.Conv2d(in_channels=nc, out_channels=out_channels, kernel_size=5, stride=1, padding=2)
         
@@ -59,6 +64,22 @@ class ResNet(nn.Module):
         x = F.relu(x)
 
         x = self.c42(x) + _x
+        _x = x
+        x = F.relu(x)
+
+        x = self.c43(x) + _x
+        _x = x
+        x = F.relu(x)
+
+        x = self.c44(x) + _x
+        _x = x
+        x = F.relu(x)
+
+        x = self.c45(x) + _x
+        _x = x
+        x = F.relu(x)
+
+        x = self.c46(x) + _x
         _x = x
         x = F.relu(x)
 

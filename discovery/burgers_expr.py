@@ -30,6 +30,7 @@ import os
 from scipy.special import logit
 import torch.nn.functional as F
 from tqdm import tqdm
+import net
 #import discovery.plot as P
 
 from sklearn.metrics import mean_squared_error
@@ -47,11 +48,12 @@ cuda=True
 #solver_dim=(10,256)
 #solver_dim=(32,32)
 solver_dim=(30,64)
+L.info(f'solver dimension {solver_dim}')
 batch_size= 1
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
 
-noise=False
+noise=True
 
 L.info(f'Solver dim {solver_dim} ')
 
@@ -171,6 +173,7 @@ class Model(nn.Module):
         self.bs = bs
         self.device = device
         self.n_iv=1
+        #self.n_iv=0
         self.n_ind_dim = 1
         self.n_dim = 1
 
@@ -199,6 +202,8 @@ class Model(nn.Module):
                         #(1,3, [0,0], [self.coord_dims[0]-1, 0])
                         (1,0, [1,self.coord_dims[1]-1], [self.coord_dims[0]-1, self.coord_dims[1]-1])
                         ]
+        #self.iv_list = []
+        self.len_iv = self.coord_dims[1] + self.coord_dims[0]-1 + self.coord_dims[0]-1
 
 
         self.n_patches_t = ds.data.shape[0]//self.coord_dims[0]
@@ -258,6 +263,32 @@ class Model(nn.Module):
             nn.Conv2d(64,1, kernel_size=5, padding=2, stride=1, padding_mode=pm),
             )
 
+        self.data2_conv2d = nn.Sequential(
+            nn.Conv2d(1, 64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #nn.ELU(),
+            nn.ReLU(),
+            nn.Conv2d(64,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #nn.ELU(),
+            nn.ReLU(),
+            nn.Conv2d(64,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #nn.ELU(),
+            nn.ReLU(),
+            nn.Conv2d(64,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #nn.ELU(),
+            nn.ReLU(),
+            nn.Conv2d(64,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.ReLU(),
+            #nn.ELU(),
+            nn.Conv2d(64,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #nn.ReLU(),
+            #nn.ELU(),
+            #nn.Conv2d(128,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.ReLU(),
+            #nn.ELU(),
+            nn.Conv2d(64,3, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            )
+
+        self.rnet = net.ResNet(in_channels=1, out_channels=1)
         #self.data_conv2d2 = nn.Sequential(
         #    nn.Conv2d(1, 256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
         #    #nn.ReLU(),
@@ -295,6 +326,22 @@ class Model(nn.Module):
         #    nn.Linear(1024,self.pde.grid_size)
         #)
 
+        self.iv_params = nn.Parameter(torch.randn(1,256))
+        self.iv_net = nn.Sequential(
+            nn.Linear(256, 1024),
+            #nn.ELU(),
+            nn.ReLU(),
+            nn.Linear(1024, 1024),
+            #nn.ELU(),
+            nn.ReLU(),
+            nn.Linear(1024, 1024),
+            #nn.ELU(),
+            nn.ReLU(),
+            #two polynomials, second order
+            #nn.Linear(1024, 3*2),
+            nn.Linear(1024, self.n_patches*self.len_iv),
+            #nn.Tanh()
+        )
 
         self.param_in = nn.Parameter(torch.randn(1,256))
         self.param_net = nn.Sequential(
@@ -330,12 +377,54 @@ class Model(nn.Module):
             #nn.Tanh()
         )
 
+        #self.step0_param = nn.Parameter(torch.randn(1,64))
+        #self.step0_net = nn.Sequential(
+        #    nn.Linear(64, 1024),
+        #    #nn.ELU(),
+        #    nn.ReLU(),
+        #    nn.Linear(1024, 1024),
+        #    #nn.ELU(),
+        #    nn.ReLU(),
+        #    #nn.Linear(1024, 1024),
+        #    #nn.ELU(),
+        #    #nn.ReLU(),
+        #    #two polynomials, second order
+        #    #nn.Linear(1024, 3*2),
+        #    nn.Linear(1024, self.n_patches*(self.coord_dims[0]-1)),
+        #    #nn.Tanh()
+        #)
 
-        self.t_step_size = steps[0]
-        self.x_step_size = steps[1]
-        print('steps ', steps)
+
+        #self.step1_param = nn.Parameter(torch.randn(1,64))
+        #self.step1_net = nn.Sequential(
+        #    nn.Linear(64, 1024),
+        #    #nn.ELU(),
+        #    nn.ReLU(),
+        #    nn.Linear(1024, 1024),
+        #    #nn.ELU(),
+        #    nn.ReLU(),
+        #    #nn.Linear(1024, 1024),
+        #    #nn.ELU(),
+        #    #nn.ReLU(),
+        #    #two polynomials, second order
+        #    #nn.Linear(1024, 3*2),
+        #    nn.Linear(1024, self.n_patches*(self.coord_dims[1]-1)),
+        #    #nn.Tanh()
+        #)
+
+        #print('steps ', steps)
+
+        #self.step0_net[-1].weight.data.fill_(0.)
+        #self.step0_net[-1].bias.data.fill_(torch.logit(self.t_step_size*torch.ones(1)).item())
+
+        #self.step1_net[-1].weight.data.fill_(0.)
+        #self.step1_net[-1].bias.data.fill_(torch.logit(self.x_step_size*torch.ones(1)).item())
+
+
         #self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
         #self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
+        self.t_step_size = steps[0]
+        self.x_step_size = steps[1]
 
         self.steps0 = torch.logit(self.t_step_size*torch.ones(1,1,1))
         self.steps1 = torch.logit(self.x_step_size*torch.ones(1,1,1))
@@ -407,20 +496,32 @@ class Model(nn.Module):
 
         return merged
 
-    def solve_chunks(self, rhs_chunks, u_chunks):
+    def solve_chunks(self, rhs_chunks, u_chunks, upx_chunks):
         bs = rhs_chunks.shape[0]
         #up_coeffs = self.up_coeffs.repeat(self.bs,self.pde.grid_size,1)
         coeffs = self.up_coeffs.expand(self.bs,self.n_patches, self.pde.grid_size,-1)
+
+        coeffs = coeffs.clone()
+        coeffs[...,0]= 0.
+        #coeffs[...,1]= upx_chunks[:, 2]
+        #coeffs[...,2]= upx_chunks[:, 0]
+        #coeffs[...,3]= 0.
+        #coeffs[...,4]= 0. #upx_chunks[:, 1]
+        
+        #steps0 = self.step0_net(self.step0_param).reshape(-1,self.n_patches, self.coord_dims[0]-1)
+        #steps1 = self.step1_net(self.step1_param).reshape(-1,self.n_patches, self.coord_dims[1]-1)
+
         steps0 = self.steps0.type_as(coeffs).expand(-1,self.n_patches, self.coord_dims[0]-1)
         steps1 = self.steps1.type_as(coeffs).expand(-1,self.n_patches, self.coord_dims[1]-1)
-        steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.1)
-        steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.1)
+        steps0 = torch.sigmoid(steps0).clip(min=0.01, max=0.5)
+        steps1 = torch.sigmoid(steps1).clip(min=0.01, max=0.5)
         steps_list = [steps0, steps1]
 
         rhs = rhs_chunks.reshape(bs*self.n_patches, self.pde.grid_size)
         u_chunks = u_chunks.reshape(bs*self.n_patches, *self.coord_dims)
 
-        iv_rhs = self.get_iv(u_chunks)
+        #iv_rhs = None #self.get_iv(u_chunks)
+        iv_rhs = self.iv_net(self.iv_params)
 
         u0,u,eps = self.pde(coeffs, rhs, iv_rhs, steps_list)
 
@@ -442,12 +543,16 @@ class Model(nn.Module):
         #print(cin.shape)
 
         up_rhs = self.data_conv2d(cin).squeeze(1)
+        #up_rhs = self.rnet(cin).squeeze(1)
+        upx = self.data2_conv2d(cin).reshape(bs*3, up_rhs.shape[1], up_rhs.shape[2])
         #up_rhs = up
 
         u_chunked, unfold_shape = self.make_patches(u)
         up_rhs_chunked, _ = self.make_patches(up_rhs)
+        upx_chunked, _ = self.make_patches(upx)
+        upx_chunked= upx_chunked.reshape(bs, 3, self.n_patches, self.pde.grid_size)
 
-        up_dict = self.solve_chunks(up_rhs_chunked, u_chunked)
+        up_dict = self.solve_chunks(up_rhs_chunked, u_chunked, upx_chunked)
         eps = up_dict['eps']
 
         #join chunks into solution
@@ -485,9 +590,12 @@ model=model.to(device)
 
 def print_eq(stdout=False):
     #print learned equation
-    xi = model.get_params()
-    print(xi.squeeze().detach().cpu().numpy())
+    xi = model.get_params().squeeze()
+    xi = (xi.detach().cpu().numpy())
+
+    #print(xi.squeeze().detach().cpu().numpy())
     #return code
+    return xi
 
 
 def train():
@@ -543,7 +651,7 @@ def optimize(nepoch=5000):
 
             param_loss = params.abs()
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
-            loss = x_loss.mean() + eq_loss.mean() +  0.001*param_loss.mean()
+            loss = x_loss.mean() + eq_loss.mean() +  0.0001*param_loss.mean()
             #loss = x_loss.mean() #+ 0.01*param_loss.mean()
             #loss = var_loss.mean()
             #loss = x_loss +  (var- batch_in).abs().mean()
@@ -566,9 +674,11 @@ def optimize(nepoch=5000):
             #L.info(f'run {run_id} epoch {epoch}, loss {loss.item():.3E} max eps {meps:.3E} xloss {x_loss:.3E} time_loss {time_loss:.3E}')
             #print(f'\nalpha, beta {xi}')
             #L.info(f'\nparameters {xi}')
-        print_eq()
+        params = print_eq()
+        L.info(f'parameters\n{params}')
             #pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item():.3E}  xloss {x_loss:.3E} max eps {meps}\n')
-        print(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E}  xloss {_x_loss:.3E} eqloss {_eq_loss:.3E} max eps {meps}\n')
+        #print(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E}  xloss {_x_loss:.3E} eqloss {_eq_loss:.3E} max eps {meps}\n')
+        L.info(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E}  xloss {_x_loss:.3E} eqloss {_eq_loss:.3E} max eps {meps}\n')
 
 
 if __name__ == "__main__":
