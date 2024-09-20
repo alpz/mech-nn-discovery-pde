@@ -229,6 +229,8 @@ class ODEINDLayerTest(nn.Module):
         self.num_var = self.ode.num_vars
         self.num_eps = self.ode.num_added_eps_vars
 
+        self.num_constraints = self.ode.num_added_constraints
+
     def forward(self, coeffs, rhs, iv_rhs, steps):
         coeffs = coeffs.reshape(self.bs*self.n_ind_dim, self.n_step,self.n_dim, self.order + 1)
 
