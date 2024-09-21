@@ -513,7 +513,6 @@ class Model(nn.Module):
         #ub = torch.stack([u1,u12,u2,u4], dim=1)
 
         us = [u1, u12,u2,u4]
-
         uout = []
         for i,ui in enumerate(us):
             ui = self.iv_conv1d_list[i](ui).unsqueeze(1)
@@ -697,18 +696,18 @@ def optimize(nepoch=5000):
             batch_in = batch_in.reshape(x0.shape)
             eq_loss = eq_loss.reshape(x0.shape)
 
-            x_loss = (x0- batch_in).pow(2)#.mean()
-            eq_loss = (eq_loss).pow(2)#.pow(2)#.mean()
+            #x_loss = (x0- batch_in).pow(2)#.mean()
+            #eq_loss = (eq_loss).pow(2)#.pow(2)#.mean()
 
-            #x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
-            #eq_loss = (eq_loss).abs()#.pow(2)#.pow(2)#.mean()
+            x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
+            eq_loss = (eq_loss).abs()#.pow(2)#.pow(2)#.mean()
 
             #x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
             #eq_loss = (eq_loss).abs()#.pow(2)#.pow(2)#.mean()
 
             param_loss = params.abs()
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
-            loss = x_loss.mean() + eq_loss.mean() +  0.0001*param_loss.mean()
+            loss = x_loss.mean() + eq_loss.mean() +  0.001*param_loss.mean()
             #loss = x_loss.mean() #+ 0.01*param_loss.mean()
             #loss = var_loss.mean()
             #loss = x_loss +  (var- batch_in).abs().mean()
