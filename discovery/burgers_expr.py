@@ -47,13 +47,14 @@ cuda=True
 #n_step_per_batch = T
 #solver_dim=(10,256)
 #solver_dim=(32,32)
-solver_dim=(30,64)
+#solver_dim=(30,64)
+solver_dim=(10,10)
 L.info(f'solver dimension {solver_dim}')
-batch_size= 1
+batch_size= 10
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
 
-noise=True
+noise=False
 
 L.info(f'Solver dim {solver_dim} ')
 
@@ -90,8 +91,8 @@ class BurgersDataset(Dataset):
 
 
         #L.info(f'subsample {self.t_subsample}, {self.x_subsample} ')
-        self.x_subsample =64
-        self.t_subsample =30
+        self.x_subsample =solver_dim[1]
+        self.t_subsample =solver_dim[0]
 
         print(self.t.shape)
         print(self.x.shape)
@@ -515,7 +516,8 @@ class Model(nn.Module):
         us = [u1, u12,u2,u4]
         uout = []
         for i,ui in enumerate(us):
-            ui = self.iv_conv1d_list[i](ui).unsqueeze(1)
+            ui = ui.unsqueeze(1)
+            ui = self.iv_conv1d_list[i](ui)#.unsqueeze(1)
             uout.append(ui.squeeze(1))
 
         ub = torch.cat(uout, dim=-1)
@@ -566,8 +568,8 @@ class Model(nn.Module):
         #steps0 = self.step0_net(self.step0_param).reshape(-1,self.n_patches, self.coord_dims[0]-1)
         #steps1 = self.step1_net(self.step1_param).reshape(-1,self.n_patches, self.coord_dims[1]-1)
 
-        steps0 = self.steps0.type_as(coeffs).expand(-1,self.n_patches, self.coord_dims[0]-1)
-        steps1 = self.steps1.type_as(coeffs).expand(-1,self.n_patches, self.coord_dims[1]-1)
+        steps0 = self.steps0.type_as(coeffs).expand(self.bs,self.n_patches, self.coord_dims[0]-1)
+        steps1 = self.steps1.type_as(coeffs).expand(self.bs,self.n_patches, self.coord_dims[1]-1)
         steps0 = torch.sigmoid(steps0).clip(min=0.01, max=0.5)
         steps1 = torch.sigmoid(steps1).clip(min=0.01, max=0.5)
         steps_list = [steps0, steps1]
@@ -685,10 +687,13 @@ def optimize(nepoch=5000):
             #x0, steps, eps, var,xi = model(index, batch_in)
             x0, eq_loss, eps, params = model(batch_in, t, x)
 
-            t_end = x0.shape[1]
-            x_end = x0.shape[2]
-            batch_in = batch_in.reshape(*data_shape)[-1, :t_end, :x_end]
+            #print('shapes ', batch_in.shape, x0.shape)
 
+            #t_end = x0.shape[1]
+            #x_end = x0.shape[2]
+            #batch_in = batch_in.reshape(*data_shape)[-1, :t_end, :x_end]
+
+            #print('shapes2 ', batch_in.shape, x0.shape, t_end, x_end, data_shape)
             #var = var.reshape(*data_shape)[-1, :t_end, :x_end]
             #var2 = var2.reshape(*data_shape)[-1, :t_end, :x_end]
 
