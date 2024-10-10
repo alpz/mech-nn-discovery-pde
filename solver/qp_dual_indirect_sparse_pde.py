@@ -48,7 +48,7 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             #P_diag = torch.ones(num_eps).type_as(rhs)*1e3
             #P_zeros = torch.zeros(num_var).type_as(rhs) +1e-5
 
-            P_diag = torch.ones(num_eps)*1e3
+            P_diag = torch.ones(num_eps)*1e4
             P_zeros = torch.zeros(num_var) +1e-5
             P_diag = torch.cat([P_zeros, P_diag])
             #P_diag_inv = 1/P_diag

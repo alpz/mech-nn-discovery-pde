@@ -46,11 +46,12 @@ cuda=True
 #T = 2000
 #n_step_per_batch = T
 #solver_dim=(10,256)
-#solver_dim=(32,32)
+solver_dim=(32,32)
+#solver_dim=(16,16)
 #solver_dim=(30,64)
-solver_dim=(10,10)
+#solver_dim=(10,10)
 L.info(f'solver dimension {solver_dim}')
-batch_size= 10
+batch_size= 1
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
 
@@ -91,8 +92,8 @@ class BurgersDataset(Dataset):
 
 
         #L.info(f'subsample {self.t_subsample}, {self.x_subsample} ')
-        self.x_subsample =solver_dim[1]
-        self.t_subsample =solver_dim[0]
+        self.x_subsample =solver_dim[1]#//2
+        self.t_subsample =solver_dim[0]#//2
 
         print(self.t.shape)
         print(self.x.shape)
@@ -123,7 +124,7 @@ class BurgersDataset(Dataset):
         if self.t_subsample < self.solver_dim[0]:
             self.num_t_idx = self.num_t_idx - self.solver_dim[0]//self.t_subsample
         if self.x_subsample < self.solver_dim[1]:
-            self.num_t_idx = self.num_t_idx - self.solver_dim[1]//self.x_subsample
+            self.num_x_idx = self.num_x_idx - self.solver_dim[1]//self.x_subsample
 
         self.length = self.num_t_idx*self.num_x_idx
         #self.length = 1 #self.num_t_idx*self.num_x_idx
@@ -146,6 +147,8 @@ class BurgersDataset(Dataset):
         t_step = solver_dim[0]
         x_step = solver_dim[1]
 
+        assert(t_idx + t_step <= self.data_dim[0])
+        assert(x_idx + x_step <= self.data_dim[1])
 
         t = self.t[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
         x = self.x[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
@@ -249,7 +252,8 @@ class Model(nn.Module):
         #TODO add time space dims
         pm='zeros'
         self.iv_conv1d_list = nn.ModuleList() 
-        
+        self.step_conv1d_list = nn.ModuleList() 
+
         for i in range (4):
             self.iv_conv1d_list.append(
                 nn.Sequential(
@@ -267,7 +271,26 @@ class Model(nn.Module):
                     nn.ReLU(),
                     nn.Conv1d(64,1, kernel_size=5, padding=2, stride=1, padding_mode=pm),
                     )
-                )
+            )
+
+        for i in range (2):
+            self.step_conv1d_list.append(
+                nn.Sequential(
+                    nn.Conv1d(1, 64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+                    nn.ReLU(),
+                    nn.Conv1d(64,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+                    nn.ReLU(),
+                    nn.Conv1d(128,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+                    nn.ReLU(),
+                    nn.Conv1d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+                    nn.ReLU(),
+                    nn.Conv1d(256,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+                    nn.ReLU(),
+                    nn.Conv1d(128,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+                    nn.ReLU(),
+                    nn.Conv1d(64,1, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+                    )
+            )
 
 
         self.data_conv2d = nn.Sequential(
@@ -293,6 +316,7 @@ class Model(nn.Module):
             #nn.ReLU(),
             #nn.ELU(),
             nn.Conv2d(64,1, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.Tanh()
             )
 
         self.data2_conv2d = nn.Sequential(
@@ -318,6 +342,7 @@ class Model(nn.Module):
             nn.ReLU(),
             #nn.ELU(),
             nn.Conv2d(64,3, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            nn.Tanh()
             )
 
         #self.rnet = net.ResNet(in_channels=1, out_channels=1)
@@ -358,21 +383,38 @@ class Model(nn.Module):
         #    nn.Linear(1024,self.pde.grid_size)
         #)
 
-        self.iv_params = nn.Parameter(torch.randn(1,256))
-        self.iv_net = nn.Sequential(
+        #self.iv_params = nn.Parameter(torch.randn(1,256))
+        #self.iv_net = nn.Sequential(
+        #    nn.Linear(256, 1024),
+        #    #nn.ELU(),
+        #    nn.ReLU(),
+        #    nn.Linear(1024, 1024),
+        #    #nn.ELU(),
+        #    nn.ReLU(),
+        #    nn.Linear(1024, 1024),
+        #    #nn.ELU(),
+        #    nn.ReLU(),
+        #    #two polynomials, second order
+        #    #nn.Linear(1024, 3*2),
+        #    nn.Linear(1024, self.n_patches*self.len_iv),
+        #    #nn.Tanh()
+        #)
+
+        self.coeff_in = nn.Parameter(torch.randn(1,256))
+        self.coeff_net = nn.Sequential(
             nn.Linear(256, 1024),
             #nn.ELU(),
             nn.ReLU(),
             nn.Linear(1024, 1024),
             #nn.ELU(),
             nn.ReLU(),
-            nn.Linear(1024, 1024),
+            #nn.Linear(1024, 1024),
             #nn.ELU(),
-            nn.ReLU(),
+            #nn.ReLU(),
             #two polynomials, second order
             #nn.Linear(1024, 3*2),
-            nn.Linear(1024, self.n_patches*self.len_iv),
-            #nn.Tanh()
+            nn.Linear(1024, self.num_multiindex),
+            nn.Tanh()
         )
 
         self.param_in = nn.Parameter(torch.randn(1,256))
@@ -469,13 +511,12 @@ class Model(nn.Module):
         self.steps0 = torch.logit(self.t_step_size*torch.ones(1,1,1))
         self.steps1 = torch.logit(self.x_step_size*torch.ones(1,1,1))
 
+
         #self.steps0 = nn.Parameter(self.steps0)
         #self.steps1 = nn.Parameter(self.steps1)
 
 
         up_coeffs = torch.randn((1, 1, self.num_multiindex), dtype=dtype)
-        #up_coeffs = torch.ones((1, 1, self.num_multiindex), dtype=dtype, device=self.device)
-        #self.up_coeffs = up_coeffs #nn.Parameter(up_coeffs)
         self.up_coeffs = nn.Parameter(up_coeffs)
 
         #self.stepsup0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
@@ -485,6 +526,9 @@ class Model(nn.Module):
     def get_params(self):
         params = 2*self.param_net(self.param_in)
         params2 =2*self.param_net2(self.param_in2)
+
+        #params = self.param_net(self.param_in)
+        #params2 =self.param_net2(self.param_in2)
         #params = params.reshape(-1,1,2, 3)
         #params = params.reshape(-1,1,2, 2)
         params = torch.stack([params, params2], dim=-2)
@@ -499,6 +543,55 @@ class Model(nn.Module):
     #    ub = torch.cat([u1,u2,u3,u4], dim=-1)
 
     #    return ub
+
+    #def get_iv(self, u):
+    #    ##u1 = u[:,0, :self.coord_dims[1]-2+1]
+    #    #u1 = u[:,0, :self.coord_dims[1]]
+    #    #u12 = u[:,self.coord_dims[0]-1, :self.coord_dims[1]]
+    #    #u2 = u[:, 1:self.coord_dims[0]-1:,0]
+    #    ##u3 = u[:, self.coord_dims[0]-1, 1:self.coord_dims[1]-2+1]
+    #    ##u4 = u[:, 0:self.coord_dims[0]-1+1, self.coord_dims[1]-1]
+    #    #u4 = u[:, 1:self.coord_dims[0]-1, self.coord_dims[1]-1]
+
+    #    #ub = torch.cat([u1,u2,u3,u4], dim=-1)
+    #    #ub = torch.cat([u1,u12,u2,u4], dim=-1)
+    #    #ub = torch.stack([u1,u12,u2,u4], dim=1)
+
+    #    #us = [u1, u12,u2,u4]
+    #    u = u.reshape(-1, self.pde.grid_size)
+    #    uout = []
+    #    #for i,ui in enumerate(us):
+    #    for i in range(4):
+    #        #ui = ui.unsqueeze(1)
+    #        ui = self.iv_conv1d_list[i](u)#.unsqueeze(1)
+    #        uout.append(ui)
+
+    #    ub = torch.cat(uout, dim=-1)
+
+    #    return ub
+
+    def get_step(self, u):
+        #ux = u[:,0, :self.coord_dims[1]-1]
+        #ut = u[:, :self.coord_dims[0]-1:,0]
+
+        #ux = ux.unsqueeze(1)
+        #ut = ut.unsqueeze(1)
+        #steps0 = self.step_conv1d_list[0](ut).squeeze(1)
+        #steps1 = self.step_conv1d_list[0](ux).squeeze(1)
+
+        #steps0 = torch.sigmoid(steps0).clip(min=0.01, max=0.2)
+        #steps1 = torch.sigmoid(steps1).clip(min=0.01, max=0.2)
+
+        #steps_list = [steps0, steps1]
+
+        steps0 = self.steps0.type_as(u).expand(self.bs,self.n_patches, self.coord_dims[0]-1)
+        steps1 = self.steps1.type_as(u).expand(self.bs,self.n_patches, self.coord_dims[1]-1)
+        steps0 = torch.sigmoid(steps0).clip(min=0.01, max=0.5)
+        steps1 = torch.sigmoid(steps1).clip(min=0.01, max=0.5)
+
+        steps_list = [steps0, steps1]
+
+        return steps_list
 
     def get_iv(self, u):
         #u1 = u[:,0, :self.coord_dims[1]-2+1]
@@ -525,7 +618,7 @@ class Model(nn.Module):
         return ub
 
     def make_patches(self, x):
-        x= x.unsqueeze(1)
+        #x= x.unsqueeze(1)
         return x, x.shape
 
         x_patches = x.unfold(1, self.coord_dims[0], self.coord_dims[0]) 
@@ -554,7 +647,9 @@ class Model(nn.Module):
     def solve_chunks(self, rhs_chunks, u_chunks, upx_chunks):
         bs = rhs_chunks.shape[0]
         #up_coeffs = self.up_coeffs.repeat(self.bs,self.pde.grid_size,1)
-        coeffs = self.up_coeffs.expand(self.bs,self.n_patches, self.pde.grid_size,-1)
+        #coeffs = self.up_coeffs.expand(self.bs,self.n_patches, self.pde.grid_size,-1)
+        #coeffs = torch.tanh(coeffs)
+        coeffs = self.coeff_net(self.coeff_in).unsqueeze(1).expand(self.bs, self.pde.grid_size, -1)
 
         #print(self.param_net[-1].weight.data)
 
@@ -568,11 +663,8 @@ class Model(nn.Module):
         #steps0 = self.step0_net(self.step0_param).reshape(-1,self.n_patches, self.coord_dims[0]-1)
         #steps1 = self.step1_net(self.step1_param).reshape(-1,self.n_patches, self.coord_dims[1]-1)
 
-        steps0 = self.steps0.type_as(coeffs).expand(self.bs,self.n_patches, self.coord_dims[0]-1)
-        steps1 = self.steps1.type_as(coeffs).expand(self.bs,self.n_patches, self.coord_dims[1]-1)
-        steps0 = torch.sigmoid(steps0).clip(min=0.01, max=0.5)
-        steps1 = torch.sigmoid(steps1).clip(min=0.01, max=0.5)
-        steps_list = [steps0, steps1]
+
+        steps_list = self.get_step(u_chunks)
 
         rhs = rhs_chunks.reshape(bs*self.n_patches, self.pde.grid_size)
         u_chunks = u_chunks.reshape(bs*self.n_patches, *self.coord_dims)
@@ -602,15 +694,15 @@ class Model(nn.Module):
 
         up_rhs = self.data_conv2d(cin).squeeze(1)
         #up_rhs = self.rnet(cin).squeeze(1)
-        upx = self.data2_conv2d(cin).reshape(bs*3, up_rhs.shape[1], up_rhs.shape[2])
+        #upx = self.data2_conv2d(cin).reshape(bs*3, up_rhs.shape[1], up_rhs.shape[2])
         #up_rhs = up
 
         u_chunked, unfold_shape = self.make_patches(u)
         up_rhs_chunked, _ = self.make_patches(up_rhs)
-        upx_chunked, _ = self.make_patches(upx)
-        upx_chunked= upx_chunked.reshape(bs, 3, self.n_patches, self.pde.grid_size)
+        #upx_chunked, _ = self.make_patches(upx)
+        #upx_chunked= upx_chunked.reshape(bs, 3, self.n_patches, self.pde.grid_size)
 
-        up_dict = self.solve_chunks(up_rhs_chunked, u_chunked, upx_chunked)
+        up_dict = self.solve_chunks(up_rhs_chunked, u_chunked, None) #upx_chunked)
         eps = up_dict['eps']
 
         #join chunks into solution
@@ -740,6 +832,7 @@ def optimize(nepoch=5000):
             #pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item():.3E}  xloss {x_loss:.3E} max eps {meps}\n')
         #print(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E}  xloss {_x_loss:.3E} eqloss {_eq_loss:.3E} max eps {meps}\n')
         L.info(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E}  xloss {_x_loss:.3E} eqloss {_eq_loss:.3E} max eps {meps}\n')
+        #print(model.steps0, model.steps1)
 
 
 if __name__ == "__main__":
