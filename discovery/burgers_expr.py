@@ -53,8 +53,9 @@ solver_dim=(32,32)
 L.info(f'solver dimension {solver_dim}')
 batch_size= 1
 #weights less than threshold (absolute) are set to 0 after each optimization step.
-threshold = 0.1
 
+#threshold = 0.1
+#
 noise=False
 
 L.info(f'Solver dim {solver_dim} ')
@@ -63,7 +64,7 @@ L.info(f'Solver dim {solver_dim} ')
 class BurgersDataset(Dataset):
     def __init__(self, solver_dim=(32,32)):
         #self.n_step_per_batch=n_step_per_batch
-        #self.n_step=n_step
+         #self.n_step=n_step
 
         self.down_sample = 1
 
@@ -229,7 +230,8 @@ class Model(nn.Module):
                         #(1,0, [1,self.coord_dims[1]-1], [self.coord_dims[0]-1, self.coord_dims[1]-1])
                         ]
         #self.iv_list = []
-        self.len_iv = 2*self.coord_dims[1] + 2*(self.coord_dims[0]-2 + self.coord_dims[0]-2)
+        #self.len_iv = 2*self.coord_dims[1] + 2*(self.coord_dims[0]-2 + self.coord_dims[0]-2)
+        self.len_iv = [self.coord_dims[1],self.coord_dims[1], self.coord_dims[0]-2, self.coord_dims[0]-2]
         #self.len_iv = 2*self.coord_dims[1] + (self.coord_dims[0]-2 + self.coord_dims[0]-2)
         #self.len_iv = self.coord_dims[1] + 2*(self.coord_dims[0]-1)
         #self.len_iv = self.coord_dims[1] + (self.coord_dims[0]-2 + self.coord_dims[0]-2)
@@ -253,11 +255,13 @@ class Model(nn.Module):
         pm='zeros'
         self.iv_conv1d_list = nn.ModuleList() 
         self.step_conv1d_list = nn.ModuleList() 
+        self.iv_mlp_list = nn.ModuleList() 
+        self.step_mlp_list = nn.ModuleList() 
 
         for i in range (4):
             self.iv_conv1d_list.append(
                 nn.Sequential(
-                    nn.Conv1d(1, 64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+                    nn.Conv1d(32, 64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
                     nn.ReLU(),
                     nn.Conv1d(64,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
                     nn.ReLU(),
@@ -273,10 +277,20 @@ class Model(nn.Module):
                     )
             )
 
+            #self.iv_mlp_list.append(
+            #    nn.Sequential(
+            #        nn.Linear(self.pde.grid_size, 1024),
+            #        nn.ReLU(),
+            #        nn.Linear(1024, 1024),
+            #        nn.ReLU(),
+            #        nn.Linear(1024, self.len_iv[i])
+            #        )
+            #)
+
         for i in range (2):
             self.step_conv1d_list.append(
                 nn.Sequential(
-                    nn.Conv1d(1, 64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+                    nn.Conv1d(32, 64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
                     nn.ReLU(),
                     nn.Conv1d(64,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
                     nn.ReLU(),
@@ -459,40 +473,40 @@ class Model(nn.Module):
         #self.param_net[-1].bias = nn.Parameter(0.01*torch.randn(3, device=self.device))
 
 
-        self.step0_param = nn.Parameter(torch.randn(1,64))
-        self.step0_net = nn.Sequential(
-            nn.Linear(64, 1024),
-            #nn.ELU(),
-            nn.ReLU(),
-            nn.Linear(1024, 1024),
-            #nn.ELU(),
-            nn.ReLU(),
-            #nn.Linear(1024, 1024),
-            #nn.ELU(),
-            #nn.ReLU(),
-            #two polynomials, second order
-            #nn.Linear(1024, 3*2),
-            nn.Linear(1024, self.n_patches*(self.coord_dims[0]-1)),
-            #nn.Tanh()
-        )
+        #self.step0_param = nn.Parameter(torch.randn(1,64))
+        #self.step0_net = nn.Sequential(
+        #    nn.Linear(64, 1024),
+        #    nn.ELU(),
+        #    #nn.ReLU(),
+        #    nn.Linear(1024, 1024),
+        #    nn.ELU(),
+        #    #nn.ReLU(),
+        #    #nn.Linear(1024, 1024),
+        #    #nn.ELU(),
+        #    #nn.ReLU(),
+        #    #two polynomials, second order
+        #    #nn.Linear(1024, 3*2),
+        #    nn.Linear(1024, self.n_patches*(self.coord_dims[0]-1)),
+        #    #nn.Tanh()
+        #)
 
 
-        self.step1_param = nn.Parameter(torch.randn(1,64))
-        self.step1_net = nn.Sequential(
-            nn.Linear(64, 1024),
-            #nn.ELU(),
-            nn.ReLU(),
-            nn.Linear(1024, 1024),
-            #nn.ELU(),
-            nn.ReLU(),
-            #nn.Linear(1024, 1024),
-            #nn.ELU(),
-            #nn.ReLU(),
-            #two polynomials, second order
-            #nn.Linear(1024, 3*2),
-            nn.Linear(1024, self.n_patches*(self.coord_dims[1]-1)),
-            #nn.Tanh()
-        )
+        #self.step1_param = nn.Parameter(torch.randn(1,64))
+        #self.step1_net = nn.Sequential(
+        #    nn.Linear(64, 1024),
+        #    nn.ELU(),
+        #    #nn.ReLU(),
+        #    nn.Linear(1024, 1024),
+        #    nn.ELU(),
+        #    #nn.ReLU(),
+        #    #nn.Linear(1024, 1024),
+        #    #nn.ELU(),
+        #    #nn.ReLU(),
+        #    #two polynomials, second order
+        #    #nn.Linear(1024, 3*2),
+        #    nn.Linear(1024, self.n_patches*(self.coord_dims[1]-1)),
+        #    #nn.Tanh()
+        #)
 
         self.t_step_size = steps[0]
         self.x_step_size = steps[1]
@@ -526,6 +540,9 @@ class Model(nn.Module):
     def get_params(self):
         params = 2*self.param_net(self.param_in)
         params2 =2*self.param_net2(self.param_in2)
+
+        #params = self.param_net(self.param_in)
+        #params2 =self.param_net2(self.param_in2)
 
         #params = self.param_net(self.param_in)
         #params2 =self.param_net2(self.param_in2)
@@ -571,13 +588,15 @@ class Model(nn.Module):
     #    return ub
 
     def get_step(self, u):
-        #ux = u[:,0, :self.coord_dims[1]-1]
-        #ut = u[:, :self.coord_dims[0]-1:,0]
+        #ux = u[:,:, :self.coord_dims[1]-1]
+        ##ut = u[:, :self.coord_dims[0]-1:,0]
+        #ut = u[:, :self.coord_dims[0]-1:,:]
+        #ut = ut.permute(0,2,1)
 
-        #ux = ux.unsqueeze(1)
-        #ut = ut.unsqueeze(1)
+        ##ux = ux.unsqueeze(1)
+        ##ut = ut.unsqueeze(1)
         #steps0 = self.step_conv1d_list[0](ut).squeeze(1)
-        #steps1 = self.step_conv1d_list[0](ux).squeeze(1)
+        #steps1 = self.step_conv1d_list[1](ux).squeeze(1)
 
         #steps0 = torch.sigmoid(steps0).clip(min=0.01, max=0.2)
         #steps1 = torch.sigmoid(steps1).clip(min=0.01, max=0.2)
@@ -594,13 +613,18 @@ class Model(nn.Module):
         return steps_list
 
     def get_iv(self, u):
-        #u1 = u[:,0, :self.coord_dims[1]-2+1]
-        u1 = u[:,0, :self.coord_dims[1]]
-        u12 = u[:,self.coord_dims[0]-1, :self.coord_dims[1]]
-        u2 = u[:, 1:self.coord_dims[0]-1:,0]
-        #u3 = u[:, self.coord_dims[0]-1, 1:self.coord_dims[1]-2+1]
-        #u4 = u[:, 0:self.coord_dims[0]-1+1, self.coord_dims[1]-1]
-        u4 = u[:, 1:self.coord_dims[0]-1, self.coord_dims[1]-1]
+        #u1 = u[:,0, :self.coord_dims[1]]
+        #u12 = u[:,self.coord_dims[0]-1, :self.coord_dims[1]]
+        #u2 = u[:, 1:self.coord_dims[0]-1:,0]
+        #u4 = u[:, 1:self.coord_dims[0]-1, self.coord_dims[1]-1]
+
+
+        u1 = u[:,:, :self.coord_dims[1]]
+        u12 = u[:,:, :self.coord_dims[1]]
+        #u2 = u[:, 1:self.coord_dims[0]-1:,0]
+        u2 = u[:, 1:self.coord_dims[0]-1:,:].permute(0,2,1)
+        #u4 = u[:, 1:self.coord_dims[0]-1, self.coord_dims[1]-1]
+        u4 = u[:, 1:self.coord_dims[0]-1, :].permute(0,2,1)
 
         #ub = torch.cat([u1,u2,u3,u4], dim=-1)
         #ub = torch.cat([u1,u12,u2,u4], dim=-1)
@@ -609,7 +633,7 @@ class Model(nn.Module):
         us = [u1, u12,u2,u4]
         uout = []
         for i,ui in enumerate(us):
-            ui = ui.unsqueeze(1)
+            #ui = ui.unsqueeze(1)
             ui = self.iv_conv1d_list[i](ui)#.unsqueeze(1)
             uout.append(ui.squeeze(1))
 
@@ -653,8 +677,8 @@ class Model(nn.Module):
 
         #print(self.param_net[-1].weight.data)
 
-        coeffs = coeffs.clone()
-        coeffs[...,0]= 0.
+        #coeffs = coeffs.clone()
+        #coeffs[...,0]= 0.
         #coeffs[...,1]= 1 #upx_chunks[:, 2]
         #coeffs[...,2]= upx_chunks[:, 0]
         #coeffs[...,3]= 0.
