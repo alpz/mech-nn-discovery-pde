@@ -254,28 +254,48 @@ class Model(nn.Module):
         #TODO add time space dims
         pm='zeros'
         self.iv_conv1d_list = nn.ModuleList() 
+        self.iv_conv2d_list = nn.ModuleList() 
         self.step_conv1d_list = nn.ModuleList() 
         self.iv_mlp_list = nn.ModuleList() 
         self.step_mlp_list = nn.ModuleList() 
 
-        for i in range (4):
-            self.iv_conv1d_list.append(
+        for i in range (1):
+            #self.iv_conv1d_list.append(
+            #    nn.Sequential(
+            #        nn.Conv1d(32, 64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #        nn.ReLU(),
+            #        nn.Conv1d(64,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #        nn.ReLU(),
+            #        nn.Conv1d(128,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #        nn.ReLU(),
+            #        nn.Conv1d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #        nn.ReLU(),
+            #        nn.Conv1d(256,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #        nn.ReLU(),
+            #        nn.Conv1d(128,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #        nn.ReLU(),
+            #        nn.Conv1d(64,1, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+            #        )
+            #)
+
+            self.iv_conv2d_list.append(
                 nn.Sequential(
-                    nn.Conv1d(32, 64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+                    nn.Conv2d(1, 64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
                     nn.ReLU(),
-                    nn.Conv1d(64,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+                    nn.Conv2d(64,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
                     nn.ReLU(),
-                    nn.Conv1d(128,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+                    nn.Conv2d(128,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
                     nn.ReLU(),
-                    nn.Conv1d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+                    nn.Conv2d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
                     nn.ReLU(),
-                    nn.Conv1d(256,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+                    nn.Conv2d(256,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
                     nn.ReLU(),
-                    nn.Conv1d(128,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+                    nn.Conv2d(128,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
                     nn.ReLU(),
-                    nn.Conv1d(64,1, kernel_size=5, padding=2, stride=1, padding_mode=pm),
+                    nn.Conv2d(64,1, kernel_size=5, padding=2, stride=1, padding_mode=pm),
                     )
             )
+
 
             #self.iv_mlp_list.append(
             #    nn.Sequential(
@@ -613,6 +633,31 @@ class Model(nn.Module):
         return steps_list
 
     def get_iv(self, u):
+        #u1 = u[:,0, :self.coord_dims[1]]
+        #u12 = u[:,self.coord_dims[0]-1, :self.coord_dims[1]]
+        #u2 = u[:, 1:self.coord_dims[0]-1:,0]
+        #u4 = u[:, 1:self.coord_dims[0]-1, self.coord_dims[1]-1]
+        up = self.iv_conv2d_list[0](u.unsqueeze(1)).squeeze(1)
+
+
+        u1 = up[:,0, :self.coord_dims[1]]
+        u12 = up[:,self.coord_dims[0]-1, :self.coord_dims[1]]
+        u2 = up[:, 1:self.coord_dims[0]-1:,0]
+        u4 = up[:, 1:self.coord_dims[0]-1, self.coord_dims[1]-1]
+
+
+        uout = [u1, u12,u2,u4]
+        #uout = []
+        #for i,ui in enumerate(us):
+        #    #ui = ui.unsqueeze(1)
+        #    ui = self.iv_conv1d_list[i](ui)#.unsqueeze(1)
+        #    uout.append(ui.squeeze(1))
+
+        ub = torch.cat(uout, dim=-1)
+
+        return ub
+
+    def get_iv_bk(self, u):
         #u1 = u[:,0, :self.coord_dims[1]]
         #u12 = u[:,self.coord_dims[0]-1, :self.coord_dims[1]]
         #u2 = u[:, 1:self.coord_dims[0]-1:,0]
