@@ -51,7 +51,7 @@ solver_dim=(32,32)
 #solver_dim=(30,64)
 #solver_dim=(10,10)
 L.info(f'solver dimension {solver_dim}')
-batch_size= 1
+batch_size= 10
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 
 #threshold = 0.1
