@@ -23,7 +23,8 @@ class PDEConfig:
 
     #pde_gmres_max_iter = 1000 
     #pde_gmres_repeat = 500
-    permute=True
+    permute=False
+    block_size= 100
     ilu_preconditioner=False
     ilu_fill_factor= 60.0
     sindpy_data = os.path.join(os.path.expanduser('~'),'data/pysindy/')

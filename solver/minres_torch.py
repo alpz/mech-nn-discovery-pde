@@ -38,10 +38,11 @@ def _get_tensor_max(
 #    #return torch.finfo(torch.double).eps
 #    return 1e
 
-def apply_block_jacobi_M(Blocks:Tuple[torch.Tensor, torch.Tensor], x:torch.Tensor, upper:bool=False, block_size:int=100, stride:int=100):
+@torch.jit.script
+def apply_block_jacobi_M(Blocks, x:torch.Tensor, upper:bool=False, block_size:int=100, stride:int=100):
 
-    LU, pivots = Blocks
-    Blocks = LU
+    #LU, pivots = Blocks
+    #Blocks = LU
     #Blocks = Blocks.transpose(-1,-2)
     #upper=True
     #block_size = 300
@@ -63,13 +64,17 @@ def apply_block_jacobi_M(Blocks:Tuple[torch.Tensor, torch.Tensor], x:torch.Tenso
     z = torch.zeros_like(x)
     r_unfold = r[:,:len_x].unfold(dimension=1, size=block_size, step=step_size)
 
+    r_agg = torch.cat([r_unfold, r[:, -block_size:].unsqueeze(1)], dim=1)
+    #print(r_agg.shape)
     #print(Blocks.shape, r_unfold.shape, block_size, step_size)
     #torch.linalg.solve_ex(Blocks_x, r_unfold, check_errors=True)
     #print('runfold', r_unfold.shape)
     #y = torch.linalg.solve_triangular(Blocks_x, r_unfold.unsqueeze(-1), upper=upper).squeeze(-1)
     #y = torch.cholesky_solve(r_unfold.unsqueeze(-1), Blocks_x, upper=upper).squeeze(-1)
-    y = torch.linalg.lu_solve(LU[:,:-1], pivots[:, :-1], r_unfold.unsqueeze(-1)).squeeze(-1)
+    _y = torch.cholesky_solve(r_agg.unsqueeze(-1), Blocks, upper=upper).squeeze(-1)
+    #y = torch.linalg.lu_solve(LU[:,:-1], pivots[:, :-1], r_unfold.unsqueeze(-1)).squeeze(-1)
 
+    y = _y[:,:-1]
     y = y.permute(0,2,1)
 
     #print('y', y.shape)
@@ -77,6 +82,8 @@ def apply_block_jacobi_M(Blocks:Tuple[torch.Tensor, torch.Tensor], x:torch.Tenso
                                     stride=(1,step_size))
 
     d = d.reshape(-1, len_x)
+    #weight for overlap
+    d[:, step_size:-step_size] = 1/2*d[:, step_size:-step_size]
     #upto last block
     z[:, :len_x] = z[:, :len_x] + d
 
@@ -86,10 +93,14 @@ def apply_block_jacobi_M(Blocks:Tuple[torch.Tensor, torch.Tensor], x:torch.Tenso
     #dl = torch.cholesky_solve(r[:, -block_size:].unsqueeze(-1), Blocks[:, -1],  
     #                                   upper=upper).squeeze(-1)
 
-    dl = torch.linalg.lu_solve(Blocks[:, -1], pivots[:, -1], r[:, -block_size:].unsqueeze(-1)).squeeze(-1)
+    dl = _y[:, -1]
+
+    #dl = torch.linalg.lu_solve(Blocks[:, -1], pivots[:, -1], r[:, -block_size:].unsqueeze(-1)).squeeze(-1)
     ##print('dl ', dl.shape)
 
     z[:, -block_size:] = z[:, -block_size:] + dl
+    #weight overlapping
+    #z[:, -block_size:-step_size] = z[:, -block_size:-step_size]/2
     
 
     return z
@@ -117,26 +128,26 @@ def get_block_indices(n_row, block_size=100, stride=100):
 
     return begin_index, end
 
-#def get_dense_block(block, block_size=100, stride=100):
-#    """dense block@block.T"""
-#
-#    #print('dense ', block.shape)
-#    #block_size = 300
-#    #stride=block_size//2
-#    step_size = stride
-#    #shape batch, row, col
-#    D = block.unsqueeze(2)
-#    E = block.unsqueeze(1)
-#
-#    D = torch.cat([D]*block_size, dim=2)
-#    E = torch.cat([E]*block_size, dim=1)
-#
-#    #batch, row, row, col
-#    DD = D*E
-#    DD = DD.sum(dim=3)
-#    DD = DD.to_dense()
-#
-#    return DD
+def get_dense_block(block, block_size=100, stride=100):
+    """dense block@block.T"""
+
+    #print('dense ', block.shape)
+    #block_size = 300
+    #stride=block_size//2
+    step_size = stride
+    #shape batch, row, col
+    D = block.unsqueeze(2)
+    E = block.unsqueeze(1)
+
+    D = torch.cat([D]*block_size, dim=2)
+    E = torch.cat([E]*block_size, dim=1)
+
+    #batch, row, row, col
+    DD = D*E
+    DD = DD.sum(dim=3)
+    DD = DD.to_dense()
+
+    return DD
 
 def get_blocks(M, block_size=100, stride=100):
     """get blocks given sparse M"""
@@ -147,7 +158,7 @@ def get_blocks(M, block_size=100, stride=100):
     values = M.values().clone()
 
     row_idx = indices[1]
-    col_idx = indices[2]
+    #col_idx = indices[2]
 
     index_begin, index_end = get_block_indices(M.shape[1], block_size=block_size, stride=stride)
     blocks = []
@@ -155,94 +166,48 @@ def get_blocks(M, block_size=100, stride=100):
     for begin,end in zip(index_begin, index_end):
         # get rows[begin:end] cols[begin:end] and vlaues
 
-        row_mask = (begin <= row_idx)  & (row_idx < end)
-        col_mask = (begin <= col_idx)  & (col_idx < end)
+        mask = (begin <= row_idx)  & (row_idx < end)
+        #col_mask = (begin <= col_idx)  & (col_idx < end)
         nrow = end-begin
 
-        mask = row_mask*col_mask
+        #mask = row_mask*col_mask
 
         block_indices = indices[:, mask].clone()
-        #shift row col indices
-        block_indices[1:] = block_indices[1:] - begin
+        #shift row indices
+        #block_indices[1:] = block_indices[1:] - begin
+        block_indices[1] = block_indices[1] - begin
         block_values = values[mask]
 
-        block = torch.sparse_coo_tensor(block_indices, block_values, size=(1, nrow, nrow), 
+        block = torch.sparse_coo_tensor(block_indices, block_values, size=(1, nrow, M.shape[2]), 
                                         check_invariants=True)
 
-        #print(begin, end)
-        block = block.to_dense()
-        #print(block)
-        #print(begin)
-        #lu = torch.linalg.lu_factor_ex(block, pivot=True, check_errors=True)
-        #blocks.append(block.to_dense())
-
+        block = get_dense_block(block, block_size=block_size, stride=stride)
         blocks.append(block)
 
     blocks = torch.stack(blocks, dim=1)
-    blocks = blocks.to_dense()
-    #print('print bl', blocks)
-    #print('print spd', torch.diagonal(M[0].to_dense()))
 
-    #(LU, pivots, info) = torch.linalg.lu_factor_ex(blocks, check_errors=True)
-    (LU, pivots, info) = torch.linalg.ldl_factor_ex(blocks, check_errors=True)
+    (L, info) = torch.linalg.cholesky_ex(blocks, check_errors=False)
+    #(LU, pivots, info) = torch.linalg.lu_factor_ex(blocks, check_errors=False)
 
-    return (LU, pivots)
+    return (L, info)
 
-#    return blocks
-
-#def get_blocks(M, block_size=100, stride=100):
-#    """get blocks given sparse M"""
-#
-#    #print('o print spd', torch.diagonal(M[0].to_dense()))
-#    M = M.coalesce()
-#    indices = M.indices().clone()
-#    values = M.values().clone()
-#
-#    row_idx = indices[1]
-#    #col_idx = indices[2]
-#
-#    index_begin, index_end = get_block_indices(M.shape[1], block_size=block_size, stride=stride)
-#    blocks = []
-#
-#    for begin,end in zip(index_begin, index_end):
-#        # get rows[begin:end] cols[begin:end] and vlaues
-#
-#        mask = (begin <= row_idx)  & (row_idx < end)
-#        #col_mask = (begin <= col_idx)  & (col_idx < end)
-#        nrow = end-begin
-#
-#        #mask = row_mask*col_mask
-#
-#        block_indices = indices[:, mask].clone()
-#        #shift row indices
-#        #block_indices[1:] = block_indices[1:] - begin
-#        block_indices[1] = block_indices[1] - begin
-#        block_values = values[mask]
-#
-#        block = torch.sparse_coo_tensor(block_indices, block_values, size=(1, nrow, M.shape[2]), 
-#                                        check_invariants=True)
-#
-#        block = get_dense_block(block, block_size=block_size, stride=stride)
-#        blocks.append(block)
-#
-#    blocks = torch.stack(blocks, dim=1)
-#
-#    #(L, info) = torch.linalg.cholesky_ex(blocks, check_errors=True)
-#    (LU, pivots, info) = torch.linalg.lu_factor_ex(blocks, check_errors=False)
-#
-#    return (LU, pivots)
 
 #def minres(A:torch.Tensor, b:torch.Tensor, x0:torch.Tensor, M=None, rtol=1e-6, maxiter=100,
 #           block_size:int=100, stride:int=100, show=False
 #           ):
 
-@torch.jit.script
-def minres(A:torch.Tensor, b:torch.Tensor, x0:torch.Tensor,rtol:float=1e-6, maxiter:int=100,
-           _max:float=0):
+#@torch.jit.script
+def minres(A, b, x0, M1=None, M2=None, mlens=None,
+           rtol=1e-6, maxiter=100,
+           #perm=None, perminv=None,
+           block_size:int=100, stride:int=100, show=False
+           ):
+#def minres(A:torch.Tensor, b:torch.Tensor, x0:torch.Tensor,rtol:float=1e-6, maxiter:int=100,
+#           _max:float=0):
 #def minres(A:torch.Tensor, b:torch.Tensor, x0:torch.Tensor, M:Tuple[torch.Tensor,torch.Tensor]=None, rtol:float=1e-6, maxiter:int=100,
 #           block_size:int=100, stride:int=100):
 
-
+    num_var,num_constraint = mlens
     #A = A[0]
     #b = b[0]
     #x0 = x0[0]
@@ -278,9 +243,22 @@ def minres(A:torch.Tensor, b:torch.Tensor, x0:torch.Tensor,rtol:float=1e-6, maxi
     #    y = apply_block_jacobi_M(M, r1, upper=False, 
     #                              block_size=block_size, stride=stride)
     #else:
-    y = r1
+    #y = r1
     #y = psolve(r1)
     #precond
+    if M1 is not None:
+
+        _r1 = r1[:, num_var:]
+        #_r1 = _r1[:, perm]
+        y2 = apply_block_jacobi_M(M1,_r1 , upper=False, 
+                                  block_size=block_size, stride=stride)
+        #y2 = y2[:, perminv]
+
+        y1 = r1[:, :num_var]/M2
+        y = torch.cat([y1,y2], dim=1)
+        #y = r1*1/M
+    else:
+        y = r1
 
     #beta1 = inner(r1, y)
     beta1 = (r1*y).sum(dim=-1)
@@ -343,7 +321,24 @@ def minres(A:torch.Tensor, b:torch.Tensor, x0:torch.Tensor,rtol:float=1e-6, maxi
         #                          block_size=block_size, stride=stride)
         #    #y = r2/M
         #else:
-        y = r2
+        #y = r2
+
+        if M1 is not None:
+            #pass
+            #y = r2*1/M
+            #y = apply_block_jacobi_M(M, r2, upper=False, 
+            #                      block_size=block_size, stride=stride)
+            #y = r2/M
+            _r2 = r2[:, num_var:]
+            #_r2 = _r2[:, perm]
+            y2 = apply_block_jacobi_M(M1,_r2 , upper=False, 
+                                    block_size=block_size, stride=stride)
+            #y2 = y2[:, perminv]
+            y1 = r2[:, :num_var]/M2
+            y = torch.cat([y1,y2], dim=1)
+        else:
+            y = r2
+
         oldb = beta
         #beta = inner(r2,y)
         beta = (r2*y).sum(dim=-1)
@@ -419,11 +414,11 @@ def minres(A:torch.Tensor, b:torch.Tensor, x0:torch.Tensor,rtol:float=1e-6, maxi
         #if ynorm == 0 or Anorm == 0:
         #    test1 = torch.inf
         #else:
-        #    test1 = rnorm / (Anorm*ynorm)    # ||r||  / (||A|| ||x||)
+        test1 = rnorm / (Anorm*ynorm)    # ||r||  / (||A|| ||x||)
         #if Anorm == 0:
         #    test2 = torch.inf
         #else:
-        #    test2 = root / Anorm            # ||Ar|| / (||A|| ||r||)
+        test2 = root / Anorm            # ||Ar|| / (||A|| ||r||)
 
         # Estimate  cond(A).
         # In this version we look at the diagonals of  R  in the

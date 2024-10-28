@@ -67,26 +67,16 @@ def apply_sparse_perm(M, permutation):
                             values=values, size=M.shape)
     return D 
 
-def do_minres(KKT, R, perm, perminv):
+def do_minres(A, KKT, R, perm, perminv, block_L=None, schur_diag=None, KKT_diag=None):
 
     print('do_minres')
 
-    if perm is not None:
-        KKTsp = to_scipy_coo(KKT[0])
-        Rsp = R[0].detach().cpu().numpy()
-        KKTcsr = KKTsp.tocsr()
-        permnp = perm.cpu().numpy()
-        KKTperm = KKTcsr[permnp[:,np.newaxis], permnp]
-        Rpermnp = Rsp[permnp]
+    num_var = KKT_diag.shape[0]
+    num_constraint = A.shape[1]
 
-        x0_torch = torch.zeros_like(R)
-
-        KKTperm_torch = to_torch_coo(KKTperm.tocoo()).unsqueeze(0).to(R.device)
-        Rperm_torch = torch.tensor(Rpermnp).unsqueeze(0).to(R.device)
-    else:
-        KKTperm_torch = KKT
-        Rperm_torch = R
-        x0_torch = torch.zeros_like(R)
+    KKT_diag = KKT_diag.unsqueeze(0)
+    # AG^{-1/2}
+    AG = A*(1/KKT_diag).sqrt()       
 
     #I = torch.sparse.spdiags(1e-4*torch.ones(KKTperm_torch.shape[1]), torch.tensor([0]), 
     #                         (KKT.shape[1], KKT.shape[1]), 
@@ -109,6 +99,11 @@ def do_minres(KKT, R, perm, perminv):
     #sol, info ,iter = LSMR.lsmr_bdp(KKT, R , block_L, block_size=300,stride=150, x0=x0_torch, #M=None, 
     #sol, info ,iter = SYMMLQ.symmlq(KKT, R , M=block_L, block_size=300,stride=150, x0=x0_torch, #M=None, 
 
+    if block_L is None:
+        print('building blocks')
+        block_L,info = MINRES.get_blocks(AG, block_size=config.block_size, stride=config.block_size//2)
+        #block_L,info = MINRES.get_blocks(AGperm_torch, block_size=config.block_size, stride=config.block_size//2)
+        print('end blocks, shape ', KKT.shape)
 
     #sol, info ,iter = spla.minres(KKTperm, Rpermnp ,x0=x0_torch[0].cpu().numpy(), #M=None, 
     #                  maxiter=10000, show=True, tol=1e-6)[:3]
@@ -118,12 +113,14 @@ def do_minres(KKT, R, perm, perminv):
     #sol, info ,iter = MINRES.minres(KKTperm_torch, Rperm_torch , M=block_L, block_size=100,
     #                                stride=100, x0=x0_torch, #M=None, 
     #                  maxiter=10000, rtol=1e-5)
+    x0_torch = torch.zeros_like(R)
 
-    _max = MINRES._get_tensor_max(Rperm_torch)
-    sol, info ,iter = MINRES.minres(KKTperm_torch, Rperm_torch,
+    #_max = MINRES._get_tensor_max(R)
+    sol, info ,iter = MINRES.minres(KKT, R, M1=block_L, M2=KKT_diag,  
+                                    block_size=config.block_size, stride=config.block_size//2,
     #sol, info ,iter = MINRES.minres(KKTperm_torch, Rperm_torch , M=block_L, block_size=100,
-                                    x0=x0_torch, #M=None, 
-                      maxiter=10000, rtol=1e-5, _max=_max)
+                                    mlens=(num_var, num_constraint),
+                                    x0=x0_torch, maxiter=10000, rtol=1e-5)
     #sol = Dinv*sol
     #sol = LSMR.apply_block_jacobi_M(block_L, sol, upper=False, block_size=50, stride=50)
 
@@ -140,8 +137,8 @@ def do_minres(KKT, R, perm, perminv):
     print('minres torch', info, iter)
                       
 
-    if perm is not None:
-        sol = sol[:,perminv]
+    #if perm is not None:
+    #    sol = sol[:,perminv]
 
     #sol = torch.tensor(sol).unsqueeze(0).to(R.device)
 
@@ -152,7 +149,7 @@ def do_minres(KKT, R, perm, perminv):
     print('residual  sumsq', sol.shape, residual)
     print('relative norm',  residual.sqrt()/d.sqrt())
 
-    return sol,info 
+    return sol,info,block_L
 
 
 def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
@@ -183,18 +180,18 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             num_eps = pde.var_set.num_added_eps_vars
             num_var = pde.var_set.num_vars
             #u = l
+            def get_diag(us=1e3, ds=1e-5, device='cpu'):
+                _P_diag = torch.ones(num_eps, dtype=rhs.dtype, device=device)*us
+                _P_zeros = torch.zeros(num_var, dtype=rhs.dtype, device=device) +ds
+                P_diag = torch.cat([_P_zeros, _P_diag])
+                return P_diag
 
             #torch bug: can't make diagonal tensor on gpu
             def make_kkt(us=1e3, ds=1e-5):
                 #P_diag = torch.ones(num_eps).type_as(rhs)*1e3
                 #P_zeros = torch.zeros(num_var).type_as(rhs) +1e-5
+                P_diag = get_diag(us=us, ds=ds, device='cpu')
 
-                P_diag = torch.ones(num_eps, dtype=rhs.dtype)*1e2
-                P_zeros = torch.zeros(num_var, dtype=rhs.dtype) #+1e-5
-
-                #P_diag = torch.ones(num_eps)*1e3
-                #P_zeros = torch.zeros(num_var) +1e-3
-                P_diag = torch.cat([P_zeros, P_diag])
                 G = torch.sparse.spdiags(P_diag, torch.tensor([0]), (P_diag.shape[0], P_diag.shape[0]), 
                                         layout=torch.sparse_coo)
 
@@ -209,36 +206,39 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
                 AtZ = torch.cat([A.transpose(1,2), Z], dim =1)
                 KKT = torch.cat([GA, AtZ], dim =2)
                 return G, KKT
-            G,KKT = make_kkt(us=1e3, ds=1e-4)
+            G,KKT = make_kkt(us=1e2, ds=0)
+            KKT_top = get_diag(us=1e3, ds=1e-5, device=rhs.device)
             R = torch.cat([torch.zeros(rhs.shape[0],G.shape[1]).type_as(rhs), -A_rhs], dim=1)
 
-            if config.permute and QPFunctionFn.perm is None:
-                KKTsp = to_scipy_coo(KKT[0])
-                Rsp = R[0].detach().cpu().numpy()
-                x0 = np.zeros_like(Rsp)
+            #if config.permute and QPFunctionFn.perm is None:
+            #    KKTsp = to_scipy_coo(KKT[0])
+            #    Rsp = R[0].detach().cpu().numpy()
+            #    x0 = np.zeros_like(Rsp)
 
-                print('do_csr')
-                KKTcsr = KKTsp.tocsr()
-                print('start perm')
-                perm = SPS.csgraph.reverse_cuthill_mckee(KKTcsr,symmetric_mode=True)
-                print('done computing perm')
-                perminv = np.empty_like(perm)
-                perminv[perm] = np.arange(perm.size)
+            #    print('do_csr')
+            #    KKTcsr = KKTsp.tocsr()
+            #    print('start perm')
+            #    perm = SPS.csgraph.reverse_cuthill_mckee(KKTcsr,symmetric_mode=True)
+            #    print('done computing perm')
+            #    perminv = np.empty_like(perm)
+            #    perminv[perm] = np.arange(perm.size)
 
-                QPFunctionFn.perm = torch.tensor(perm.copy()).to(R.device)
-                QPFunctionFn.perminv = torch.tensor(perminv).to(R.device)
+            #    QPFunctionFn.perm = torch.tensor(perm.copy()).to(R.device)
+            #    QPFunctionFn.perminv = torch.tensor(perminv).to(R.device)
 
 
-
-            sol, info = do_minres(KKT, R,perm=QPFunctionFn.perm, perminv=QPFunctionFn.perminv)
+            sol, info, block_L = do_minres(A, KKT, R,perm=None, perminv=None,
+                                  schur_diag=None, KKT_diag=KKT_top)
             print('minres ', info)
+            #sol, info = do_minres(KKT, R,perm=QPFunctionFn.perm, perminv=QPFunctionFn.perminv)
+            #print('minres ', info)
             
 
             x = -sol[:, :num_var+num_eps]
             lam = sol[:, num_var+num_eps:]
             
 
-            ctx.save_for_backward(A, None, x, lam, KKT)
+            ctx.save_for_backward(A, x, lam, KKT, block_L, KKT_top)
             
             #if not double_ret:
             #    x = x.float()
@@ -247,7 +247,7 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
         
         @staticmethod
         def backward(ctx, dl_dzhat, dl_dlam):
-            A,P_diag_inv, _x, _y, KKT = ctx.saved_tensors
+            A,_x, _y, KKT, block_L,KKT_top = ctx.saved_tensors
             #M_list = ctx.M_list
             #At = A.transpose(1,2)
             #n = A.shape[1]
@@ -262,7 +262,10 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             R = torch.cat([dl_dzhat, z], dim=-1)
             
 
-            sol, info = do_minres(KKT, R,perm=QPFunctionFn.perm, perminv=QPFunctionFn.perminv)
+            #sol, info = do_minres(KKT, R,perm=QPFunctionFn.perm, perminv=QPFunctionFn.perminv)
+
+            sol, info,_  = do_minres(A, KKT, R,perm=None, perminv=None, block_L=block_L,
+                                  schur_diag=None, KKT_diag=KKT_top)
             print('minres grad ', info)
 
 

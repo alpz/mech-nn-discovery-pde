@@ -32,11 +32,12 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import discovery.plot as P
 
-
+#cuda=True
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def solve():
-    bs = 2
+    bs = 1
     coord_dims = (32,32)
     n_ind_dim=1
     iv_list = [(0,0, [0,0],[0,coord_dims[1]-2]), 
@@ -57,17 +58,17 @@ def solve():
     #self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
     #self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
 
-    steps0 = torch.logit(t_step_size*torch.ones(1,1,1))
-    steps1 = torch.logit(x_step_size*torch.ones(1,1,1))
+    steps0 = torch.logit(t_step_size*torch.ones(1,1,1)).to(device)
+    steps1 = torch.logit(x_step_size*torch.ones(1,1,1)).to(device)
 
-    steps0 = steps0.expand(bs,n_ind_dim, coord_dims[0]-1)
-    steps1 = steps1.expand(bs,n_ind_dim, coord_dims[1]-1)
+    steps0 = steps0.expand(-1,n_ind_dim, coord_dims[0]-1)
+    steps1 = steps1.expand(-1,n_ind_dim, coord_dims[1]-1)
     steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.1)
     steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.1)
     steps_list = [steps0, steps1]
 
 
-    coeffs = torch.zeros((bs, n_ind_dim, pde.grid_size, pde.n_orders))
+    coeffs = torch.zeros((bs, n_ind_dim, pde.grid_size, pde.n_orders), device=device)
     #u, u_t, u_x, u_tt, u_xx
     #u_tt + u_xx = 0
     coeffs[..., 3] = 1.
@@ -76,11 +77,12 @@ def solve():
 
     #up = up.reshape(bs, *self.coord_dims)
 
-    rhs = torch.zeros(bs, n_ind_dim, *coord_dims)
+    #rhs = torch.zeros(bs, n_ind_dim, *coord_dims)
+    rhs = torch.zeros(bs, *coord_dims, device=device)
 
     #iv
-    x_steps = torch.linspace(0, 2*np.pi, coord_dims[0])
-    y_steps = torch.linspace(0, 2*np.pi, coord_dims[1])
+    x_steps = torch.linspace(0, 2*np.pi, coord_dims[0], device=device)
+    y_steps = torch.linspace(0, 2*np.pi, coord_dims[1], device=device)
 
     x_bc = torch.sin(x_steps) 
     y_bc = torch.sin(y_steps) 
@@ -90,20 +92,21 @@ def solve():
     iv2 = x_bc[1:-1]
     iv3 = y_bc[:]
 
-    iv_rhs = torch.cat([iv0,iv1, iv2, iv3], dim =-1)
-    iv_rhs = torch.stack([iv_rhs,iv_rhs],dim=0)
+    iv_rhs = torch.cat([iv0,iv1, iv2, iv3], dim =-1).to(device)
+    #iv_rhs = torch.stack([iv_rhs,iv_rhs],dim=0)
 
     u0,_,eps = pde(coeffs, rhs, iv_rhs, steps_list)
     
     print(eps.max())
     print(u0.shape)
-    u0 = u0.reshape(2,*coord_dims)
+    u0 = u0.reshape(1,*coord_dims)
     return u0
 
 #%%
 u0=solve()
 # %%
 
+u0 = u0.detach().cpu().numpy()
 #plot = plt.pcolormesh(u0, cmap='RdBu', shading='gouraud')
 #plot = plt.pcolormesh(u0, cmap='RdBu', shading='gouraud')
 plot = plt.pcolormesh(u0[0], cmap='viridis', shading='gouraud')

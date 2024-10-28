@@ -30,15 +30,17 @@ import os
 from scipy.special import logit
 import torch.nn.functional as F
 from tqdm import tqdm
-import discovery.plot as P
+#import discovery.plot as P
 
-
+cuda=True
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def solve():
     bs = 1
     coord_dims = (32,32,32)
     #coord_dims = (10,10,10)
+    #coord_dims = (16,16,16)
     # coord, mi_index, range_begin, range_end (inclusive)
     iv_list = [(0,0, [0,0,0],[0,coord_dims[1]-1, coord_dims[2]-1]), 
                 (1,0, [1,0,0], [coord_dims[0]-1, 0, coord_dims[2]-1 ]), 
@@ -50,7 +52,7 @@ def solve():
                 ]
 
     pde = PDEINDLayerEPS(bs=1, coord_dims=coord_dims, order=2, n_ind_dim=1, n_iv=1, 
-                        init_index_mi_list=iv_list,  n_iv_steps=1, double_ret=True, solver_dbl=True)
+                        init_index_mi_list=iv_list,  n_iv_steps=1, double_ret=True, solver_dbl=True, device='gpu:0')
 
 
     t_step_size = 0.1 
@@ -59,9 +61,9 @@ def solve():
     #self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
     #self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
 
-    steps0 = torch.logit(t_step_size*torch.ones(1,1))
-    steps1 = torch.logit(x_step_size*torch.ones(1,1))
-    steps2 = torch.logit(y_step_size*torch.ones(1,1))
+    steps0 = torch.logit(t_step_size*torch.ones(1,1)).cuda()
+    steps1 = torch.logit(x_step_size*torch.ones(1,1)).cuda()
+    steps2 = torch.logit(y_step_size*torch.ones(1,1)).cuda()
 
     steps0 = steps0.expand(-1, coord_dims[0]-1)
     steps1 = steps1.expand(-1, coord_dims[1]-1)
@@ -72,7 +74,7 @@ def solve():
     steps_list = [steps0, steps1, steps2]
 
 
-    coeffs = torch.zeros((bs, pde.grid_size, pde.n_orders))
+    coeffs = torch.zeros((bs, pde.grid_size, pde.n_orders)).cuda()
     #u, u_t, u_x, u_tt, u_xx
     #u_zz + u_xx + u_yy= 0
     coeffs[..., 4] = 1.
@@ -81,12 +83,12 @@ def solve():
 
     ##up = up.reshape(bs, *self.coord_dims)
 
-    rhs = torch.zeros(bs, *coord_dims)
+    rhs = torch.zeros(bs, *coord_dims).cuda()
 
     #iv
-    x_grid = torch.linspace(0, 2*np.pi, coord_dims[0])
-    y_grid = torch.linspace(0, 2*np.pi, coord_dims[1])
-    z_grid = torch.linspace(0, 2*np.pi, coord_dims[2])
+    x_grid = torch.linspace(0, 2*np.pi, coord_dims[0]).cuda()
+    y_grid = torch.linspace(0, 2*np.pi, coord_dims[1]).cuda()
+    z_grid = torch.linspace(0, 2*np.pi, coord_dims[2]).cuda()
 
     #xy_steps = x_steps.view(-1, 1).expand(-1, coord_dims[1]-1, coord_dims[2]-1 )
     #yz_steps = y_steps.view(-1,1).expand(coord_dims[0]-1, -1, coord_dims[2]-1)
@@ -110,24 +112,26 @@ def solve():
     iv4 = torch.sin(xz_end[0] + xz_end[1]).reshape(-1)
     iv5 = torch.sin(xy_end[0] + xy_end[1]).reshape(-1)
     
-    iv_rhs = torch.cat([iv0,iv1, iv2, iv3, iv4, iv5], dim =0)
+    iv_rhs = torch.cat([iv0,iv1, iv2, iv3, iv4, iv5], dim =0).cuda()
 
+    print('start pde')
     u0,_,eps = pde(coeffs, rhs, iv_rhs, steps_list)
     
-    print(eps.max())
+    print(eps.abs().max())
     print(u0.shape)
     u0 = u0.reshape(*coord_dims)
     return u0
 
 #%%
 u0=solve()
-# %%
-
-#plot = plt.pcolormesh(u0, cmap='RdBu', shading='gouraud')
-#plot = plt.pcolormesh(u0, cmap='RdBu', shading='gouraud')
-#plot = plt.pcolormesh(u0, cmap='viridis', shading='gouraud')
 
 # %%
 print(u0.shape)
 
+
+# %%
+
+#plot = plt.pcolormesh(u0, cmap='RdBu', shading='gouraud')
+#plot = plt.pcolormesh(u0, cmap='RdBu', shading='gouraud')
+plot = plt.pcolormesh(u0[2], cmap='viridis', shading='gouraud')
 # %%

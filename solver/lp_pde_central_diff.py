@@ -553,7 +553,7 @@ class PDESYSLP(nn.Module):
 
             #TODO check order scale
             #diff between maximum number of taylor terms (order+1) and current terms
-            order_diff =1 # self.order+1- len(mi_index_list)
+            order_diff =5 # self.order+1- len(mi_index_list)
             for _j,ts_mi_index in enumerate(mi_index_list):
                 j = _j +order_diff
                 #h = self.step_size**(j)
