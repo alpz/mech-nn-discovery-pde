@@ -69,7 +69,7 @@ def apply_sparse_perm(M, permutation):
 
 def do_minres(KKT, R, perm, perminv):
 
-    print('do_symlq')
+    print('do_minres')
 
     if perm is not None:
         KKTsp = to_scipy_coo(KKT[0])

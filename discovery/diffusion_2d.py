@@ -211,21 +211,6 @@ class Model(nn.Module):
         self.n_ind_dim = 1
         self.n_dim = 1
 
-
-        #Step size is fixed. Make this a parameter for learned step
-        #self.step_size = (logit(0.01)*torch.ones(1,1,1))
-        #_step_size = (logit(0.01)*torch.ones(1,1,1))
-        #_step_size = (logit(0.001)*torch.ones(1,1,self.n_step_per_batch-1))
-        #self.step_size = nn.Parameter(_step_size)
-        #self.param_in = nn.Parameter(torch.randn(1,64))
-        #self.param_time = nn.Parameter(torch.randn(1,64))
-
-
-        #form of equation u_t + 0*u_tt + p(x,t)u_x + q(x,t)u_xx = 0
-
-        #init_coeffs = torch.rand(1, self.n_ind_dim, 1, 2, dtype=dtype)
-        #self.init_coeffs = nn.Parameter(init_coeffs)
-
         self.coord_dims = solver_dim
 
         self.iv_list = [(0,0, [0,0],[0,self.coord_dims[1]-1]), 
@@ -238,19 +223,23 @@ class Model(nn.Module):
                         #(1,3, [0,0], [self.coord_dims[0]-1, 0])
                         #(1,0, [1,self.coord_dims[1]-1], [self.coord_dims[0]-1, self.coord_dims[1]-1])
                         ]
+
+        self.iv_list = [(0,0, [0,0,0],[0,self.coord_dims[1]-1,self.coord_dims[2]-1]), 
+                        (1,0, [1,0,0], [self.coord_dims[0]-1, 0, self.coord_dims[2]-1]), 
+                        (2,0, [1,1,0], [self.coord_dims[0]-1, self.coord_dims[1]-1, 0]), 
+
+                        (0,0, [self.coord_dims[0]-1,1, 1],[self.coord_dims[0]-1,self.coord_dims[1]-1, self.coord_dims[2]-1]), 
+                        (1,0, [1,self.coord_dims[1]-1,1], [self.coord_dims[0]-2, self.coord_dims[1]-1, self.coord_dims[2]-1]),
+                        (2,0, [1,1, self.coord_dims[2]-1], [self.coord_dims[0]-2, self.coord_dims[1]-2, self.coord_dims[2]-1])
+                        ]
         #self.iv_list = []
         #self.len_iv = 2*self.coord_dims[1] + 2*(self.coord_dims[0]-2 + self.coord_dims[0]-2)
-        self.len_iv = [self.coord_dims[1],self.coord_dims[1], self.coord_dims[0]-2, self.coord_dims[0]-2]
+        #self.len_iv = [self.coord_dims[1],self.coord_dims[1], self.coord_dims[0]-2, self.coord_dims[0]-2]
         #self.len_iv = 2*self.coord_dims[1] + (self.coord_dims[0]-2 + self.coord_dims[0]-2)
         #self.len_iv = self.coord_dims[1] + 2*(self.coord_dims[0]-1)
         #self.len_iv = self.coord_dims[1] + (self.coord_dims[0]-2 + self.coord_dims[0]-2)
         #self.len_iv = self.coord_dims[1] + (self.coord_dims[0]-1 + self.coord_dims[0]-1)
 
-
-        self.n_patches_t = 1 #ds.data.shape[0]//self.coord_dims[0]
-        self.n_patches_x = 1 #ds.data.shape[1]//self.coord_dims[1]
-        self.n_patches = self.n_patches_t*self.n_patches_x
-        print('num patches ', self.n_patches)
 
         self.pde = PDEINDLayerEPS(bs=bs*self.n_patches, coord_dims=self.coord_dims, order=self.order, n_ind_dim=self.n_dim, 
                                   n_iv=self.n_iv, init_index_mi_list=self.iv_list,  
@@ -269,24 +258,6 @@ class Model(nn.Module):
         self.step_mlp_list = nn.ModuleList() 
 
         for i in range (1):
-            #self.iv_conv1d_list.append(
-            #    nn.Sequential(
-            #        nn.Conv1d(32, 64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            #        nn.ReLU(),
-            #        nn.Conv1d(64,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            #        nn.ReLU(),
-            #        nn.Conv1d(128,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            #        nn.ReLU(),
-            #        nn.Conv1d(256,256, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            #        nn.ReLU(),
-            #        nn.Conv1d(256,128, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            #        nn.ReLU(),
-            #        nn.Conv1d(128,64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            #        nn.ReLU(),
-            #        nn.Conv1d(64,1, kernel_size=5, padding=2, stride=1, padding_mode=pm),
-            #        )
-            #)
-
             self.iv_conv2d_list.append(
                 nn.Sequential(
                     nn.Conv2d(1, 64, kernel_size=5, padding=2, stride=1, padding_mode=pm),
