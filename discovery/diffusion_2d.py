@@ -46,7 +46,7 @@ cuda=True
 #T = 2000
 #n_step_per_batch = T
 #solver_dim=(10,256)
-solver_dim=(32,32)
+solver_dim=(10, 32,32)
 #solver_dim=(16,16)
 #solver_dim=(30,64)
 #solver_dim=(10,10)
@@ -61,29 +61,29 @@ noise=False
 L.info(f'Solver dim {solver_dim} ')
 
 
-class BurgersDataset(Dataset):
-    def __init__(self, solver_dim=(32,32)):
+class DiffusionDataset(Dataset):
+    def __init__(self, solver_dim=(10,32,32)):
         #self.n_step_per_batch=n_step_per_batch
          #self.n_step=n_step
 
         self.down_sample = 1
 
-        data=loadmat(os.path.join(PDEConfig.sindpy_data, 'burgers.mat'))
+        data=np.load(os.path.join('gen', 'diffusion.npy'))
 
-        print(data.keys())
-        t = torch.tensor(np.array(data['t'])).squeeze()
-        x = torch.tensor(np.array(data['x'])).squeeze()
+        #print(data.keys())
+        #t = torch.tensor(np.array(data['t'])).squeeze()
+        #x = torch.tensor(np.array(data['x'])).squeeze()
 
-        self._t = t
-        self._x = x
+        #self._t = t
+        #self._x = x
 
-        self.t_step = t[1] - t[0]
-        self.x_step = x[1] - x[0]
+        #self.t_step = t[1] - t[0]
+        #self.x_step = x[1] - x[0]
 
-        self.t = t.unsqueeze(1).expand(-1, x.shape[0])
-        self.x = x.unsqueeze(0).expand(t.shape[0],-1)
+        #self.t = t.unsqueeze(1).expand(-1, x.shape[0])
+        #self.x = x.unsqueeze(0).expand(t.shape[0],-1)
 
-        print('t x', self.t.shape, self.x.shape)
+        #print('t x', self.t.shape, self.x.shape)
 
         #self.t_subsample = 10
         #self.x_subsample = 1
@@ -93,14 +93,15 @@ class BurgersDataset(Dataset):
 
 
         #L.info(f'subsample {self.t_subsample}, {self.x_subsample} ')
+        self.y_subsample =solver_dim[2]#//2
         self.x_subsample =solver_dim[1]#//2
         self.t_subsample =solver_dim[0]#//2
 
-        print(self.t.shape)
-        print(self.x.shape)
-        print(data['usol'].shape)
+        #print(self.t.shape)
+        #print(self.x.shape)
+        #print(self.y.shape)
+        print(data.shape)
 
-        data = np.real(data['usol'])
 
         if noise:
             print('adding noise')
@@ -117,17 +118,21 @@ class BurgersDataset(Dataset):
 
         num_t_idx = self.data_dim[0] #- self.solver_dim[0] + 1
         num_x_idx = self.data_dim[1] #- self.solver_dim[1] + 1
+        num_y_idx = self.data_dim[2] #- self.solver_dim[1] + 1
 
 
         self.num_t_idx = num_t_idx//self.t_subsample  #+ 1
         self.num_x_idx = num_x_idx//self.x_subsample  #+ 1
+        self.num_y_idx = num_y_idx//self.y_subsample  #+ 1
 
         if self.t_subsample < self.solver_dim[0]:
             self.num_t_idx = self.num_t_idx - self.solver_dim[0]//self.t_subsample
         if self.x_subsample < self.solver_dim[1]:
             self.num_x_idx = self.num_x_idx - self.solver_dim[1]//self.x_subsample
+        if self.y_subsample < self.solver_dim[2]:
+            self.num_y_idx = self.num_y_idx - self.solver_dim[1]//self.y_subsample
 
-        self.length = self.num_t_idx*self.num_x_idx
+        self.length = self.num_t_idx*self.num_x_idx*self.num_y_idx
         #self.length = 1 #self.num_t_idx*self.num_x_idx
 
 
@@ -136,28 +141,32 @@ class BurgersDataset(Dataset):
 
     def __getitem__(self, idx):
         #return self.data, self.t, self.x
-        (t_idx, x_idx) = np.unravel_index(idx, (self.num_t_idx, self.num_x_idx))
+        (t_idx, x_idx,y_idx) = np.unravel_index(idx, (self.num_t_idx, self.num_x_idx, self.num_y_idx))
 
         #t_idx = t_idx*solver_dim[0]
         #x_idx = x_idx*solver_dim[1]
 
         t_idx = t_idx*self.t_subsample
         x_idx = x_idx*self.x_subsample
+        y_idx = y_idx*self.y_subsample
 
 
         t_step = solver_dim[0]
         x_step = solver_dim[1]
+        y_step = solver_dim[2]
 
         assert(t_idx + t_step <= self.data_dim[0])
         assert(x_idx + x_step <= self.data_dim[1])
+        assert(y_idx + y_step <= self.data_dim[2])
 
-        t = self.t[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
-        x = self.x[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+        #t = self.t[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+        #x = self.x[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+        #x = self.x[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
 
-        data = self.data[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+        data = self.data[t_idx:t_idx+t_step, x_idx:x_idx+x_step, y_idx:y_idx+y_step]
         #print(data.shape)
 
-        return data, t, x
+        return data
 
 
 
@@ -165,7 +174,7 @@ class BurgersDataset(Dataset):
 #%%
 
 #ds = BurgersDataset(n_step=T,n_step_per_batch=n_step_per_batch)#.generate()
-ds = BurgersDataset(solver_dim=solver_dim)#.generate()
+ds = DiffusionDataset(solver_dim=solver_dim)#.generate()
 
 #
 ##%%

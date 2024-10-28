@@ -114,10 +114,16 @@ def do_minres(KKT, R, perm, perminv):
     #                  maxiter=10000, show=True, tol=1e-6)[:3]
     
 
-    sol, info ,iter = MINRES.minres(KKTperm_torch, Rperm_torch , M=None, block_size=10,
+    #sol, info ,iter = MINRES.minres(KKTperm_torch, Rperm_torch , M=None, block_size=10,
     #sol, info ,iter = MINRES.minres(KKTperm_torch, Rperm_torch , M=block_L, block_size=100,
-                                    stride=100, x0=x0_torch, #M=None, 
-                      maxiter=10000, rtol=1e-5)
+    #                                stride=100, x0=x0_torch, #M=None, 
+    #                  maxiter=10000, rtol=1e-5)
+
+    _max = MINRES._get_tensor_max(Rperm_torch)
+    sol, info ,iter = MINRES.minres(KKTperm_torch, Rperm_torch,
+    #sol, info ,iter = MINRES.minres(KKTperm_torch, Rperm_torch , M=block_L, block_size=100,
+                                    x0=x0_torch, #M=None, 
+                      maxiter=10000, rtol=1e-5, _max=_max)
     #sol = Dinv*sol
     #sol = LSMR.apply_block_jacobi_M(block_L, sol, upper=False, block_size=50, stride=50)
 

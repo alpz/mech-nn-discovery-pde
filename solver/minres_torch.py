@@ -1,13 +1,44 @@
 import torch
 import numpy as np
+from typing import Tuple
 
+def _get_tensor_eps(
+    x: torch.Tensor,
+    eps16: float = torch.finfo(torch.float16).eps,
+    eps32: float = torch.finfo(torch.float32).eps,
+    eps64: float = torch.finfo(torch.float64).eps,
+) -> float:
+    if x.dtype == torch.float16:
+        return eps16
+    elif x.dtype == torch.float32:
+        return eps32
+    elif x.dtype == torch.float64:
+        return eps64
+    else:
+        raise RuntimeError(f"Expected x to be floating-point, got {x.dtype}")
 
+def _get_tensor_max(
+    x: torch.Tensor,
+    eps16: float = torch.finfo(torch.float16).max,
+    eps32: float = torch.finfo(torch.float32).max,
+    eps64: float = torch.finfo(torch.float64).max,
+) -> float:
+    if x.dtype == torch.float16:
+        return eps16
+    elif x.dtype == torch.float32:
+        return eps32
+    elif x.dtype == torch.float64:
+        return eps64
+    else:
+        raise RuntimeError(f"Expected x to be floating-point, got {x.dtype}")
 
-def machine_epsilon():
-    """Return the machine epsilon in double precision."""
-    return np.finfo(np.double).eps
+#@torch.jit.script
+#def machine_epsilon():
+#    """Return the machine epsilon in double precision."""
+#    #return torch.finfo(torch.double).eps
+#    return 1e
 
-def apply_block_jacobi_M(Blocks, x:torch.Tensor, upper:bool=False, block_size:int=100, stride:int=100):
+def apply_block_jacobi_M(Blocks:Tuple[torch.Tensor, torch.Tensor], x:torch.Tensor, upper:bool=False, block_size:int=100, stride:int=100):
 
     LU, pivots = Blocks
     Blocks = LU
@@ -201,9 +232,16 @@ def get_blocks(M, block_size=100, stride=100):
 #
 #    return (LU, pivots)
 
-def minres(A, b, x0, M=None, rtol=1e-6, maxiter=100,
-           block_size:int=100, stride:int=100, show=False
-           ):
+#def minres(A:torch.Tensor, b:torch.Tensor, x0:torch.Tensor, M=None, rtol=1e-6, maxiter=100,
+#           block_size:int=100, stride:int=100, show=False
+#           ):
+
+@torch.jit.script
+def minres(A:torch.Tensor, b:torch.Tensor, x0:torch.Tensor,rtol:float=1e-6, maxiter:int=100,
+           _max:float=0):
+#def minres(A:torch.Tensor, b:torch.Tensor, x0:torch.Tensor, M:Tuple[torch.Tensor,torch.Tensor]=None, rtol:float=1e-6, maxiter:int=100,
+#           block_size:int=100, stride:int=100):
+
 
     #A = A[0]
     #b = b[0]
@@ -214,15 +252,15 @@ def minres(A, b, x0, M=None, rtol=1e-6, maxiter=100,
 
     istop = 0
     itn = 0
-    Anorm = 0
-    Acond = 0
-    rnorm = 0
-    ynorm = 0
+    Anorm = torch.zeros(bs, device=b.device)
+    Acond =torch.zeros(bs, device=b.device) 
+    rnorm = torch.zeros(bs, device=b.device)
+    ynorm = torch.zeros(bs, device=b.device)
 
     done = torch.zeros(bs,dtype=torch.int32, device=b.device)
 
 
-    eps = torch.tensor(machine_epsilon(), device=b.device)
+    eps = torch.tensor(_get_tensor_eps(b), device=b.device)
 
     x = torch.zeros_like(x0)
     
@@ -234,13 +272,13 @@ def minres(A, b, x0, M=None, rtol=1e-6, maxiter=100,
 
         r1 = b - torch.bmm(A, x.unsqueeze(-1)).squeeze(-1)
     
-    if M is not None:
+    #if M is not None:
 
-        #y = r1/M
-        y = apply_block_jacobi_M(M, r1, upper=False, 
-                                  block_size=block_size, stride=stride)
-    else:
-        y = r1
+    #    #y = r1/M
+    #    y = apply_block_jacobi_M(M, r1, upper=False, 
+    #                              block_size=block_size, stride=stride)
+    #else:
+    y = r1
     #y = psolve(r1)
     #precond
 
@@ -260,19 +298,21 @@ def minres(A, b, x0, M=None, rtol=1e-6, maxiter=100,
     beta1 = torch.sqrt(beta1)
 
      # Initialize other quantities
-    oldb = 0
+    oldb = torch.zeros(bs, device=b.device)
     beta = beta1
-    dbar = 0
+    dbar = torch.zeros(bs, device=b.device)
     epsln = torch.zeros(bs, device=b.device)
     qrnorm = beta1
     phibar = beta1
     rhs1 = beta1
-    rhs2 = 0
-    tnorm2 = 0
-    gmax = torch.tensor(0, device=b.device)
-    gmin = torch.tensor(np.finfo(np.float64).max, device=b.device)
-    cs = -1
-    sn = 0
+    rhs2 = torch.zeros_like(rhs1)
+    tnorm2 = torch.zeros(bs, device=b.device)
+    #gmax = torch.tensor(0, device=b.device)
+    #gmin = torch.tensor(np.finfo(np.float64).max, device=b.device)
+    #gmin = torch.tensor((_get_tensor_max(b)), device=b.device)
+    #gmin = torch.tensor(_max, device=b.device)
+    cs = -1*torch.ones(bs, device=b.device)
+    sn = torch.zeros(bs, device=b.device)
     w = torch.zeros_like(b)
     w2 = torch.zeros_like(b)
     r2 = r1
@@ -297,13 +337,13 @@ def minres(A, b, x0, M=None, rtol=1e-6, maxiter=100,
         r1 = r2
         r2 = y
         #y = psolve(r2)
-        if M is not None:
-            #pass
-            y = apply_block_jacobi_M(M, r2, upper=False, 
-                                  block_size=block_size, stride=stride)
-            #y = r2/M
-        else:
-            y = r2
+        #if M is not None:
+        #    #pass
+        #    y = apply_block_jacobi_M(M, r2, upper=False, 
+        #                          block_size=block_size, stride=stride)
+        #    #y = r2/M
+        #else:
+        y = r2
         oldb = beta
         #beta = inner(r2,y)
         beta = (r2*y).sum(dim=-1)
@@ -355,8 +395,8 @@ def minres(A, b, x0, M=None, rtol=1e-6, maxiter=100,
         #gmax = torch.maximum(torch.tensor(gmax, device=b.device), gamma)
         #gmin = torch.minimum(torch.tensor(gmin, device=b.device), gamma)
 
-        gmax = torch.maximum(gmax, gamma)
-        gmin = torch.minimum(gmin, gamma)
+        #gmax = torch.maximum(gmax, gamma)
+        #gmin = torch.minimum(gmin, gamma)
         z = rhs1 / gamma
         rhs1 = rhs2 - delta*z
         rhs2 = - epsln*z
@@ -391,7 +431,7 @@ def minres(A, b, x0, M=None, rtol=1e-6, maxiter=100,
         # where H is the tridiagonal matrix from Lanczos with one
         # extra row, beta(k+1) e_k^T.
 
-        Acond = gmax/gmin
+        #Acond = gmax/gmin
 
         # See if any of the stopping criteria are satisfied.
         # In rare cases, istop is already -1 from above (Abar = const*I).
