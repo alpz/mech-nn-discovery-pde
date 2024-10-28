@@ -178,7 +178,7 @@ def get_blocks(M, block_size=100, stride=100):
         block_indices[1] = block_indices[1] - begin
         block_values = values[mask]
 
-        block = torch.sparse_coo_tensor(block_indices, block_values, size=(1, nrow, M.shape[2]), 
+        block = torch.sparse_coo_tensor(block_indices, block_values, size=(M.shape[0], nrow, M.shape[2]), 
                                         check_invariants=True)
 
         block = get_dense_block(block, block_size=block_size, stride=stride)
