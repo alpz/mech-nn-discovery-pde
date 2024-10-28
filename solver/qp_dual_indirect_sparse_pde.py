@@ -143,8 +143,8 @@ def do_minres(A, KKT, R, perm, perminv, block_L=None, schur_diag=None, KKT_diag=
     #sol = torch.tensor(sol).unsqueeze(0).to(R.device)
 
     residual = R -torch.bmm(KKT,sol.unsqueeze(2)).squeeze(2)
-    residual = residual.pow(2).sum()
-    d = R.pow(2).sum()
+    residual = residual.pow(2).sum(dim=-1)[0]
+    d = R.pow(2).sum(dim=-1)[0]
     #residual = Rperm_torch -torch.bmm(KKTperm_torch,sol.unsqueeze(2)).squeeze(2)
     print('residual  sumsq', sol.shape, residual)
     print('relative norm',  residual.sqrt()/d.sqrt())
@@ -206,9 +206,32 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
                 AtZ = torch.cat([A.transpose(1,2), Z], dim =1)
                 KKT = torch.cat([GA, AtZ], dim =2)
                 return G, KKT
-            G,KKT = make_kkt(us=1e2, ds=0)
+            G,KKT = make_kkt(us=1e3, ds=1e-5)
             KKT_top = get_diag(us=1e3, ds=1e-5, device=rhs.device)
             R = torch.cat([torch.zeros(rhs.shape[0],G.shape[1]).type_as(rhs), -A_rhs], dim=1)
+
+
+            if config.permute and QPFunctionFn.perm is None:
+                AAt = torch.sparse.mm(A[0], A[0].transpose(0,1))
+                AAtcsr = to_scipy_coo(AAt).tocsr()
+                perm = SPS.csgraph.reverse_cuthill_mckee(AAtcsr,symmetric_mode=True)
+                print('done computing perm')
+
+                #KKTsp = to_scipy_coo(KKT[0])
+                #Rsp = R[0].detach().cpu().numpy()
+                #x0 = np.zeros_like(Rsp)
+
+                #print('do_csr')
+                #KKTcsr = KKTsp.tocsr()
+                #print('start perm')
+                #perm = SPS.csgraph.reverse_cuthill_mckee(KKTcsr,symmetric_mode=True)
+                #print('done computing perm')
+
+                perminv = np.empty_like(perm)
+                perminv[perm] = np.arange(perm.size)
+
+                QPFunctionFn.perm = torch.tensor(perm.copy()).to(R.device)
+                QPFunctionFn.perminv = torch.tensor(perminv).to(R.device)
 
             #if config.permute and QPFunctionFn.perm is None:
             #    KKTsp = to_scipy_coo(KKT[0])

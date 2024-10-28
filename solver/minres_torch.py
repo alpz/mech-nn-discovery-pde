@@ -83,7 +83,7 @@ def apply_block_jacobi_M(Blocks, x:torch.Tensor, upper:bool=False, block_size:in
 
     d = d.reshape(-1, len_x)
     #weight for overlap
-    d[:, step_size:-step_size] = 1/2*d[:, step_size:-step_size]
+    #d[:, step_size:-step_size] = 1/2*d[:, step_size:-step_size]
     #upto last block
     z[:, :len_x] = z[:, :len_x] + d
 
