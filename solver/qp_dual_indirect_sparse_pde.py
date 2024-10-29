@@ -45,6 +45,28 @@ def to_scipy_coo(KKTs):
     KKTs = SPS.coo_matrix((values, (indices[0], indices[1]) ), shape = shape)
     return KKTs
 
+def apply_sparse_row_perm(M, permutation):
+    #M = M[0].to_dense()[perm.unsqueeze(1), perm].unsqueeze(0)
+    #return M
+    #M = M.coalesce()
+    indices=M.indices().clone()
+    indices2=M.indices().clone()
+    values=M.values().clone()
+    rows = indices[1]
+    #cols = indices[2]
+    permuted_rows = permutation[rows]
+    #permuted_cols = permutation[cols]
+    indices2[1] = permuted_rows
+    #indices2[2] = permuted_cols
+
+    #print('rows ', rows)
+    #print('perm ', permutation)
+    #print('permed ', permuted_rows)
+
+    D = torch.sparse_coo_tensor(indices=indices2, 
+                            values=values, size=M.shape)
+    return D 
+
 def apply_sparse_perm(M, permutation):
     #M = M[0].to_dense()[perm.unsqueeze(1), perm].unsqueeze(0)
     #return M

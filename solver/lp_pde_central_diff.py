@@ -346,6 +346,7 @@ class PDESYSLP(nn.Module):
         self.num_added_initial_constraints = 0
         self.num_added_derivative_constraints = 0
 
+
         self.bs = bs
         self.dtype = dtype
 
@@ -354,6 +355,9 @@ class PDESYSLP(nn.Module):
 
         self.var_set = QPVariableSet(self.coord_dims, self.order)
 
+
+        #grid constraint list for row permutation. assumes order
+        self.grid_constraint_list = [list() for i in range(self.var_set.grid_size)]
 
         #### sparse constraint arrays
         # constraint coefficients
@@ -399,7 +403,7 @@ class PDESYSLP(nn.Module):
         #x = x.reshape(-1, *self.multi_index_shape)
         return x
 
-    def add_constraint(self, var_list, values, rhs, constraint_type):
+    def add_constraint(self, var_list, values, rhs, constraint_type, grid_num):
         """ var_list: list of multindex tuples or eps enum """
 
         if constraint_type == ConstraintType.Equation:
@@ -430,6 +434,11 @@ class PDESYSLP(nn.Module):
         
         self.rhs_dict[constraint_type].append(rhs)
 
+        ###########store list of constraints per grid num##
+        print(grid_num, self.num_added_constraints)
+        self.grid_constraint_list[grid_num].append(self.num_added_constraints)
+        ###########
+
         self.num_added_constraints = self.num_added_constraints+1
         if constraint_type == ConstraintType.Equation:
             self.num_added_equation_constraints += 1
@@ -437,6 +446,7 @@ class PDESYSLP(nn.Module):
             self.num_added_initial_constraints += 1
         elif constraint_type == ConstraintType.Derivative:
             self.num_added_derivative_constraints += 1
+
 
     #build constraint string representations for check
     def repr_eq(self, rows=None, cols=None, rhs=None, values=None, type=ConstraintType.Equation):
@@ -497,13 +507,14 @@ class PDESYSLP(nn.Module):
 
     def build_equation_constraints(self):
         #for grid_index in self.var_set.grid_indices:
-        for grid_index in self.var_set.grid_indices:
+        for grid_num,grid_index in enumerate(self.var_set.grid_indices):
             var_list = []
             val_list = []
             for mi_index in self.var_set.mi_indices:
                 var_list.append((grid_index, mi_index))
                 val_list.append(Const.PH)
-            self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Equation)
+            self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Equation,
+                                grid_num=grid_num)
 
     def tc_list_append(self, coord, exp, denom, forward=True):
         """taylor constraint lists"""
@@ -522,7 +533,7 @@ class PDESYSLP(nn.Module):
         self.back_grad_step_denom_dict = {i: torch.tensor(self.back_grad_step_denom_dict[i]) for i in range(self.n_coord)}
 
 
-    def _add_forward_backward_constraint(self, coord, grid_index, forward=True):
+    def _add_forward_backward_constraint(self, coord, grid_index, grid_num, forward=True):
         #Keep track of how many times a step has to repeat for each allowed (coord,grid_index). 
         tc_count = 0
         # add one constraint for each non-maximal multiindex
@@ -600,29 +611,29 @@ class PDESYSLP(nn.Module):
                 self.tc_list_append(coord, order_diff, d, forward=forward)
                 tc_count = tc_count+1
 
-            self.add_constraint(var_list=var_list, values=val_list, rhs=0, constraint_type=ConstraintType.Derivative)
+            self.add_constraint(var_list=var_list, values=val_list, rhs=0, constraint_type=ConstraintType.Derivative, grid_num=grid_num)
 
         #
         self.tc_count = tc_count if self.tc_count is None else self.tc_count
 
     def forward_constraints(self):
         for coord in range(self.n_coord):
-            for grid_index in self.var_set.grid_indices:
+            for grid_num,grid_index in enumerate(self.var_set.grid_indices):
                 #skip right edge
                 if self.var_set.is_right_edge(grid_index=grid_index, coord=coord):
                     continue
-                self._add_forward_backward_constraint(coord, grid_index, forward=True)
+                self._add_forward_backward_constraint(coord, grid_index, grid_num, forward=True)
 
     def backward_constraints(self):
         for coord in range(self.n_coord):
-            for grid_index in self.var_set.grid_indices:
+            for grid_num,grid_index in enumerate(self.var_set.grid_indices):
                 #skip left edge
                 if self.var_set.is_left_edge(grid_index=grid_index, coord=coord):
                     continue
                 #for mi_index in self.var_set.mi_indices:
-                self._add_forward_backward_constraint(coord, grid_index, forward=False)
+                self._add_forward_backward_constraint(coord, grid_index, grid_num, forward=False)
 
-    def _add_central_constraint_edge(self, coord, grid_index, backward=False):
+    def _add_central_constraint_edge(self, coord, grid_index, grid_num, backward=False):
         #forward/backward differences for left edge. 4th order accuracy
         for mi in self.var_set.sorted_central_mi_indices[coord]:
             mi_index = self.var_set.mi_to_index[mi]
@@ -673,9 +684,9 @@ class PDESYSLP(nn.Module):
             else:
                 raise ValueError('Central diff not implemented for ' + str(mi[coord]))
 
-            self.add_constraint(var_list=var_list, values= values, rhs=0, constraint_type=ConstraintType.Derivative)
+            self.add_constraint(var_list=var_list, values= values, rhs=0, constraint_type=ConstraintType.Derivative, grid_num=grid_num)
 
-    def _add_central_constraint(self, coord, grid_index):
+    def _add_central_constraint(self, coord, grid_index, grid_num):
         act_mi_index_count = 0
         #get maximal order indices
         #for mi_index in self.var_set.maximal_mi_indices:
@@ -716,7 +727,7 @@ class PDESYSLP(nn.Module):
             else:
                 raise ValueError('Central diff not implemented for ' + str(mi[coord]))
 
-            self.add_constraint(var_list=var_list, values= values, rhs=0, constraint_type=ConstraintType.Derivative)
+            self.add_constraint(var_list=var_list, values= values, rhs=0, constraint_type=ConstraintType.Derivative, grid_num=grid_num)
 
         self.act_central_mi_index_count = act_mi_index_count if self.act_central_mi_index_count is None else self.act_central_mi_index_count
 
@@ -724,7 +735,7 @@ class PDESYSLP(nn.Module):
         #5 point central diff estimate
         for coord in range(self.n_coord):
             #sort_mi_indices = self.var_set.get_order_sorted_mi_indices(coord)
-            for grid_index in self.var_set.grid_indices:
+            for grid_num,grid_index in enumerate(self.var_set.grid_indices):
                 #skip left and right edge
                 #if self.var_set.is_right_edge(grid_index=grid_index, coord=coord) or self.var_set.is_left_edge(grid_index=grid_index, coord=coord):
                 if self.var_set.is_right_edge_or_adjacent(grid_index=grid_index, coord=coord)  \
@@ -734,27 +745,27 @@ class PDESYSLP(nn.Module):
                         continue
                 else:
                 #for mi_index in self.var_set.mi_indices:
-                    self._add_central_constraint(coord, grid_index)
+                    self._add_central_constraint(coord, grid_index, grid_num)
 
     def central_constraints_left_edge(self):
         #5 point central diff estimate
         for coord in range(self.n_coord):
             #sort_mi_indices = self.var_set.get_order_sorted_mi_indices(coord)
-            for grid_index in self.var_set.grid_indices:
+            for grid_num,grid_index in enumerate(self.var_set.grid_indices):
                 if self.var_set.is_left_edge_or_adjacent(grid_index=grid_index, coord=coord):
                     #if self.var_set.is_left_edge(grid_index=grid_index, coord=coord):
                     #    continue
-                    self._add_central_constraint_edge(coord, grid_index, backward=False)
+                    self._add_central_constraint_edge(coord, grid_index, grid_num, backward=False)
 
     def central_constraints_right_edge(self):
         #5 point central diff estimate
         for coord in range(self.n_coord):
             #sort_mi_indices = self.var_set.get_order_sorted_mi_indices(coord)
-            for grid_index in self.var_set.grid_indices:
+            for grid_num,grid_index in enumerate(self.var_set.grid_indices):
                 if self.var_set.is_right_edge_or_adjacent(grid_index=grid_index, coord=coord):
                     #if self.var_set.is_right_edge(grid_index=grid_index, coord=coord):
                     #    continue
-                    self._add_central_constraint_edge(coord, grid_index, backward=True)
+                    self._add_central_constraint_edge(coord, grid_index, grid_num, backward=True)
 
     def build_initial_constraints(self):
         #if(self.n_iv > 1):
@@ -768,7 +779,7 @@ class PDESYSLP(nn.Module):
             range_end = np.array(pair[3])
 
             #for grid_index in t0_grid:
-            for grid_index in self.var_set.grid_indices:
+            for grid_num,grid_index in enumerate(self.var_set.grid_indices):
                 if (grid_index < range_begin).any() or (grid_index > range_end).any():
                     continue
                 for iv in range(self.n_iv):
@@ -778,7 +789,7 @@ class PDESYSLP(nn.Module):
                     #mi_index = 0
                     var_list.append((grid_index, mi_index))
                     val_list.append(1)
-                    self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Initial)
+                    self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Initial, grid_num=grid_num)
         return
 
         #for pair in self.init_index_mi_list:
@@ -882,7 +893,35 @@ class PDESYSLP(nn.Module):
         self.initial_A =  initial_A
         self.derivative_A =  derivative_A
 
+        #build permutation
+        perm_list = [torch.tensor(row) for row in self.grid_constraint_list]
+        self.row_perm_inv = torch.cat(perm_list)
 
+        self.row_perm = torch.empty_like(self.row_perm_inv)
+        self.row_perm[self.row_perm_inv] = torch.arange(self.row_perm_inv.shape[0])
+
+
+    def apply_sparse_row_perm(self, M, permutation):
+        #M = M[0].to_dense()[perm.unsqueeze(1), perm].unsqueeze(0)
+        #return M
+        #M = M.coalesce()
+        indices=M._indices().clone()
+        indices2=M._indices().clone()
+        values=M._values().clone()
+        rows = indices[1]
+        #cols = indices[2]
+        permuted_rows = permutation[rows]
+        #permuted_cols = permutation[cols]
+        indices2[1] = permuted_rows
+        #indices2[2] = permuted_cols
+
+        #print('rows ', rows)
+        #print('perm ', permutation)
+        #print('permed ', permuted_rows)
+
+        D = torch.sparse_coo_tensor(indices=indices2, 
+                                values=values, size=M.shape)
+        return D 
 
     def build_block_diag(self, A):
         print('Building block diagonal A')
@@ -1669,6 +1708,15 @@ class PDESYSLP(nn.Module):
 
     #    return dD
 
+
+def test_perm():
+    coord_dims = (8,9)
+    bs = 1
+    step = 0.1
+    pde = PDESYSLP(bs=bs, coord_dims=coord_dims, n_iv=1, step_size=step, order=2, n_iv_steps=1, 
+                step_list = None, build=True)
+
+
 def test_mat_eq():
     coord_dims = (8,9)
     bs = 1
@@ -1816,6 +1864,7 @@ if __name__=="__main__":
     #test_eq()
     #test_eq2()
     #test_taylor_repr()
-    test_mat_eq()
+    #test_mat_eq()
     #test_grid()
     #test_initial()
+    test_perm()
