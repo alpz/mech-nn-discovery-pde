@@ -341,6 +341,10 @@ def symmlq(A, rhs, x0, M1=None, M2=None, mlens=None,
         if itn >= maxiter:
             break
 
+        if (cgnorm <= epsr).all():
+            print('break ', itn, cgnorm.max())
+            break
+
         s = 1/beta
         v = s.unsqueeze(1) * y
         #y = self.op * v ; nMatvec += 1
@@ -422,7 +426,7 @@ def symmlq(A, rhs, x0, M1=None, M2=None, mlens=None,
     zbar = torch.where(cond, rhs1 / diag, zbar)
     bstep = torch.where(cond, snprod * zbar + bstep, bstep)
     ynorm  = torch.where(cond, torch.sqrt(ynorm2 + zbar**2), ynorm)
-    x    = torch.where(cond, x+ zbar.unsqueeze(1) * w, x)
+    x    = torch.where(cond.unsqueeze(1), x+ zbar.unsqueeze(1) * w, x)
 
     # Add the step along b.
 

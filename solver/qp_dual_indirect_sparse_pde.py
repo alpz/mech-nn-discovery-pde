@@ -120,7 +120,7 @@ def do_symmlq(A, KKT, R, perm, perminv, block_L=None, schur_diag=None, KKT_diag=
                                     block_size=config.block_size, stride=config.block_size//2,
     #sol, info ,iter = MINRES.minres(KKTperm_torch, Rperm_torch , M=block_L, block_size=100,
                                     mlens=(num_var, num_constraint),
-                                    x0=x0_torch, maxiter=10000, rtol=1e-4)
+                                    x0=x0_torch, maxiter=10000, rtol=1e-8)
     #sol = Dinv*sol
     #sol = LSMR.apply_block_jacobi_M(block_L, sol, upper=False, block_size=50, stride=50)
 
