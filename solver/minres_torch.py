@@ -198,7 +198,7 @@ def get_blocks(M, block_size=100, stride=100):
 
 #@torch.jit.script
 def minres(A, b, x0, M1=None, M2=None, mlens=None,
-           rtol=1e-6, maxiter=100,
+           rtol=1e-4, maxiter=100,
            #perm=None, perminv=None,
            block_size:int=100, stride:int=100, show=False
            ):
@@ -263,15 +263,18 @@ def minres(A, b, x0, M1=None, M2=None, mlens=None,
     #beta1 = inner(r1, y)
     beta1 = (r1*y).sum(dim=-1)
 
-    if (beta1<0).any():
-        raise ValueError('indefinite preconditioner')
+    if (beta1<=0).any():
+        raise ValueError('indefinite preconditioner or 0 beta')
 
     #bnorm = norm(b)
     bnorm = torch.linalg.vector_norm(b, dim=-1)
     #if bnorm == 0:
     #    x = b
     #    return #(postprocess(x), 0)
-    done = torch.where(bnorm==0, 1, 0)
+    #done = torch.where(bnorm==0, 1, 0)
+    if (bnorm ==0).any():
+        raise ValueError('bnorm 0')
+
 
     beta1 = torch.sqrt(beta1)
 
@@ -489,7 +492,13 @@ def minres(A, b, x0, M1=None, M2=None, mlens=None,
             break
 
         if itn % 100 == 0:
-            print(itn, rnorm[0].item(), qrnorm[0].item(), Anorm[0].item())
+            print(itn, rnorm[0].item(), qrnorm[0].item(), Anorm[0].item(), test2.max().item(), test1.max().item())
+
+        #if itn>=5 and ((test2 <= rtol).all() and (test1 <= rtol).all()):
+        if itn>=5 and ((test2 <= rtol).all()):
+        #if itn>=5 and ((test2 <= 1e-4).all()):
+            print('break ', test2, test1)
+            break
 
     #last='exit'
     #if show:
