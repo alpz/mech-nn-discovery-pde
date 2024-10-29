@@ -84,6 +84,7 @@ def apply_block_jacobi_M(Blocks, x:torch.Tensor, upper:bool=False, block_size:in
     d = d.reshape(-1, len_x)
     #weight for overlap
     #d[:, step_size:-step_size] = 1/2*d[:, step_size:-step_size]
+    #d[:, step_size:] = 1/2*d[:, step_size:]
     #upto last block
     z[:, :len_x] = z[:, :len_x] + d
 
@@ -97,8 +98,9 @@ def apply_block_jacobi_M(Blocks, x:torch.Tensor, upper:bool=False, block_size:in
 
     #dl = torch.linalg.lu_solve(Blocks[:, -1], pivots[:, -1], r[:, -block_size:].unsqueeze(-1)).squeeze(-1)
     ##print('dl ', dl.shape)
-
+    rest = z.shape[1]-len_x
     z[:, -block_size:] = z[:, -block_size:] + dl
+    #z[:, -block_size:-rest] = z[:, -block_size:-rest]/2
     #weight overlapping
     #z[:, -block_size:-step_size] = z[:, -block_size:-step_size]/2
     
@@ -199,7 +201,7 @@ def get_blocks(M, block_size=100, stride=100):
 #@torch.jit.script
 def minres(A, b, x0, M1=None, M2=None, mlens=None,
            rtol=1e-4, maxiter=100,
-           #perm=None, perminv=None,
+           perm=None, perminv=None,
            block_size:int=100, stride:int=100, show=False
            ):
 #def minres(A:torch.Tensor, b:torch.Tensor, x0:torch.Tensor,rtol:float=1e-6, maxiter:int=100,
@@ -249,10 +251,10 @@ def minres(A, b, x0, M1=None, M2=None, mlens=None,
     if M1 is not None:
 
         _r1 = r1[:, num_var:]
-        #_r1 = _r1[:, perm]
+        _r1 = _r1[:, perminv]
         y2 = apply_block_jacobi_M(M1,_r1 , upper=False, 
                                   block_size=block_size, stride=stride)
-        #y2 = y2[:, perminv]
+        y2 = y2[:, perm]
 
         y1 = r1[:, :num_var]/M2
         y = torch.cat([y1,y2], dim=1)
@@ -333,10 +335,10 @@ def minres(A, b, x0, M1=None, M2=None, mlens=None,
             #                      block_size=block_size, stride=stride)
             #y = r2/M
             _r2 = r2[:, num_var:]
-            #_r2 = _r2[:, perm]
+            _r2 = _r2[:, perminv]
             y2 = apply_block_jacobi_M(M1,_r2 , upper=False, 
                                     block_size=block_size, stride=stride)
-            #y2 = y2[:, perminv]
+            y2 = y2[:, perm]
             y1 = r2[:, :num_var]/M2
             y = torch.cat([y1,y2], dim=1)
         else:
@@ -496,7 +498,7 @@ def minres(A, b, x0, M1=None, M2=None, mlens=None,
 
         #if itn>=5 and ((test2 <= rtol).all() and (test1 <= rtol).all()):
         if itn>=5 and ((test2 <= rtol).all()):
-        #if itn>=5 and ((test2 <= 1e-4).all()):
+        #if itn>=5 and ((test1 <= 1e-8).all()):
             print('break ', test2, test1)
             break
 

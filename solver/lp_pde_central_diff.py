@@ -435,7 +435,7 @@ class PDESYSLP(nn.Module):
         self.rhs_dict[constraint_type].append(rhs)
 
         ###########store list of constraints per grid num##
-        print(grid_num, self.num_added_constraints)
+        #print(self.var_set.grid_indices[grid_num], var_index)
         self.grid_constraint_list[grid_num].append(self.num_added_constraints)
         ###########
 

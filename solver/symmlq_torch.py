@@ -158,7 +158,7 @@ def get_blocks(M, block_size=100, stride=100):
 
 def symmlq(A, rhs, x0, M1=None, M2=None, mlens=None,
            rtol=1e-4, maxiter=100,
-           #perm=None, perminv=None,
+           perm=None, perminv=None,
            block_size:int=100, stride:int=100, show=False
            ):
 
@@ -197,10 +197,10 @@ def symmlq(A, rhs, x0, M1=None, M2=None, mlens=None,
 
     if M1 is not None:
         _r1 = r1[:, num_var:]
-        #_r1 = _r1[:, perm]
+        _r1 = _r1[:, perminv]
         y2 = MR.apply_block_jacobi_M(M1,_r1 , upper=False, 
                                   block_size=block_size, stride=stride)
-        #y2 = y2[:, perminv]
+        y2 = y2[:, perm]
 
         y1 = r1[:, :num_var]/M2
         y = torch.cat([y1,y2], dim=1)
@@ -252,10 +252,10 @@ def symmlq(A, rhs, x0, M1=None, M2=None, mlens=None,
 
     if M1 is not None:
         _r2 = r2[:, num_var:]
-        #_r1 = _r1[:, perm]
+        _r2 = _r2[:, perminv]
         y2 = MR.apply_block_jacobi_M(M1,_r2 , upper=False, 
                                   block_size=block_size, stride=stride)
-        #y2 = y2[:, perminv]
+        y2 = y2[:, perm]
 
         y1 = r2[:, :num_var]/M2
         y = torch.cat([y1,y2], dim=1)
@@ -369,10 +369,10 @@ def symmlq(A, rhs, x0, M1=None, M2=None, mlens=None,
 
         if M1 is not None:
             _r2 = r2[:, num_var:]
-            #_r1 = _r1[:, perm]
+            _r2 = _r2[:, perminv]
             y2 = MR.apply_block_jacobi_M(M1,_r2 , upper=False, 
                                     block_size=block_size, stride=stride)
-            #y2 = y2[:, perminv]
+            y2 = y2[:, perm]
 
             y1 = r2[:, :num_var]/M2
             y = torch.cat([y1,y2], dim=1)
@@ -445,10 +445,10 @@ def symmlq(A, rhs, x0, M1=None, M2=None, mlens=None,
     r1 = rhs.clone()
     if M1 is not None:
         _r1 = r1[:, num_var:]
-        #_r1 = _r1[:, perm]
+        _r1 = _r1[:, perminv]
         y2 = MR.apply_block_jacobi_M(M1,_r1 , upper=False, 
                                   block_size=block_size, stride=stride)
-        #y2 = y2[:, perminv]
+        y2 = y2[:, perminv]
 
         y1 = r1[:, :num_var]/M2
         y = torch.cat([y1,y2], dim=1)
