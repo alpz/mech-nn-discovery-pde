@@ -24,6 +24,7 @@ import scipy.sparse as SPS
 #import solver.lsmr as LSMR
 import solver.symmlq_torch as SYMMLQ
 import solver.minres_torch as MINRES
+#import solver.minres_torch_chol as MINRES
 
 def to_torch_coo(KKTs):
     row = torch.tensor(KKTs.row)
@@ -143,7 +144,7 @@ def do_symmlq(Aperm, KKT, R, perm, perminv, block_L=None, schur_diag=None, KKT_d
     #sol, info ,iter = MINRES.minres(KKTperm_torch, Rperm_torch , M=block_L, block_size=100,
                                     perm=perm, perminv=perminv,
                                     mlens=(num_var, num_constraint),
-                                    x0=x0_torch, maxiter=10000, rtol=1e-8)
+                                    x0=x0_torch, maxiter=10000, rtol=1e-5)
     #sol = Dinv*sol
     #sol = LSMR.apply_block_jacobi_M(block_L, sol, upper=False, block_size=50, stride=50)
 
@@ -228,7 +229,7 @@ def do_minres(Aperm, KKT, R, perm, perminv, block_L=None, schur_diag=None, KKT_d
                                     perm=perm, perminv=perminv,
     #sol, info ,iter = MINRES.minres(KKTperm_torch, Rperm_torch , M=block_L, block_size=100,
                                     mlens=(num_var, num_constraint),
-                                    x0=x0_torch, maxiter=10000, rtol=1e-4)
+                                    x0=x0_torch, maxiter=10000, rtol=1e-5)
     #sol = Dinv*sol
     #sol = LSMR.apply_block_jacobi_M(block_L, sol, upper=False, block_size=50, stride=50)
 
@@ -287,6 +288,8 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             pde.row_perm_inv = pde.row_perm_inv.to(rhs.device)
 
             Aperm = pde.apply_sparse_row_perm(A, pde.row_perm)
+            A = Aperm
+            A_rhs = A_rhs[:, pde.row_perm_inv]
 
 
             num_eps = pde.var_set.num_added_eps_vars
@@ -322,10 +325,38 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
                 #KKTperm = torch.cat([GA, AtpermZ], dim =2)
                 return G, KKT
 
-            G,KKT = make_kkt(us=1e3, ds=1e-5)
-            KKT_top = get_diag(us=1e3, ds=1e-5, device=rhs.device)
+            G,KKT = make_kkt(us=1e2, ds=0)
+            KKT_top = get_diag(us=1e2, ds=1e-5, device=rhs.device)
             R = torch.cat([torch.zeros(rhs.shape[0],G.shape[1]).type_as(rhs), -A_rhs], dim=1)
 
+            if config.ilu_preconditioner:
+                #KKTsp = to_scipy_coo(KKT[0])
+                #KKTsp = KKTsp.tocsc()
+                #KKTsp
+                import ilupp
+
+                KKT_diag = KKT_top.unsqueeze(0)
+                # AG^{-1/2}
+                AG = Aperm*((1/KKT_diag).sqrt())       
+
+                Asp = to_scipy_coo(AG[0])
+                Asp=Asp.tocsr()
+                AA = Asp@Asp.T
+
+                print('begin ilu')
+                #CC=ilupp.ichol0(AA)
+                #CC = ilupp.IChol0Preconditioner(AA)
+                CC = ilupp.ICholTPreconditioner(AA, add_fill_in=200)
+                print(CC.factors()[0].data)
+                print('nan ', np.isnan(CC.factors()[0].data).any())
+                np.nan_to_num(CC.factors()[0].data, copy=False)
+                print('nan ', np.isnan(CC.factors()[0].data).any())
+                #CC=ilupp.icholt(AA, add_fill_in=10)
+                #print(CC, CC.shape)
+                ##CC = CC.tocoo()
+                #CCtorch = to_torch_coo(CC).unsqueeze(0)
+                #M = spla.spilu(AA, fill_factor=40, options=dict(Fact='DOFACT', PrintStat=True))
+                print('end ilu')
 
             #if config.permute and QPFunctionFn.perm is None:
             #    AAt = torch.sparse.mm(A[0], A[0].transpose(0,1))
