@@ -99,7 +99,8 @@ def do_symmlq(Aperm, KKT, R, perm, perminv, block_L=None, schur_diag=None, KKT_d
 
     KKT_diag = KKT_diag.unsqueeze(0)
     # AG^{-1/2}
-    AG = Aperm*(1/KKT_diag).sqrt()       
+    AG = Aperm#*(1/KKT_diag).sqrt()       
+    KKT_diag = torch.ones_like(KKT_diag)
 
     #I = torch.sparse.spdiags(1e-4*torch.ones(KKTperm_torch.shape[1]), torch.tensor([0]), 
     #                         (KKT.shape[1], KKT.shape[1]), 
@@ -124,7 +125,7 @@ def do_symmlq(Aperm, KKT, R, perm, perminv, block_L=None, schur_diag=None, KKT_d
 
     if block_L is None:
         print('building blocks')
-        block_L,info = MINRES.get_blocks(AG, block_size=config.block_size, stride=config.block_size//2)
+        block_L,info = MINRES.get_blocks(AG, block_size=config.block_size, stride=config.block_size//4)
         #block_L,info = MINRES.get_blocks(AGperm_torch, block_size=config.block_size, stride=config.block_size//2)
         print('end blocks, shape ', KKT.shape)
 
@@ -140,7 +141,7 @@ def do_symmlq(Aperm, KKT, R, perm, perminv, block_L=None, schur_diag=None, KKT_d
 
     #_max = MINRES._get_tensor_max(R)
     sol, info ,iter = SYMMLQ.symmlq(KKT, R, M1=block_L, M2=KKT_diag,  
-                                    block_size=config.block_size, stride=config.block_size//2,
+                                    block_size=config.block_size, stride=config.block_size//4,
     #sol, info ,iter = MINRES.minres(KKTperm_torch, Rperm_torch , M=block_L, block_size=100,
                                     perm=perm, perminv=perminv,
                                     mlens=(num_var, num_constraint),
@@ -175,13 +176,14 @@ def do_symmlq(Aperm, KKT, R, perm, perminv, block_L=None, schur_diag=None, KKT_d
 
     return sol,info,block_L
 
-def do_minres(Aperm, KKT, R, perm, perminv, block_L=None, schur_diag=None, KKT_diag=None):
+def do_minres(Aperm, KKT, R, perm, perminv, block_L=None, schur_diag=None, KKT_diag=None, num_qvar=None):
 
     print('do_minres')
 
     num_var = KKT_diag.shape[0]
     num_constraint = Aperm.shape[1]
 
+    KKT_diag[:num_qvar] = 1
     KKT_diag = KKT_diag.unsqueeze(0)
     # AG^{-1/2}
     AG = Aperm*(1/KKT_diag).sqrt()       
@@ -209,7 +211,7 @@ def do_minres(Aperm, KKT, R, perm, perminv, block_L=None, schur_diag=None, KKT_d
 
     if block_L is None:
         print('building blocks')
-        block_L,info = MINRES.get_blocks(AG, block_size=config.block_size, stride=config.block_size//2)
+        block_L, info = MINRES.get_blocks(AG, block_size=config.block_size, stride=config.block_size//4)
         #block_L,info = MINRES.get_blocks(AGperm_torch, block_size=config.block_size, stride=config.block_size//2)
         print('end blocks, shape ', KKT.shape)
 
@@ -224,9 +226,9 @@ def do_minres(Aperm, KKT, R, perm, perminv, block_L=None, schur_diag=None, KKT_d
     x0_torch = torch.zeros_like(R)
 
     #_max = MINRES._get_tensor_max(R)
-    sol, info ,iter = MINRES.minres(KKT, R, M1=block_L, M2=KKT_diag,  
-                                    block_size=config.block_size, stride=config.block_size//2,
-                                    perm=perm, perminv=perminv,
+    sol, info ,iter = MINRES.minres(Aperm, KKT, R, M1=block_L, M2=KKT_diag,  
+                                    block_size=config.block_size, stride=config.block_size//4,
+                                    #perm=perm, perminv=perminv, 
     #sol, info ,iter = MINRES.minres(KKTperm_torch, Rperm_torch , M=block_L, block_size=100,
                                     mlens=(num_var, num_constraint),
                                     x0=x0_torch, maxiter=10000, rtol=1e-5)
@@ -326,7 +328,8 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
                 return G, KKT
 
             G,KKT = make_kkt(us=1e2, ds=0)
-            KKT_top = get_diag(us=1e2, ds=1e-5, device=rhs.device)
+            KKT_top = get_diag(us=1e2, ds=0, device=rhs.device)
+            #KKT_top2 = get_diag(us=1e2, ds=0, device=rhs.device)
             R = torch.cat([torch.zeros(rhs.shape[0],G.shape[1]).type_as(rhs), -A_rhs], dim=1)
 
             if config.ilu_preconditioner:
@@ -358,52 +361,14 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
                 #M = spla.spilu(AA, fill_factor=40, options=dict(Fact='DOFACT', PrintStat=True))
                 print('end ilu')
 
-            #if config.permute and QPFunctionFn.perm is None:
-            #    AAt = torch.sparse.mm(A[0], A[0].transpose(0,1))
-            #    AAtcsr = to_scipy_coo(AAt).tocsr()
-            #    perm = SPS.csgraph.reverse_cuthill_mckee(AAtcsr,symmetric_mode=True)
-            #    print('done computing perm')
-
-            #    #KKTsp = to_scipy_coo(KKT[0])
-            #    #Rsp = R[0].detach().cpu().numpy()
-            #    #x0 = np.zeros_like(Rsp)
-
-            #    #print('do_csr')
-            #    #KKTcsr = KKTsp.tocsr()
-            #    #print('start perm')
-            #    #perm = SPS.csgraph.reverse_cuthill_mckee(KKTcsr,symmetric_mode=True)
-            #    #print('done computing perm')
-
-            #    perminv = np.empty_like(perm)
-            #    perminv[perm] = np.arange(perm.size)
-
-            #    QPFunctionFn.perm = torch.tensor(perm.copy()).to(R.device)
-            #    QPFunctionFn.perminv = torch.tensor(perminv).to(R.device)
-
-            #if config.permute and QPFunctionFn.perm is None:
-            #    KKTsp = to_scipy_coo(KKT[0])
-            #    Rsp = R[0].detach().cpu().numpy()
-            #    x0 = np.zeros_like(Rsp)
-
-            #    print('do_csr')
-            #    KKTcsr = KKTsp.tocsr()
-            #    print('start perm')
-            #    perm = SPS.csgraph.reverse_cuthill_mckee(KKTcsr,symmetric_mode=True)
-            #    print('done computing perm')
-            #    perminv = np.empty_like(perm)
-            #    perminv[perm] = np.arange(perm.size)
-
-            #    QPFunctionFn.perm = torch.tensor(perm.copy()).to(R.device)
-            #    QPFunctionFn.perminv = torch.tensor(perminv).to(R.device)
-
 
             sol, info, block_L = do_minres(Aperm, KKT, R,perm=pde.row_perm, perminv=pde.row_perm_inv,
-                                  schur_diag=None, KKT_diag=KKT_top)
+                                  schur_diag=None, KKT_diag=KKT_top, num_qvar=num_var)
             print('minres ', info)
 
             #sol, info, block_L = do_symmlq(Aperm, KKT, R,perm=pde.row_perm, perminv=pde.row_perm_inv,
             #                      schur_diag=None, KKT_diag=KKT_top)
-            print('symmlq ', info)
+            #print('symmlq ', info)
             #sol, info = do_minres(KKT, R,perm=QPFunctionFn.perm, perminv=QPFunctionFn.perminv)
             #print('minres ', info)
             

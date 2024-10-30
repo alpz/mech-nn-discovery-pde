@@ -40,10 +40,12 @@ def _get_tensor_max(
 #    return 1e
 
 @torch.jit.script
-def apply_block_jacobi_M(Blocks, x:torch.Tensor, upper:bool=False, block_size:int=100, stride:int=100):
+def apply_block_jacobi_M(Blocks:torch.Tensor, x:torch.Tensor, upper:bool=False, block_size:int=100, stride:int=100):
+
 
     #LU, pivots = Blocks
-    #Blocks = LU
+    #Blocks = _Blocks[0]
+    #pivots = _Blocks[1]
     #Blocks = Blocks.transpose(-1,-2)
     #upper=True
     #block_size = 300
@@ -74,6 +76,7 @@ def apply_block_jacobi_M(Blocks, x:torch.Tensor, upper:bool=False, block_size:in
     #y = torch.cholesky_solve(r_unfold.unsqueeze(-1), Blocks_x, upper=upper).squeeze(-1)
     _y = torch.cholesky_solve(r_agg.unsqueeze(-1), Blocks, upper=upper).squeeze(-1)
     #y = torch.linalg.lu_solve(LU[:,:-1], pivots[:, :-1], r_unfold.unsqueeze(-1)).squeeze(-1)
+    #_y = torch.linalg.ldl_solve(Blocks, pivots, r_agg.unsqueeze(-1)).squeeze(-1)
 
     y = _y[:,:-1]
     y = y.permute(0,2,1)
@@ -182,7 +185,7 @@ def get_blocks(M, block_size=100, stride=100):
         block_values = values[mask]
 
         block = torch.sparse_coo_tensor(block_indices, block_values, size=(M.shape[0], nrow, M.shape[2]), 
-                                        check_invariants=True)
+                                        check_invariants=False)
 
         block = get_dense_block(block, block_size=block_size, stride=stride)
         blocks.append(block)
@@ -190,6 +193,7 @@ def get_blocks(M, block_size=100, stride=100):
     blocks = torch.stack(blocks, dim=1)
 
     (L, info) = torch.linalg.cholesky_ex(blocks, check_errors=False)
+    #(L, pivots, info) = torch.linalg.ldl_factor_ex(blocks, check_errors=False)
     #(LU, pivots, info) = torch.linalg.lu_factor_ex(blocks, check_errors=False)
 
     return (L, info)
@@ -200,15 +204,18 @@ def get_blocks(M, block_size=100, stride=100):
 #           ):
 
 #@torch.jit.script
-def minres(A:torch.Tensor, b, x0, M1=None, M2=None, mlens=None,
-           rtol=1e-4, maxiter=100,
-           perm=None, perminv=None,
-           block_size:int=100, stride:int=100, show=False
+def minres(Aperm:torch.Tensor, A:torch.Tensor, b:torch.Tensor, x0:torch.Tensor, M1:torch.Tensor=None, M2:torch.Tensor=None, 
+           mlens:Tuple[int, int]=(100,100),
+           rtol:float=1e-4, maxiter:int=100,
+           #perm=None, perminv=None,
+           block_size:int=100, stride:int=100
            ):
 #def minres(A:torch.Tensor, b:torch.Tensor, x0:torch.Tensor,rtol:float=1e-6, maxiter:int=100,
 #           _max:float=0):
 #def minres(A:torch.Tensor, b:torch.Tensor, x0:torch.Tensor, M:Tuple[torch.Tensor,torch.Tensor]=None, rtol:float=1e-6, maxiter:int=100,
 #           block_size:int=100, stride:int=100):
+
+    At = Aperm.transpose(1,2)
 
     num_var,num_constraint = mlens
     #A = A[0]
@@ -238,6 +245,7 @@ def minres(A:torch.Tensor, b, x0, M1=None, M2=None, mlens=None,
         #r1 = b - A@x
         print(A.shape, x.shape)
 
+        #mm = torch.bmm(A, x.unsqueeze(-1)).squeeze(-1)
         r1 = b - torch.bmm(A, x.unsqueeze(-1)).squeeze(-1)
         #r1 = b - torch.mm(A1, x[0].unsqueeze(-1)).unsqueeze(0).squeeze(-1)
     
@@ -310,6 +318,7 @@ def minres(A:torch.Tensor, b, x0, M1=None, M2=None, mlens=None,
         v = s.unsqueeze(1)*y
 
         #y = matvec(v)
+
         y = torch.bmm(A, v.unsqueeze(-1)).squeeze(-1)
         #y = y - shift * v
 
@@ -499,9 +508,9 @@ def minres(A:torch.Tensor, b, x0, M1=None, M2=None, mlens=None,
             print(itn, rnorm[0].item(), qrnorm[0].item(), Anorm[0].item(), test2.max().item(), test1.max().item())
 
         ##if itn>=5 and ((test2 <= rtol).all() and (test1 <= rtol).all()):
-        if itn>=5 and ((test2 <= rtol).all()):
+        #if itn>=5 and ((test2 <= rtol).all()):
         #if itn>=5 and ((test2 <= 1e-4).all()):
-        #if itn>=5 and ((test1 <= 1e-8).all()):
+        if itn>=5 and ((test1 <= 1e-9).all()):
             print('break ', test2, test1)
             break
 
