@@ -428,6 +428,9 @@ class PDESYSLP(nn.Module):
 
         self.initial_constraint_indices = {i: [] for i in range(self.init_index_mi_list)}
 
+        self.constraint_grid_sizes = []
+        self.constraint_grid_shapes = []
+
     def get_solution_reshaped(self, x):
         """remove eps and reshape solution"""
         #x = x[:, 1:]
@@ -482,13 +485,56 @@ class PDESYSLP(nn.Module):
         elif constraint_type == ConstraintType.Derivative:
             self.num_added_derivative_constraints += 1
 
+    def compute_constraint_grid_sizes_and_shapes(self):
+        #keep order
+        #equation
+        grid_size = np.prod(self.coord_dims)
+
+        self.constraint_grid_shapes.append(list(self.coord_dims))
+        self.constraint_grid_sizes.append(grid_size)
+
+        #forward
+        for coord in range(self.n_coord):
+            coord_dims = list(self.coord_dims)
+            coord_dims[coord] -= 1
+            grid_size = np.prod(coord_dims)
+
+            self.constraint_grid_shapes.append(coord_dims)
+            self.constraint_grid_sizes.append(grid_size)
+
+        #central
+        for coord in range(self.n_coord):
+            for mi in self.var_set.sorted_central_mi_indices[coord]:
+                #mi_index = self.var_set.mi_to_index[mi]
+                self.constraint_grid_shapes.append(list(self.coord_dims))
+                self.constraint_grid_sizes.append(grid_size)
+
+        #backward
+        for coord in range(self.n_coord):
+            coord_dims = list(self.coord_dims)
+            coord_dims[coord] -= 1
+            grid_size = np.prod(coord_dims)
+
+            self.constraint_grid_shapes.append(coord_dims)
+            self.constraint_grid_sizes.append(grid_size)
+
+        #initial
+        for init_num, pair in enumerate(self.init_index_mi_list):
+            range_begin = np.array(pair[2])
+            range_end = np.array(pair[3])
+            coord_dims = range_end+1 - range_begin
+            grid_size = np.prod(coord_dims)
+
+            self.constraint_grid_shapes.append(coord_dims)
+            self.constraint_grid_sizes.append(grid_size)
+
     def store_equation_constraint_indices(self, initial_index):
         #store index of last constraint as the constraint index on grid
         self.initial_constraint_indices[initial_index].append(self.num_added_constraints-1)
 
-    def store_equation_constraint_indices(self, grid_num):
+    def store_equation_constraint_indices(self):
         #store index of last constraint as the constraint index on grid
-        self.equation_constraint_indices[grid_num] = self.num_added_constraints-1
+        self.equation_constraint_indices.append(self.num_added_constraints-1)
 
     def store_central_smoothness_constraint_indices_on_grid(self, coord, mi_index, grid_num):
         #store index of last constraint as the constraint index on grid per coord per mi_index
@@ -498,6 +544,66 @@ class PDESYSLP(nn.Module):
         #store index of last constraint as the constraint index on grid per coord per mi_index
         direction = 'forward' if forward else 'backward'
         self.zeroth_smoothness_constraint_indices[coord][direction].append(self.num_added_constraints-1)
+
+
+    def make_interpolation_grid_permutation(self):
+
+        constraint_indices = []
+
+        #equation
+        total_size = 0
+        index = 0
+
+        size = self.constraint_grid_sizes[index]
+        constraint_indices.append(np.arange(size))
+        total_size += size
+        index += 1
+
+        #forward
+        offset = total_size
+        size = self.constraint_grid_sizes[index]
+        constraint_indices.append(np.arange(offset, offset+size))
+        total_size += size
+        index += 1
+
+        #central
+        for coord in range(self.n_coord):
+            for mi in self.var_set.sorted_central_mi_indices[coord]:
+                mi_index = self.var_set.mi_to_index[mi]
+                indices = self.smoothness_constraint_indices[coord][mi_index]
+                constraint_indices.append(np.array(indices))
+
+                total_size += self.var_set.grid_size
+                index += 1
+
+        #backward
+        offset = total_size
+        size = self.constraint_grid_sizes[index]
+        constraint_indices.append(np.arange(offset, offset+size))
+        total_size += size
+        index += 1
+
+    def make_interpolation_grids(self):
+        #equation_indices, central_indices, zeroth_indices, initial_indices
+        #grid_shapes 
+        self.equation_constraint_grid = np.array(self.equation_constraint_indices).reshape(self.coord_dims)
+
+        #central smoothness indices are already in a grid
+        self.central_smoothness_constraint_grid = self.smoothness_constraint_indices
+
+        for coord in range(self.n_coords):
+            for direction in ['forward', 'backward']:
+                coord_dims = list(self.coord_dims)
+                coord_dims[coord] -= 1
+
+                #grid_size = np.prod(self.coord_dims)
+                self.zeroth_smoothness_constraint_indices[coord][direction].reshape(coord_dims)
+
+        for initial_index,pair in enumerate(self.init_index_mi_list):
+            range_begin = np.array(pair[2])
+            range_end = np.array(pair[3])
+            coord_dims = range_end+1 - range_begin
+            self.initial_constraint_indices[initial_index] = np.array(self.initial_constraint_indices[initial_index]).reshape(coord_dims)
 
     #build constraint string representations for check
     def repr_eq(self, rows=None, cols=None, rhs=None, values=None, type=ConstraintType.Equation):
@@ -567,7 +673,7 @@ class PDESYSLP(nn.Module):
             self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Equation,
                                 grid_num=grid_num)
 
-            self.store_equation_constraint_indices(grid_num)
+            self.store_equation_constraint_indices()
 
     def tc_list_append(self, coord, exp, denom, forward=True):
         """taylor constraint lists"""
