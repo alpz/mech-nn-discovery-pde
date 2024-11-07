@@ -63,6 +63,16 @@ class QPVariableSet():
 
     #def get_eps(self):
     #    return 0 
+    def make_grid(self, coord_dims, write=False):
+        grid_size = np.prod(coord_dims)
+
+        #make grid. reshape (grid_size, n_coord)
+        grid_indices = np.indices(coord_dims).reshape((-1,grid_size)).transpose((1,0))
+
+        #make grid ready only
+        grid_indices.setflags(write=write)
+
+        return grid_indices, grid_size
     
 
     def next_eps_var(self):
@@ -382,6 +392,8 @@ class PDESYSLP(nn.Module):
         self.back_grad_step_exp_dict = {i: [] for i in range(self.n_coord)}
         self.back_grad_step_denom_dict = {i: [] for i in range(self.n_coord)}
 
+        self.init_interpolation_grids()
+
         #self.back_grad_step_exp_list = []
         #self.back_grad_step_denom_list = []
         ##exponents for step sizes for central diff grad for similar error order.
@@ -392,6 +404,29 @@ class PDESYSLP(nn.Module):
         if build:
             self.build_constraints()
 
+    def init_interpolation_grids(self):
+        """interpolation grids for multigrid on multipliers"""
+        # constraints indexes for linear interpolation
+        self.equation_constraint_indices = -1*np.ones(self.var_set.grid_size)
+
+        # add grids for storing smoothness constraint indexes per coord per mi
+        #central
+        self.smoothness_constraint_indices = {} #{i: [] for i in range(self.n_coord)}
+        for coord in range(self.n_coord):
+            self.smoothness_constraint_indices[coord] = {}
+
+            for mi in self.var_set.sorted_central_mi_indices[coord]:
+                mi_index = self.var_set.mi_to_index[mi]
+                self.smoothness_constraint_indices[coord][mi_index] = -1*np.ones(self.var_set.grid_size)
+
+        #forward backward
+        self.zeroth_smoothness_constraint_indices = {} #{i: [] for i in range(self.n_coord)}
+        for coord in range(self.n_coord):
+            self.zeroth_smoothness_constraint_indices[coord] = {}
+            for direction in ['forward', 'backward']:
+                self.zeroth_smoothness_constraint_indices[coord][direction] = []
+
+        self.initial_constraint_indices = {i: [] for i in range(self.init_index_mi_list)}
 
     def get_solution_reshaped(self, x):
         """remove eps and reshape solution"""
@@ -447,6 +482,22 @@ class PDESYSLP(nn.Module):
         elif constraint_type == ConstraintType.Derivative:
             self.num_added_derivative_constraints += 1
 
+    def store_equation_constraint_indices(self, initial_index):
+        #store index of last constraint as the constraint index on grid
+        self.initial_constraint_indices[initial_index].append(self.num_added_constraints-1)
+
+    def store_equation_constraint_indices(self, grid_num):
+        #store index of last constraint as the constraint index on grid
+        self.equation_constraint_indices[grid_num] = self.num_added_constraints-1
+
+    def store_central_smoothness_constraint_indices_on_grid(self, coord, mi_index, grid_num):
+        #store index of last constraint as the constraint index on grid per coord per mi_index
+        self.smoothness_constraint_indices[coord][mi_index][grid_num] = self.num_added_constraints-1
+
+    def store_zeroth_smoothness_constraint_indices(self, coord, forward):
+        #store index of last constraint as the constraint index on grid per coord per mi_index
+        direction = 'forward' if forward else 'backward'
+        self.zeroth_smoothness_constraint_indices[coord][direction].append(self.num_added_constraints-1)
 
     #build constraint string representations for check
     def repr_eq(self, rows=None, cols=None, rhs=None, values=None, type=ConstraintType.Equation):
@@ -515,6 +566,8 @@ class PDESYSLP(nn.Module):
                 val_list.append(Const.PH)
             self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Equation,
                                 grid_num=grid_num)
+
+            self.store_equation_constraint_indices(grid_num)
 
     def tc_list_append(self, coord, exp, denom, forward=True):
         """taylor constraint lists"""
@@ -611,7 +664,8 @@ class PDESYSLP(nn.Module):
                 self.tc_list_append(coord, order_diff, d, forward=forward)
                 tc_count = tc_count+1
 
-            self.add_constraint(var_list=var_list, values=val_list, rhs=0, constraint_type=ConstraintType.Derivative, grid_num=grid_num)
+            self.add_constraint(var_list=var_list, values=val_list, rhs=0, constraint_type=ConstraintType.Derivative, grid_num=grid_num, coord=coord)
+            self.store_zeroth_smoothness_constraint_indices(coord, forward)
 
         #
         self.tc_count = tc_count if self.tc_count is None else self.tc_count
@@ -684,7 +738,8 @@ class PDESYSLP(nn.Module):
             else:
                 raise ValueError('Central diff not implemented for ' + str(mi[coord]))
 
-            self.add_constraint(var_list=var_list, values= values, rhs=0, constraint_type=ConstraintType.Derivative, grid_num=grid_num)
+            self.add_constraint(var_list=var_list, values= values, rhs=0, constraint_type=ConstraintType.Derivative, grid_num=grid_num, coord=None)
+            self.store_central_smoothness_constraint_indices_on_grid(coord, mi_index, grid_num)
 
     def _add_central_constraint(self, coord, grid_index, grid_num):
         act_mi_index_count = 0
@@ -727,7 +782,8 @@ class PDESYSLP(nn.Module):
             else:
                 raise ValueError('Central diff not implemented for ' + str(mi[coord]))
 
-            self.add_constraint(var_list=var_list, values= values, rhs=0, constraint_type=ConstraintType.Derivative, grid_num=grid_num)
+            self.add_constraint(var_list=var_list, values= values, rhs=0, constraint_type=ConstraintType.Derivative, grid_num=grid_num, coord=coord)
+            self.store_central_smoothness_constraint_indices_on_grid(coord, mi_index, grid_num)
 
         self.act_central_mi_index_count = act_mi_index_count if self.act_central_mi_index_count is None else self.act_central_mi_index_count
 
@@ -772,7 +828,7 @@ class PDESYSLP(nn.Module):
         #    raise ValueError("Not implemented n_iv>1")
         #TODO range
 
-        for pair in self.init_index_mi_list:
+        for init_num, pair in enumerate(self.init_index_mi_list):
             coord_index = pair[0]
             mi_index = pair[1]
             range_begin = np.array(pair[2])
@@ -790,6 +846,7 @@ class PDESYSLP(nn.Module):
                     var_list.append((grid_index, mi_index))
                     val_list.append(1)
                     self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Initial, grid_num=grid_num)
+                    self.initial_constraint_indices(init_num)
         return
 
         #for pair in self.init_index_mi_list:
