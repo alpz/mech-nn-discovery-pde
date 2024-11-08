@@ -38,7 +38,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def solve():
     bs = 1
-    coord_dims = (10,10)
+    coord_dims = (32,32)
     n_ind_dim=1
     iv_list = [(0,0, [0,0],[0,coord_dims[1]-2]), 
                 (1,0, [1,0], [coord_dims[0]-1, 0]), 
@@ -47,6 +47,15 @@ def solve():
                 #(1,2, [0,0], [self.coord_dims[0]-1, 0]),
                 #(1,3, [0,0], [self.coord_dims[0]-1, 0])
                 (1,0, [0,coord_dims[1]-1], [coord_dims[0]-1, coord_dims[1]-1])
+                ]
+
+    iv_list = [lambda nx, ny: (0,0, [0,0],[0,ny-2]), 
+               lambda nx, ny: (1,0, [1,0], [nx-1, 0]), 
+                #(0,1, [0,0],[0,self.coord_dims[1]-1]), 
+               lambda nx, ny: (0,0, [nx-1,1],[nx-1,ny-2]), 
+                #(1,2, [0,0], [self.coord_dims[0]-1, 0]),
+                #(1,3, [0,0], [self.coord_dims[0]-1, 0])
+               lambda nx,ny: (1,0, [0,ny-1], [nx-1, ny-1])
                 ]
 
     pde = PDEINDLayerEPS(bs=bs, coord_dims=coord_dims, order=2, n_ind_dim=n_ind_dim, n_iv=1, 

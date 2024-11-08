@@ -9,6 +9,7 @@ import ipdb
 import scipy.sparse as SP
 
 from itertools import combinations
+from dataclasses import dataclass
 
             
 from functools import cmp_to_key            
@@ -392,7 +393,7 @@ class PDESYSLP(nn.Module):
         self.back_grad_step_exp_dict = {i: [] for i in range(self.n_coord)}
         self.back_grad_step_denom_dict = {i: [] for i in range(self.n_coord)}
 
-        self.init_interpolation_grids()
+        #self.init_interpolation_grids()
 
         #self.back_grad_step_exp_list = []
         #self.back_grad_step_denom_list = []
@@ -401,35 +402,42 @@ class PDESYSLP(nn.Module):
         self.tc_count = None
         self.act_central_mi_index_count = None
 
+
         if build:
             self.build_constraints()
 
-    def init_interpolation_grids(self):
-        """interpolation grids for multigrid on multipliers"""
-        # constraints indexes for linear interpolation
-        self.equation_constraint_indices = -1*np.ones(self.var_set.grid_size)
+        self.compute_constraint_grid_sizes_and_shapes()
+        print('added constraints ', self.num_added_constraints)
+        self.compute_constraint_grid_sizes_and_shapes()
+        z = torch.rand(1, self.num_added_constraints)
+        self.test_grid_transfer(z)
 
-        # add grids for storing smoothness constraint indexes per coord per mi
-        #central
-        self.smoothness_constraint_indices = {} #{i: [] for i in range(self.n_coord)}
-        for coord in range(self.n_coord):
-            self.smoothness_constraint_indices[coord] = {}
+    #def init_interpolation_grids(self):
+    #    """interpolation grids for multigrid on multipliers"""
+    #    # constraints indexes for linear interpolation
+    #    self.equation_constraint_indices = -1*np.ones(self.var_set.grid_size)
 
-            for mi in self.var_set.sorted_central_mi_indices[coord]:
-                mi_index = self.var_set.mi_to_index[mi]
-                self.smoothness_constraint_indices[coord][mi_index] = -1*np.ones(self.var_set.grid_size)
+    #    # add grids for storing smoothness constraint indexes per coord per mi
+    #    #central
+    #    self.smoothness_constraint_indices = {} #{i: [] for i in range(self.n_coord)}
+    #    for coord in range(self.n_coord):
+    #        self.smoothness_constraint_indices[coord] = {}
 
-        #forward backward
-        self.zeroth_smoothness_constraint_indices = {} #{i: [] for i in range(self.n_coord)}
-        for coord in range(self.n_coord):
-            self.zeroth_smoothness_constraint_indices[coord] = {}
-            for direction in ['forward', 'backward']:
-                self.zeroth_smoothness_constraint_indices[coord][direction] = []
+    #        for mi in self.var_set.sorted_central_mi_indices[coord]:
+    #            mi_index = self.var_set.mi_to_index[mi]
+    #            self.smoothness_constraint_indices[coord][mi_index] = -1*np.ones(self.var_set.grid_size)
 
-        self.initial_constraint_indices = {i: [] for i in range(self.init_index_mi_list)}
+    #    #forward backward
+    #    self.zeroth_smoothness_constraint_indices = {} #{i: [] for i in range(self.n_coord)}
+    #    for coord in range(self.n_coord):
+    #        self.zeroth_smoothness_constraint_indices[coord] = {}
+    #        for direction in ['forward', 'backward']:
+    #            self.zeroth_smoothness_constraint_indices[coord][direction] = []
 
-        self.constraint_grid_sizes = []
-        self.constraint_grid_shapes = []
+    #    self.initial_constraint_indices = {i: [] for i in range(self.init_index_mi_list)}
+
+    #    self.constraint_grid_sizes = []
+    #    self.constraint_grid_shapes = []
 
     def get_solution_reshaped(self, x):
         """remove eps and reshape solution"""
@@ -490,120 +498,186 @@ class PDESYSLP(nn.Module):
         #equation
         grid_size = np.prod(self.coord_dims)
 
-        self.constraint_grid_shapes.append(list(self.coord_dims))
-        self.constraint_grid_sizes.append(grid_size)
+        #count central constraint grids over mi over coord
+        #central
+        ccount = len([1 for coord in range(self.n_coord) for mi in self.var_set.sorted_central_mi_indices[coord]])
+        self.num_grids_equation_central = ccount+1
 
+        self.forward_grid_shapes = []
+        self.forward_grid_sizes = []
         #forward
         for coord in range(self.n_coord):
             coord_dims = list(self.coord_dims)
             coord_dims[coord] -= 1
             grid_size = np.prod(coord_dims)
 
-            self.constraint_grid_shapes.append(coord_dims)
-            self.constraint_grid_sizes.append(grid_size)
+            self.forward_grid_shapes.append(coord_dims)
+            self.forward_grid_sizes.append(grid_size)
 
-        #central
-        for coord in range(self.n_coord):
-            for mi in self.var_set.sorted_central_mi_indices[coord]:
-                #mi_index = self.var_set.mi_to_index[mi]
-                self.constraint_grid_shapes.append(list(self.coord_dims))
-                self.constraint_grid_sizes.append(grid_size)
 
+        self.backward_grid_shapes = []
+        self.backward_grid_sizes = []
         #backward
         for coord in range(self.n_coord):
             coord_dims = list(self.coord_dims)
             coord_dims[coord] -= 1
             grid_size = np.prod(coord_dims)
 
-            self.constraint_grid_shapes.append(coord_dims)
-            self.constraint_grid_sizes.append(grid_size)
+            self.backward_grid_shapes.append(coord_dims)
+            self.backward_grid_sizes.append(grid_size)
 
+        #initial/boundary shapes and sizes
+        self.initial_grid_shapes = []
+        self.initial_grid_sizes = []
         #initial
-        for init_num, pair in enumerate(self.init_index_mi_list):
+        for init_num, f in enumerate(self.init_index_mi_list):
+            pair = f(*self.coord_dims)
             range_begin = np.array(pair[2])
             range_end = np.array(pair[3])
             coord_dims = range_end+1 - range_begin
             grid_size = np.prod(coord_dims)
 
-            self.constraint_grid_shapes.append(coord_dims)
-            self.constraint_grid_sizes.append(grid_size)
+            self.initial_grid_shapes.append(coord_dims)
+            self.initial_grid_sizes.append(grid_size)
 
-    def store_equation_constraint_indices(self, initial_index):
-        #store index of last constraint as the constraint index on grid
-        self.initial_constraint_indices[initial_index].append(self.num_added_constraints-1)
+    def lambda_flat_to_grid_set(self, z):
+        """converts a flat Lagrange multiplier vector to a set of grids for interpolation/downsampling"""
+        bs = z.shape[0]
 
-    def store_equation_constraint_indices(self):
-        #store index of last constraint as the constraint index on grid
-        self.equation_constraint_indices.append(self.num_added_constraints-1)
+        len0 = self.num_grids_equation_central*self.var_set.grid_size
+        offset = len0
 
-    def store_central_smoothness_constraint_indices_on_grid(self, coord, mi_index, grid_num):
-        #store index of last constraint as the constraint index on grid per coord per mi_index
-        self.smoothness_constraint_indices[coord][mi_index][grid_num] = self.num_added_constraints-1
-
-    def store_zeroth_smoothness_constraint_indices(self, coord, forward):
-        #store index of last constraint as the constraint index on grid per coord per mi_index
-        direction = 'forward' if forward else 'backward'
-        self.zeroth_smoothness_constraint_indices[coord][direction].append(self.num_added_constraints-1)
+        eq_central_grids = z[:, :len0].reshape(bs, self.num_grids_equation_central, *self.coord_dims)
 
 
-    def make_interpolation_grid_permutation(self):
+        #forward backward grid shapes. TODO Assumes same
+        #coord_dims = list(self.coord_dims)
+        #coord_dims[0] -= 1
+        #fb_grid_size = np.prod(coord_dims)
 
-        constraint_indices = []
+        #len1 = len0 + self.num_grids_forward_backward*self.var_set.grid_size
+        #fb_grids = z[:, :len1].reshape(bs, self.num_grids_forward_backward, *self.coord_dims)
 
-        #equation
-        total_size = 0
-        index = 0
+        forward_grids = []
+        for grid_shape, grid_size in zip(self.forward_grid_shapes,self.forward_grid_sizes):
+            len0 = len0 + grid_size
+            grid = z[:, offset:len0].reshape(bs, *grid_shape)
+            offset = len0
+            forward_grids.append(grid)
 
-        size = self.constraint_grid_sizes[index]
-        constraint_indices.append(np.arange(size))
-        total_size += size
-        index += 1
+        backward_grids = []
+        for grid_shape, grid_size in zip(self.backward_grid_shapes,self.backward_grid_sizes):
+            len0 = len0 + grid_size
+            grid = z[:, offset:len0].reshape(bs, *grid_shape)
+            offset = len0
+            backward_grids.append(grid)
 
-        #forward
-        offset = total_size
-        size = self.constraint_grid_sizes[index]
-        constraint_indices.append(np.arange(offset, offset+size))
-        total_size += size
-        index += 1
+        initial_grids = []
+        for grid_shape, grid_size in zip(self.initial_grid_shapes,self.initial_grid_sizes):
+            len0 = len0 + grid_size
+            grid = z[:, offset:len0].reshape(bs, *grid_shape)
+            offset = len0
+            initial_grids.append(grid)
 
-        #central
-        for coord in range(self.n_coord):
-            for mi in self.var_set.sorted_central_mi_indices[coord]:
-                mi_index = self.var_set.mi_to_index[mi]
-                indices = self.smoothness_constraint_indices[coord][mi_index]
-                constraint_indices.append(np.array(indices))
+        return eq_central_grids, forward_grids, backward_grids, initial_grids
 
-                total_size += self.var_set.grid_size
-                index += 1
+    def test_grid_transfer(self, z):
+        bs = z.shape[0]
 
-        #backward
-        offset = total_size
-        size = self.constraint_grid_sizes[index]
-        constraint_indices.append(np.arange(offset, offset+size))
-        total_size += size
-        index += 1
+        eq_central_grids, forward_grids, backward_grids, initial_grids = self.lambda_flat_to_grid_set(z)
 
-    def make_interpolation_grids(self):
-        #equation_indices, central_indices, zeroth_indices, initial_indices
-        #grid_shapes 
-        self.equation_constraint_grid = np.array(self.equation_constraint_indices).reshape(self.coord_dims)
+        eq_central_grids = eq_central_grids.reshape(bs, -1)
 
-        #central smoothness indices are already in a grid
-        self.central_smoothness_constraint_grid = self.smoothness_constraint_indices
+        forward_grids = [grid.reshape(bs, -1) for grid in forward_grids]
+        backward_grids = [grid.reshape(bs, -1) for grid in backward_grids]
+        initial_grids = [grid.reshape(bs, -1) for grid in initial_grids]
 
-        for coord in range(self.n_coords):
-            for direction in ['forward', 'backward']:
-                coord_dims = list(self.coord_dims)
-                coord_dims[coord] -= 1
+        zp = torch.cat([eq_central_grids]+forward_grids+backward_grids+initial_grids, dim=1)
 
-                #grid_size = np.prod(self.coord_dims)
-                self.zeroth_smoothness_constraint_indices[coord][direction].reshape(coord_dims)
+        diff = (z-zp).pow(2).sum()
+        print('constraint diff ', diff)
 
-        for initial_index,pair in enumerate(self.init_index_mi_list):
-            range_begin = np.array(pair[2])
-            range_end = np.array(pair[3])
-            coord_dims = range_end+1 - range_begin
-            self.initial_constraint_indices[initial_index] = np.array(self.initial_constraint_indices[initial_index]).reshape(coord_dims)
+        assert(diff < 1e-4)
+
+        return
+        #fb_grids = z[:, :len1].reshape(bs, self.num_grids_forward_backward, *self.coord_dims)
+        
+    #def store_equation_constraint_indices(self, initial_index):
+    #    #store index of last constraint as the constraint index on grid
+    #    self.initial_constraint_indices[initial_index].append(self.num_added_constraints-1)
+
+    #def store_equation_constraint_indices(self):
+    #    #store index of last constraint as the constraint index on grid
+    #    self.equation_constraint_indices.append(self.num_added_constraints-1)
+
+    #def store_central_smoothness_constraint_indices_on_grid(self, coord, mi_index, grid_num):
+    #    #store index of last constraint as the constraint index on grid per coord per mi_index
+    #    self.smoothness_constraint_indices[coord][mi_index][grid_num] = self.num_added_constraints-1
+
+    #def store_zeroth_smoothness_constraint_indices(self, coord, forward):
+    #    #store index of last constraint as the constraint index on grid per coord per mi_index
+    #    direction = 'forward' if forward else 'backward'
+    #    self.zeroth_smoothness_constraint_indices[coord][direction].append(self.num_added_constraints-1)
+
+
+    #def make_interpolation_grid_permutation(self):
+
+    #    constraint_indices = []
+
+    #    #equation
+    #    total_size = 0
+    #    index = 0
+
+    #    size = self.constraint_grid_sizes[index]
+    #    constraint_indices.append(np.arange(size))
+    #    total_size += size
+    #    index += 1
+
+    #    #forward
+    #    offset = total_size
+    #    size = self.constraint_grid_sizes[index]
+    #    constraint_indices.append(np.arange(offset, offset+size))
+    #    total_size += size
+    #    index += 1
+
+    #    #central
+    #    for coord in range(self.n_coord):
+    #        for mi in self.var_set.sorted_central_mi_indices[coord]:
+    #            mi_index = self.var_set.mi_to_index[mi]
+    #            indices = self.smoothness_constraint_indices[coord][mi_index]
+    #            constraint_indices.append(np.array(indices))
+
+    #            total_size += self.var_set.grid_size
+    #            index += 1
+
+    #    #backward
+    #    offset = total_size
+    #    size = self.constraint_grid_sizes[index]
+    #    constraint_indices.append(np.arange(offset, offset+size))
+    #    total_size += size
+    #    index += 1
+
+    #def make_interpolation_grids(self):
+    #    #equation_indices, central_indices, zeroth_indices, initial_indices
+    #    #grid_shapes 
+    #    self.equation_constraint_grid = np.array(self.equation_constraint_indices).reshape(self.coord_dims)
+
+    #    #central smoothness indices are already in a grid
+    #    self.central_smoothness_constraint_grid = self.smoothness_constraint_indices
+
+    #    for coord in range(self.n_coords):
+    #        for direction in ['forward', 'backward']:
+    #            coord_dims = list(self.coord_dims)
+    #            coord_dims[coord] -= 1
+
+    #            #grid_size = np.prod(self.coord_dims)
+    #            self.zeroth_smoothness_constraint_indices[coord][direction].reshape(coord_dims)
+
+    #    for initial_index,pair in enumerate(self.init_index_mi_list):
+    #        range_begin = np.array(pair[2])
+    #        range_end = np.array(pair[3])
+    #        coord_dims = range_end+1 - range_begin
+    #        self.initial_constraint_indices[initial_index] = np.array(self.initial_constraint_indices[initial_index]).reshape(coord_dims)
 
     #build constraint string representations for check
     def repr_eq(self, rows=None, cols=None, rhs=None, values=None, type=ConstraintType.Equation):
@@ -673,7 +747,7 @@ class PDESYSLP(nn.Module):
             self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Equation,
                                 grid_num=grid_num)
 
-            self.store_equation_constraint_indices()
+            #self.store_equation_constraint_indices()
 
     def tc_list_append(self, coord, exp, denom, forward=True):
         """taylor constraint lists"""
@@ -770,8 +844,8 @@ class PDESYSLP(nn.Module):
                 self.tc_list_append(coord, order_diff, d, forward=forward)
                 tc_count = tc_count+1
 
-            self.add_constraint(var_list=var_list, values=val_list, rhs=0, constraint_type=ConstraintType.Derivative, grid_num=grid_num, coord=coord)
-            self.store_zeroth_smoothness_constraint_indices(coord, forward)
+            self.add_constraint(var_list=var_list, values=val_list, rhs=0, constraint_type=ConstraintType.Derivative, grid_num=grid_num)
+            #self.store_zeroth_smoothness_constraint_indices(coord, forward)
 
         #
         self.tc_count = tc_count if self.tc_count is None else self.tc_count
@@ -844,8 +918,8 @@ class PDESYSLP(nn.Module):
             else:
                 raise ValueError('Central diff not implemented for ' + str(mi[coord]))
 
-            self.add_constraint(var_list=var_list, values= values, rhs=0, constraint_type=ConstraintType.Derivative, grid_num=grid_num, coord=None)
-            self.store_central_smoothness_constraint_indices_on_grid(coord, mi_index, grid_num)
+            self.add_constraint(var_list=var_list, values= values, rhs=0, constraint_type=ConstraintType.Derivative, grid_num=grid_num)
+            #self.store_central_smoothness_constraint_indices_on_grid(coord, mi_index, grid_num)
 
     def _add_central_constraint(self, coord, grid_index, grid_num):
         act_mi_index_count = 0
@@ -888,8 +962,8 @@ class PDESYSLP(nn.Module):
             else:
                 raise ValueError('Central diff not implemented for ' + str(mi[coord]))
 
-            self.add_constraint(var_list=var_list, values= values, rhs=0, constraint_type=ConstraintType.Derivative, grid_num=grid_num, coord=coord)
-            self.store_central_smoothness_constraint_indices_on_grid(coord, mi_index, grid_num)
+            self.add_constraint(var_list=var_list, values= values, rhs=0, constraint_type=ConstraintType.Derivative, grid_num=grid_num)
+            #self.store_central_smoothness_constraint_indices_on_grid(coord, mi_index, grid_num)
 
         self.act_central_mi_index_count = act_mi_index_count if self.act_central_mi_index_count is None else self.act_central_mi_index_count
 
@@ -913,7 +987,8 @@ class PDESYSLP(nn.Module):
         #    raise ValueError("Not implemented n_iv>1")
         #TODO range
 
-        for init_num, pair in enumerate(self.init_index_mi_list):
+        for init_num, f in enumerate(self.init_index_mi_list):
+            pair = f(*self.coord_dims)
             coord_index = pair[0]
             mi_index = pair[1]
             range_begin = np.array(pair[2])
@@ -931,7 +1006,7 @@ class PDESYSLP(nn.Module):
                     var_list.append((grid_index, mi_index))
                     val_list.append(1)
                     self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Initial, grid_num=grid_num)
-                    self.initial_constraint_indices(init_num)
+                    #self.initial_constraint_indices(init_num)
         return
 
         #for pair in self.init_index_mi_list:
@@ -957,8 +1032,8 @@ class PDESYSLP(nn.Module):
 
 
     def build_derivative_constraints(self):
-        self.forward_constraints()
         self.central_constraints()
+        self.forward_constraints()
         self.backward_constraints()
 
 
@@ -1424,7 +1499,7 @@ class PDESYSLP(nn.Module):
         cv = self.build_central_values(steps_list)
         bv = self.build_backward_values(steps_list)
 
-        built_values = torch.cat([fv,cv,bv], dim=-1)
+        built_values = torch.cat([cv,fv,bv], dim=-1)
         #built_values = torch.cat([cv], dim=-1)
         #built_values = torch.cat([fv,bv], dim=-1)
         #built_values = torch.cat([fv,cv], dim=-1)
