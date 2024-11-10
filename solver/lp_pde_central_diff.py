@@ -336,6 +336,8 @@ class PDESYSLP(nn.Module):
             self.step_grid_unsqueeze_shape[i] = tuple(unsqueeze_shape)
             #self.step_grid_expand_shape[i] = tuple(expand_shape)
 
+        self.forward_backward_shape = lambda coord, coord_dims: [d if i!=coord else d-1 for i,d in enumerate(coord_dims)]
+
         #placeholder step
         self.step_size = step_size
         #if step_list is None:
@@ -497,6 +499,8 @@ class PDESYSLP(nn.Module):
         #keep order
         #equation
         grid_size = np.prod(self.coord_dims)
+        coord_dims_up = np.array(self.coord_dims)*2
+        coord_dims_down = np.array(self.coord_dims)//2
 
         #count central constraint grids over mi over coord
         #central
