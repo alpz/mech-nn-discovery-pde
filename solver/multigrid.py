@@ -66,34 +66,35 @@ class MultigridSolver():
                         dtype=dtype, device=self.device)
             self.pde_list.append(pde)
 
-    def fill_coarse_grid(self, pde: PDESYSLPEPS, new_shape, coeffs, rhs, iv_rhs, steps_list):
-        n_orders = len(pde.var_set.mi_list)
+    def fill_coarse_grids(self, coeffs, rhs, iv_rhs, steps_list):
 
-        #downsample coeffs, rhs, step, iv_rhs
-        coeffs = coeffs.reshape(self.bs*self.n_ind_dim, *self.coord_dims, n_orders)
-        rhs = rhs.reshape(self.bs*self.n_ind_dim, *self.coord_dims)
+        A_list = []
+        A_rhs_list = []
+        for k in range(1, self.n_grids):
+            pde = self.pde_list[k]
+            new_shape = self.dim_list[k]
 
-        for i in range(self.n_coord):
-            steps_list[i] = steps_list[i].reshape(self.bs*self.n_ind_dim,self.coord_dims[i]-1)
+            n_orders = len(pde.var_set.mi_list)
 
-        iv_rhs = iv_rhs.reshape(self.bs*self.n_ind_dim, -1)
-        iv_list = []
-        offset = 0
-        for ivf in self.init_index_mi_list:
-            pair = ivf(*self.coord_dims)
-            range_begin = np.array(pair[2])
-            range_end = np.array(pair[3])
-            iv_shape_dims = range_end+1 - range_begin
-            iv_size = np.prod(iv_shape_dims)
+            new_coeffs = self.downsample_coeffs(coeffs, self.coord_dims,  new_shape, n_orders)
+            new_rhs = self.downsample_rhs(rhs, self.coord_dims,  new_shape)
+            new_steps_list = self.downsample_steps(steps_list, self.coord_dims)
+            new_iv_rhs = self.downsample_iv(iv_rhs, self.coord_dims,  new_shape)
 
-            iv = iv_rhs[:, offset:offset+iv_size]
-            offset = offset+iv_size
+            if self.solver_dbl:
+                new_coeffs = new_coeffs.double()
+                new_rhs = new_rhs.double()
+                new_iv_rhs = new_iv_rhs.double() if iv_rhs is not None else None
+                new_steps_list = [steps.double() for steps in new_steps_list]
 
-            iv_list.append(iv)
+            derivative_constraints = pde.build_derivative_tensor(new_steps_list)
+            eq_constraints = pde.build_equation_tensor(new_coeffs)
 
+            A, A_rhs = pde.fill_constraints_torch(eq_constraints, rhs, iv_rhs, derivative_constraints)
+            A_list.append(A)
+            A_rhs_list.append(A_rhs)
 
-
-        pass
+        return A_list, A_rhs_list
 
     def downsample_coeffs(self, coeffs, old_shape,  new_shape, n_orders):
         grid_size = np.prod(np.array(old_shape))
@@ -134,24 +135,62 @@ class MultigridSolver():
 
         return rhs
 
-    def downsample_steps(self, steps_list, old_shape,  new_shape):
+
+    def downsample_steps(self, steps_list, old_shape):
+        #FIX: add steps
         new_steps_list = []
         for i in range(self.n_coord):
             #steps_list[i] = steps_list[i].reshape(self.bs*self.n_ind_dim,*self.step_grid_shape[i])
             steps = steps_list[i]
             steps = steps.reshape(self.bs*self.n_ind_dim,old_shape[i]-1)
+            steps = steps[:, :-1].reshape(-1, old_shape[i]//2, 2).sum(dim=-1)
 
-            steps = F.interpolate(steps, size=new_shape, mode='linear', align_corners=True)
-            steps = steps.reshape(self.bs*self.n_ind_dim,new_shape[i]-1)
             new_steps_list.append(steps)
 
         return new_steps_list
+
+    def downsample_iv(self, iv_rhs, old_shape,  new_shape):
+        if len(old_shape) == 2:
+            mode='bilinear'
+        elif len(old_shape) == 3:
+            mode='trilinear'
+        else:
+            raise ValueError('incorrect num coordinates')
+
+        iv_rhs = iv_rhs.reshape(self.bs*self.n_ind_dim, -1)
+        iv_list = []
+        offset = 0
+        for ivf in self.init_index_mi_list:
+            pair = ivf(*old_shape)
+            range_begin = np.array(pair[2])
+            range_end = np.array(pair[3])
+            iv_old_shape = np.squeeze(range_end+1 - range_begin)
+
+            new_pair = ivf(*new_shape)
+            new_range_begin = np.array(new_pair[2])
+            new_range_end = np.array(new_pair[3])
+            iv_new_shape = np.squeeze(new_range_end+1 - new_range_begin)
+
+            iv_old_size = np.prod(iv_old_shape)
+
+            iv = iv_rhs[:, offset:offset+iv_old_size]
+            offset = offset+iv_old_size
+
+
+            iv = F.interpolate(iv, size=iv_new_shape, mode=mode, align_corners=True)
+            iv = iv.reshape(self.bs*self.n_ind_dim, -1)
+
+            iv_list.append(iv)
+
+        iv_rhs = torch.cat(iv_list, dim=-1)
+
+        return iv_rhs
 
 
     def fill_grid(self, pde: PDESYSLPEPS, coeffs, rhs, iv_rhs, steps_list):
         grid_size = pde.var_set.grid_size
         n_orders = len(pde.var_set.mi_list)
-        step_grid_shape = pde.step_grid_shape
+        #step_grid_shape = pde.step_grid_shape
 
         coeffs = coeffs.reshape(self.bs*self.n_ind_dim, grid_size, n_orders)
         rhs = rhs.reshape(self.bs*self.n_ind_dim, grid_size)
