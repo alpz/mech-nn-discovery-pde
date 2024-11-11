@@ -70,15 +70,19 @@ class MultigridSolver():
 
         A_list = []
         A_rhs_list = []
+
+        #steps are incrementally downsampled by adding pairs. The rest are done directly
+        new_steps_list = steps_list
         for k in range(1, self.n_grids):
             pde = self.pde_list[k]
             new_shape = self.dim_list[k]
+            old_shape = self.dim_list[k-1]
 
             n_orders = len(pde.var_set.mi_list)
 
             new_coeffs = self.downsample_coeffs(coeffs, self.coord_dims,  new_shape, n_orders)
             new_rhs = self.downsample_rhs(rhs, self.coord_dims,  new_shape)
-            new_steps_list = self.downsample_steps(steps_list, self.coord_dims)
+            new_steps_list = self.downsample_steps(new_steps_list, old_shape)
             new_iv_rhs = self.downsample_iv(iv_rhs, self.coord_dims,  new_shape)
 
             if self.solver_dbl:
@@ -95,6 +99,45 @@ class MultigridSolver():
             A_rhs_list.append(A_rhs)
 
         return A_list, A_rhs_list
+
+    def make_kkt_matrices(self, A_list, A_rhs_list):
+        KKT_list = []
+        KKT_diag_list = []
+        for i in range(self.n_grids):
+            KKT, KKT_diag = self.make_kkt(self.pde_list[i], A_list[i], A_rhs_list[i])
+            KKT_list.append(KKT)
+            KKT_diag_list.append(KKT_diag)
+
+        return KKT_list, KKT_diag_list
+
+
+    def make_kkt(pde: PDESYSLPEPS, A, A_rhs, us=1e3, ds=1e-5):
+        #P_diag = torch.ones(num_eps).type_as(rhs)*1e3
+        #P_zeros = torch.zeros(num_var).type_as(rhs) +1e-5
+        num_eps = pde.var_set.num_added_eps_vars
+        num_var = pde.var_set.num_vars
+
+        _P_diag = torch.ones(num_eps, dtype=A_rhs.dtype, device='cpu')*us
+        _P_zeros = torch.zeros(num_var, dtype=A_rhs.dtype, device='cpu') +ds
+        P_diag = torch.cat([_P_zeros, _P_diag])
+
+        #torch bug: can't make diagonal tensor on gpu
+        G = torch.sparse.spdiags(P_diag, torch.tensor([0]), (P_diag.shape[0], P_diag.shape[0]), 
+                                layout=torch.sparse_coo)
+
+        G = G.to(A.device)
+        G = G.unsqueeze(0)
+        G = torch.cat([G]*A_rhs.shape[0], dim=0)
+        GA = torch.cat([G, A], dim=1)
+
+        Z = torch.sparse_coo_tensor(torch.empty([2,0]), [], size=(A.shape[1], A.shape[1]), dtype=A.dtype, device=A_rhs.device)
+        Z = Z.unsqueeze(0)#.to(rhs.device)
+        Z = torch.cat([Z]*A_rhs.shape[0], dim=0)
+
+        AtZ = torch.cat([A.transpose(1,2), Z], dim =1)
+        KKT = torch.cat([GA, AtZ], dim =2)
+
+        return KKT, P_diag
 
     def downsample_coeffs(self, coeffs, old_shape,  new_shape, n_orders):
         grid_size = np.prod(np.array(old_shape))
@@ -137,7 +180,6 @@ class MultigridSolver():
 
 
     def downsample_steps(self, steps_list, old_shape):
-        #FIX: add steps
         new_steps_list = []
         for i in range(self.n_coord):
             #steps_list[i] = steps_list[i].reshape(self.bs*self.n_ind_dim,*self.step_grid_shape[i])
@@ -221,7 +263,7 @@ class MultigridSolver():
     def prolongation(self):
         pass
 
-    def smooth_jacobi(self, nsteps):
+    def smooth_jacobi(self, A, b,   nsteps):
         pass
 
 class MultigridLayer(nn.Module):
