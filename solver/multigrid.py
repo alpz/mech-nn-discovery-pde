@@ -266,6 +266,16 @@ class MultigridSolver():
     def smooth_jacobi(self, A, b,   nsteps):
         pass
 
+    def smooth_qmres(self, A, b,   nsteps):
+        pass
+
+    def smooth_uzawa(self, A, b,   nsteps):
+        pass
+
+
+    def solve_coarsest(self, A, b,   nsteps):
+        pass
+
 class MultigridLayer(nn.Module):
     """ Multigrid layer """
     def __init__(self, bs, order, n_ind_dim, n_iv, init_index_mi_list, coord_dims, n_iv_steps, solver_dbl=True, 
