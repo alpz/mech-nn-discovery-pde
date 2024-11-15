@@ -408,7 +408,7 @@ class PDESYSLP(nn.Module):
         if build:
             self.build_constraints()
 
-        self.compute_constraint_grid_sizes_and_shapes()
+        #self.compute_constraint_grid_sizes_and_shapes()
         print('added constraints ', self.num_added_constraints)
         self.compute_constraint_grid_sizes_and_shapes()
         z = torch.rand(1, self.num_added_constraints)

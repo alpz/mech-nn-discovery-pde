@@ -276,6 +276,19 @@ class MultigridSolver():
     def solve_coarsest(self, A, b,   nsteps):
         pass
 
+    def v_cycle(self):
+        #smooth
+        #compute residual sol x
+        #coarsen x, coarsen r
+
+        #solve Ae = r
+        #prolong e
+        #correct: x = x+e
+        #smooth
+
+        pass
+
+
 class MultigridLayer(nn.Module):
     """ Multigrid layer """
     def __init__(self, bs, order, n_ind_dim, n_iv, init_index_mi_list, coord_dims, n_iv_steps, solver_dbl=True, 
@@ -348,8 +361,11 @@ class MultigridLayer(nn.Module):
         eq_constraints = self.pde.build_equation_tensor(coeffs)
 
 
+        coarse_A_list, coarse_rhs_list = self.mg_solver.fill_coarse_grids(coeffs, 
+                                                                rhs, iv_rhs, steps_list)
         #x = self.qpf(coeffs, rhs, iv_rhs, derivative_constraints)
-        x,lam = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints)
+        x,lam = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints, 
+                         coarse_A_list, coarse_rhs_list)
         #eps = x[:,0]
 
         #print(x)
