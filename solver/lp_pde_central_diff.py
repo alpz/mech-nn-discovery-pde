@@ -585,6 +585,20 @@ class PDESYSLP(nn.Module):
 
         return eq_central_grids, forward_grids, backward_grids, initial_grids
 
+    def lambda_grids_to_flat(self, eq_central_grids, forward_grids, backward_grids, initial_grids):
+        bs = eq_central_grids.shape[0]
+        #eq_central_grids, forward_grids, backward_grids, initial_grids = self.lambda_flat_to_grid_set(z)
+
+        eq_central_grids = eq_central_grids.reshape(bs, -1)
+
+        forward_grids = [grid.reshape(bs, -1) for grid in forward_grids]
+        backward_grids = [grid.reshape(bs, -1) for grid in backward_grids]
+        initial_grids = [grid.reshape(bs, -1) for grid in initial_grids]
+
+        zp = torch.cat([eq_central_grids]+forward_grids+backward_grids+initial_grids, dim=1)
+
+        return zp
+
     def test_grid_transfer(self, z):
         bs = z.shape[0]
 

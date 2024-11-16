@@ -117,8 +117,8 @@ class MultigridSolver():
         num_eps = pde.var_set.num_added_eps_vars
         num_var = pde.var_set.num_vars
 
-        _P_diag = torch.ones(num_eps, dtype=A_rhs.dtype, device='cpu')*us
-        _P_zeros = torch.zeros(num_var, dtype=A_rhs.dtype, device='cpu') +ds
+        _P_diag = torch.ones(num_eps, dtype=A.dtype, device='cpu')*us
+        _P_zeros = torch.zeros(num_var, dtype=A.dtype, device='cpu') +ds
         P_diag = torch.cat([_P_zeros, _P_diag])
         P_diag_inv = 1/P_diag
 
@@ -285,11 +285,69 @@ class MultigridSolver():
 
         return derivative_constraints, eq_constraints, steps_list, iv_rhs
 
-    def restrict(self):
-        pass
+    def restrict(self, idx, x):
+        pde = self.pde_list[idx]
+        rst_pde = self.pde_list[idx+1]
 
-    def prolong(self):
-        pass
+        eq, f_list,b_list, init_list = pde.lambda_flat_to_grid_set(x)
+
+        rst_grid_shape = self.dim_list[idx+1]
+
+        fsh = rst_pde.forward_grid_shapes
+        bsh = rst_pde.backward_grid_shapes
+        ish = rst_pde.initial_grid_shapes
+
+        rst_eq = F.interpolate(eq, size=rst_grid_shape, mode='bilinear', align_corners=True)
+        rst_forward = []
+        for i,f in enumerate(f_list):
+            rst_f = F.interpolate(f, size=fsh[i], mode='bilinear', align_corners=True)
+            rst_forward.append(rst_f)
+
+        rst_backward = []
+        for i,b in enumerate(b_list):
+            rst_b = F.interpolate(b, size=bsh[i], mode='bilinear', align_corners=True)
+            rst_backward.append(rst_b)
+
+        rst_init = []
+        for i,init in enumerate(init_list):
+            rst_i = F.interpolate(init, size=ish[i], mode='bilinear', align_corners=True)
+            rst_init.append(rst_i)
+
+        x_rst = rst_pde.lambda_grids_to_flat(rst_eq, rst_forward, rst_backward, rst_init)
+
+        return x_rst
+
+    def prolong(self, idx, x):
+        pde = self.pde_list[idx]
+        rst_pde = self.pde_list[idx-1]
+
+        eq, f_list,b_list, init_list = pde.lambda_flat_to_grid_set(x)
+
+        rst_grid_shape = self.dim_list[idx-1]
+
+        fsh = rst_pde.forward_grid_shapes
+        bsh = rst_pde.backward_grid_shapes
+        ish = rst_pde.initial_grid_shapes
+
+        rst_eq = F.interpolate(eq, size=rst_grid_shape, mode='bilinear', align_corners=True)
+        rst_forward = []
+        for i,f in enumerate(f_list):
+            rst_f = F.interpolate(f, size=fsh[i], mode='bilinear', align_corners=True)
+            rst_forward.append(rst_f)
+
+        rst_backward = []
+        for i,b in enumerate(b_list):
+            rst_b = F.interpolate(b, size=bsh[i], mode='bilinear', align_corners=True)
+            rst_backward.append(rst_b)
+
+        rst_init = []
+        for i,init in enumerate(init_list):
+            rst_i = F.interpolate(init, size=ish[i], mode='bilinear', align_corners=True)
+            rst_init.append(rst_i)
+
+        x_rst = rst_pde.lambda_grids_to_flat(rst_eq, rst_forward, rst_backward, rst_init)
+
+        return x_rst
 
     def smooth_jacobi(self, A, b, x, D, nsteps=5, w=2/3):
         Dinv = 1/D
@@ -322,9 +380,6 @@ class MultigridSolver():
         lam = lam.squeeze(2)
         return lam
 
-    def get_residual(self, A, b, x):
-        pass
-
     def v_cycle_jacobi(self, idx, A_list, b_list, x, D_list):
         A = A_list[idx]
         b = b_list[idx]
@@ -334,7 +389,7 @@ class MultigridSolver():
         x = self.smooth_jacobi(A, b, x, D)
         r = b-torch.bmm(A, x.unsqueeze(2)).squeeze(2)
 
-        rH = self.restrict(r)
+        rH = self.restrict(idx, r)
 
         if idx ==1:
             deltaH = self.solve_coarsest(A[0], rH)
@@ -342,7 +397,7 @@ class MultigridSolver():
             xH0 = torch.zeros_like(b_list[idx-1])
             deltaH = self.v_cycle(self, idx-1, A_list, b_list,xH0, D_list)
 
-        delta = self.prolong(deltaH)
+        delta = self.prolong(idx, deltaH)
         #correct
         x = x+delta
 
