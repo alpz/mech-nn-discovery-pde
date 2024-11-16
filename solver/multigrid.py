@@ -100,6 +100,34 @@ class MultigridSolver():
 
         return A_list, A_rhs_list
 
+    def make_AAt_matrices(self, A_list, A_rhs_list):
+        AAt_list = []
+        #rhs_list = []
+        for i in range(self.n_grids):
+            AAt = self.make_AAt(self.pde_list[i], A_list[i])
+            AAt_list.append(AAt)
+
+        return AAt_list, A_rhs_list
+
+
+    def make_AAt(pde: PDESYSLPEPS, A, us=1e5, ds=1e-5):
+        #AGinvAt
+        #P_diag = torch.ones(num_eps).type_as(rhs)*1e3
+        #P_zeros = torch.zeros(num_var).type_as(rhs) +1e-5
+        num_eps = pde.var_set.num_added_eps_vars
+        num_var = pde.var_set.num_vars
+
+        _P_diag = torch.ones(num_eps, dtype=A_rhs.dtype, device='cpu')*us
+        _P_zeros = torch.zeros(num_var, dtype=A_rhs.dtype, device='cpu') +ds
+        P_diag = torch.cat([_P_zeros, _P_diag])
+        P_diag_inv = 1/P_diag
+
+        PinvAt = P_diag_inv.unsqueeze(2)*A.transpose(1,2)
+        AAt = torch.mm(A[0], PinvAt[0]).unsqueeze(0)
+
+        return AAt
+
+
     def make_kkt_matrices(self, A_list, A_rhs_list):
         KKT_list = []
         KKT_diag_list = []
@@ -257,14 +285,26 @@ class MultigridSolver():
 
         return derivative_constraints, eq_constraints, steps_list, iv_rhs
 
-    def restriction(self):
+    def restrict(self):
         pass
 
-    def prolongation(self):
+    def prolong(self):
         pass
 
-    def smooth_jacobi(self, A, b,   nsteps):
-        pass
+    def smooth_jacobi(self, A, b, x, D, nsteps=5, w=2/3):
+        Dinv = 1/D
+
+        w = 2/3
+        I = torch.sparse.spdiags(torch.ones(A.shape[1]), torch.tensor([0]), (A.shape[1], A.shape[2]), 
+                                layout=torch.sparse_coo)
+        I = I.to(A.device).unsqueeze(0)
+
+        J = I - w*Dinv.unsqueeze()*A
+
+        for i in range(nsteps):
+            x = torch.bmm(J, x) + w*Dinv*b
+
+        return x
 
     def smooth_qmres(self, A, b,   nsteps):
         pass
@@ -273,20 +313,43 @@ class MultigridSolver():
         pass
 
 
-    def solve_coarsest(self, A, b,   nsteps):
+    def solve_coarsest(self, A, b, nsteps):
+        #At = A.transpose(1,2)#.to_dense()
+        #PAt = P_diag_inv.unsqueeze(2)*At
+        #APAt = torch.bmm(A, PAt)
+        L,info = torch.linalg.cholesky_ex(A,upper=False)
+        lam = torch.cholesky_solve(b.unsqueeze(2), L)
+        lam = lam.squeeze(2)
+        return lam
+
+    def get_residual(self, A, b, x):
         pass
 
-    def v_cycle(self):
-        #smooth
-        #compute residual sol x
-        #coarsen x, coarsen r
+    def v_cycle_jacobi(self, idx, A_list, b_list, x, D_list):
+        A = A_list[idx]
+        b = b_list[idx]
+        D = D_list[idx]
 
-        #solve Ae = r
-        #prolong e
-        #correct: x = x+e
-        #smooth
+        #pre-smooth
+        x = self.smooth_jacobi(A, b, x, D)
+        r = b-torch.bmm(A, x.unsqueeze(2)).squeeze(2)
 
-        pass
+        rH = self.restrict(r)
+
+        if idx ==1:
+            deltaH = self.solve_coarsest(A[0], rH)
+        else:
+            xH0 = torch.zeros_like(b_list[idx-1])
+            deltaH = self.v_cycle(self, idx-1, A_list, b_list,xH0, D_list)
+
+        delta = self.prolong(deltaH)
+        #correct
+        x = x+delta
+
+        #smooth
+        x = self.smooth_jacobi(A, b, x, D)
+
+        return x
 
 
 class MultigridLayer(nn.Module):
