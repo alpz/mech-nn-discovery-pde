@@ -98,9 +98,10 @@ class MultigridSolver():
             derivative_constraints = pde.build_derivative_tensor(new_steps_list)
             eq_constraints = pde.build_equation_tensor(new_coeffs)
 
-            A, A_rhs = pde.fill_constraints_torch(eq_constraints, rhs, iv_rhs, derivative_constraints)
+            A, A_rhs = pde.fill_constraints_torch(eq_constraints, new_rhs, new_iv_rhs, derivative_constraints)
             A_list.append(A)
             A_rhs_list.append(A_rhs)
+            print('listing ', A.shape, A_rhs.shape, new_iv_rhs.shape)
 
         return A_list, A_rhs_list
 
@@ -112,6 +113,7 @@ class MultigridSolver():
             AAt,D = self.make_AAt(self.pde_list[i], A_list[i])
             AAt_list.append(AAt)
             D_list.append(D)
+            print('coarse size r ', A_rhs_list[i].shape)
 
         return AAt_list, A_rhs_list, D_list
 
@@ -134,6 +136,8 @@ class MultigridSolver():
 
         # diagonal of AG-1At
         D = (PinvAt*At).sum(dim=1).to_dense()
+
+        print('coarse size A ', A.shape)
 
         return AAt, D
 
@@ -190,7 +194,9 @@ class MultigridSolver():
         else:
             raise ValueError('incorrect num coordinates')
 
+        print('ds coeffs ', coeffs.shape, new_shape)
         coeffs = F.interpolate(coeffs, size=new_shape, mode=mode, align_corners=True)
+        print('ds coeffs ', coeffs.shape)
 
         new_grid_size = np.prod(np.array(new_shape))
         coeffs = coeffs.reshape(self.bs*self.n_ind_dim, n_orders, new_grid_size)
@@ -209,7 +215,9 @@ class MultigridSolver():
         else:
             raise ValueError('incorrect num coordinates')
 
+        print('ds rhs ', rhs.shape)
         rhs = F.interpolate(rhs, size=new_shape, mode=mode, align_corners=True)
+        print('ds rhs ', rhs.shape)
 
         new_grid_size = np.prod(np.array(new_shape))
         rhs = rhs.reshape(self.bs*self.n_ind_dim, new_grid_size)
@@ -253,7 +261,7 @@ class MultigridSolver():
             new_range_end = np.array(new_pair[3])
             #iv_new_shape = np.squeeze(new_range_end+1 - new_range_begin)
             iv_new_shape = (new_range_end+1 - new_range_begin)
-            iv_new_shape = np.array([i for i in iv_new_shape if i!= 1])
+            #iv_new_shape = np.array([i for i in iv_new_shape if i!= 1])
             #iv_new_shape = np.squeeze(iv_new_shape)
 
             iv_old_size = np.prod(iv_old_shape)
@@ -265,7 +273,8 @@ class MultigridSolver():
 
             print(iv.shape, old_shape, tuple(iv_new_shape))
 
-            iv = F.interpolate(iv, size=tuple(iv_new_shape), mode='linear', align_corners=True)
+            iv = F.interpolate(iv.unsqueeze(1), size=tuple(iv_new_shape), mode='bilinear', align_corners=True)
+            print('interp iv ', iv.shape)
             iv = iv.reshape(self.bs*self.n_ind_dim, -1)
 
             iv_list.append(iv)
