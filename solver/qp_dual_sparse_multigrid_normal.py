@@ -24,7 +24,7 @@ import scipy.sparse as SPS
 #import solver.lsmr as LSMR
 import solver.minres_torch as MINRES
 #import solver.minres_torch_chol as MINRES
-import solver.multigrid as MG
+#import solver.multigrid as MG
 
 def to_torch_coo(KKTs):
     row = torch.tensor(KKTs.row)
@@ -187,7 +187,7 @@ def do_minres(Aperm, KKT, R, perm, perminv, block_L=None, schur_diag=None, KKT_d
     return sol,info,block_L
 
 
-def QPFunction(pde, mg:MG.MultigridSolver, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
+def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
     class QPFunctionFn(Function):
         #csr_rows = None
         #csr_cols = None
