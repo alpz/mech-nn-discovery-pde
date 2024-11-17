@@ -24,6 +24,7 @@ import scipy.sparse as SPS
 #import solver.lsmr as LSMR
 import solver.minres_torch as MINRES
 #import solver.minres_torch_chol as MINRES
+import solver.multigrid as MG
 
 def to_torch_coo(KKTs):
     row = torch.tensor(KKTs.row)
@@ -186,7 +187,7 @@ def do_minres(Aperm, KKT, R, perm, perminv, block_L=None, schur_diag=None, KKT_d
     return sol,info,block_L
 
 
-def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
+def QPFunction(pde, mg:MG.MultigridSolver, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
     class QPFunctionFn(Function):
         #csr_rows = None
         #csr_cols = None
@@ -206,39 +207,45 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             A, A_rhs = pde.fill_constraints_torch(eq_A, rhs, iv_rhs, derivative_A)
             At = A.transpose(1,2)
 
+            A_list = [A] + coarse_A_list
+            rhs_list = [A_rhs] + coarse_rhs_list
+
+            AAt_list, _, D_list = mg.make_AAt_matrices(A_list, rhs_list)
+            lam = mg.v_cycle_jacobi_start(AAt_list, rhs_list, D_list)
+            
 
             num_eps = pde.var_set.num_added_eps_vars
             num_var = pde.var_set.num_vars
             #u = l
-            P_diag = torch.ones(num_eps).type_as(rhs)*1e6
-            P_zeros = torch.zeros(num_var).type_as(rhs) +1e-6
+            P_diag = torch.ones(num_eps).type_as(rhs)*1e5
+            P_zeros = torch.zeros(num_var).type_as(rhs) +1e-5
             P_diag = torch.cat([P_zeros, P_diag])
             P_diag_inv = 1/P_diag
             P_diag_inv = P_diag_inv.unsqueeze(0)
 
-            c = torch.zeros(num_var+num_eps, device=A.device).type_as(rhs)
-            rhs = c
-            rhs = P_diag_inv*rhs
-            rhs = torch.bmm(A, rhs.unsqueeze(2))
-            #TODO rhs is zero upto here. remove the above
-            rhs = rhs.squeeze(2) + A_rhs
-            #rhs =  A_rhs
+            #c = torch.zeros(num_var+num_eps, device=A.device).type_as(rhs)
+            #rhs = c
+            #rhs = P_diag_inv*rhs
+            #rhs = torch.bmm(A, rhs.unsqueeze(2))
+            ##TODO rhs is zero upto here. remove the above
+            #rhs = rhs.squeeze(2) + A_rhs
+            ##rhs =  A_rhs
 
-            #lam, info = cg_matvec([A, P_diag_inv, At], rhs, x0=None, tol=1e-3, maxiter=16000)
-            #L=None
-            #print(info[1], info[2], lam.shape, A.shape)
+            ##lam, info = cg_matvec([A, P_diag_inv, At], rhs, x0=None, tol=1e-3, maxiter=16000)
+            ##L=None
+            ##print(info[1], info[2], lam.shape, A.shape)
             
 
 
-            ########### dense
-            A = A.to_dense()
-            At = A.transpose(1,2)#.to_dense()
-            PAt = P_diag_inv.unsqueeze(2)*At
-            APAt = torch.bmm(A, PAt)
-            L,info = torch.linalg.cholesky_ex(APAt,upper=False)
-            lam = torch.cholesky_solve(rhs.unsqueeze(2), L)
-            lam = lam.squeeze(2)
-            ###########
+            ############ dense
+            #A = A.to_dense()
+            #At = A.transpose(1,2)#.to_dense()
+            #PAt = P_diag_inv.unsqueeze(2)*At
+            #APAt = torch.bmm(A, PAt)
+            #L,info = torch.linalg.cholesky_ex(APAt,upper=False)
+            #lam = torch.cholesky_solve(rhs.unsqueeze(2), L)
+            #lam = lam.squeeze(2)
+            ############
 
             #print('torch cg info ', info)
             #lam,info = SPSLG.lgmres(pdmat, pd_rhs)
@@ -247,7 +254,9 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             #xl = -Pinv_s@(A_s.T@lam -c)
             x = lam.unsqueeze(2)
             x = torch.bmm(At, x)
-            x = P_diag_inv*(x.squeeze(2) - c)
+            #x = P_diag_inv*(x.squeeze(2) - c)
+            #c==0
+            x = P_diag_inv*(x.squeeze(2))
 
 
             ####### check
@@ -267,7 +276,7 @@ def QPFunction(pde, n_iv, n_step=10, gamma=1, alpha=1, double_ret=True):
             #print('ff ', diff)
             ###########
             
-            ctx.save_for_backward(A, P_diag_inv, x, lam, L)
+            ctx.save_for_backward(A, P_diag_inv, x, lam, None)
             
             #if not double_ret:
             #    x = x.float()
