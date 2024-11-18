@@ -139,6 +139,49 @@ class MultigridSolver():
 
         return AAt, D
 
+    def make_AtA_matrices(self, A_list, A_rhs_list):
+        AtA_list = []
+        D_list = []
+        rhs_list = []
+        for i in range(self.n_grid):
+            AtA,D,P_diag_inv,A = self.make_AtA(self.pde_list[i], A_list[i])
+            AtA_list.append(AtA)
+            D_list.append(D)
+
+            At = A.transpose(1,2)
+            rhs = P_diag_inv*A_rhs_list[i]
+            rhs = torch.bmm(At, rhs.unsqueeze(2)).squeeze(2)
+            rhs_list.append(rhs)
+
+        return AtA_list, rhs_list, D_list, 
+
+    def make_AtA(self, pde: PDESYSLPEPS, A, us=1e2, ds=1e-5):
+    #def make_AAt(self, pde: PDESYSLPEPS, A, us=1e1, ds=1e-2):
+        #AGinvAt
+        #P_diag = torch.ones(num_eps).type_as(rhs)*1e3
+        #P_zeros = torch.zeros(num_var).type_as(rhs) +1e-5
+        num_eq = pde.num_added_equation_constraints + pde.num_added_initial_constraints
+        num_ineq = pde.num_added_derivative_constraints
+
+        num_eps = pde.var_set.num_added_eps_vars
+        num_var = pde.var_set.num_vars
+
+        _P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')#*us
+        _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')# +ds
+        P_diag = torch.cat([_P_ones, _P_diag]).to(A.device)
+        P_diag_inv = 1/P_diag
+
+        A = A.to_dense()[:, :, :num_var]
+        At = A.transpose(1,2)
+        PinvA = P_diag_inv.unsqueeze(1)*A
+        AtA = torch.mm(At[0], PinvA[0]).unsqueeze(0)
+
+        # diagonal of AtG-1A
+        D = (PinvA*A).sum(dim=1).to_dense()
+
+
+        return AtA, D, P_diag_inv,A
+
 
     def make_kkt_matrices(self, A_list, A_rhs_list):
         KKT_list = []
@@ -447,22 +490,46 @@ class MultigridSolver():
         #    #rst_c = rst_c.squeeze(1)
         #    rst_central.append(rst_c)
 
-        for i,c in enumerate(c_list):
+        #for i,c in enumerate(c_list):
+        #    #ran = tuple(range(len(c.shape)))
+        #    #print('shape ', ran)
+        #    #coord 0
+        #    cin = c.permute(0,3,1,2).reshape(1,2,8,8).permute(0,1,3,2).reshape(1,2*8,8)
+        #    cin = F.interpolate(cin, size=16, mode='linear', align_corners=None)
+        #    #cin = torch.repeat_interleave(cin, repeats=2, dim=-1)
+        #    print('aft ',cin.shape)
+        #    cin = cin.reshape(1,2,8,16).permute(0,1,3,2)
+
+        #    cin = cin.reshape(1,2*16,8)
+        #    cin = F.interpolate(cin, size=16, mode='nearest', align_corners=None)
+        #    #cin = torch.repeat_interleave(cin, repeats=2, dim=-1)
+        #    cin = cin.reshape(1,2,16,16)
+
+        #    #rst_c = rst_c.permute(ran[0],*ran[2:], ran[1])
+        #    rst_c = cin.permute(0,2,3,1)
+        #    print('dfaf permed', rst_c.shape)
+
+        #    #print(rst_c[i][...,0],c_list_t[i][...,0])
+
+        #    #rst_c = rst_c.squeeze(1)
+        #    rst_central.append(rst_c)
+
+        for i,c in enumerate(c_list_t):
             #ran = tuple(range(len(c.shape)))
             #print('shape ', ran)
             #coord 0
-            cin = c.permute(0,3,1,2).reshape(1,2,8,8).permute(0,1,3,2).reshape(1,2*8,8)
-            cin = F.interpolate(cin, size=16, mode='linear', align_corners=None)
+            cin = c.permute(0,3,1,2)
+            cin1 = F.interpolate(cin[:,0].unsqueeze(1), size=(8,8), mode='nearest', align_corners=None)
+            cin1 = F.interpolate(cin1, size=(16,16), mode='nearest', align_corners=None)
+
+            cin2 = F.interpolate(cin[:,1].unsqueeze(1), size=(8,8), mode='nearest', align_corners=None)
+            cin2 = F.interpolate(cin2, size=(16,16), mode='nearest', align_corners=None)
+
+            cin = torch.cat([cin1,cin2], dim=1)
+
             #cin = torch.repeat_interleave(cin, repeats=2, dim=-1)
             print('aft ',cin.shape)
-            cin = cin.reshape(1,2,8,16).permute(0,1,3,2)
 
-            cin = cin.reshape(1,2*16,8)
-            cin = F.interpolate(cin, size=16, mode='nearest', align_corners=None)
-            #cin = torch.repeat_interleave(cin, repeats=2, dim=-1)
-            cin = cin.reshape(1,2,16,16)
-
-            #rst_c = rst_c.permute(ran[0],*ran[2:], ran[1])
             rst_c = cin.permute(0,2,3,1)
             print('dfaf permed', rst_c.shape)
 
@@ -470,6 +537,7 @@ class MultigridSolver():
 
             #rst_c = rst_c.squeeze(1)
             rst_central.append(rst_c)
+            #rst_central.append(c)
 
         rst_forward = []
         for i,f in enumerate(f_list):
@@ -538,7 +606,7 @@ class MultigridSolver():
         #PAt = P_diag_inv.unsqueeze(2)*At
         #APAt = torch.bmm(A, PAt)
         A = A.to_dense()
-        L,info = torch.linalg.cholesky_ex(A,upper=False)
+        L,info = torch.linalg.cholesky_ex(A,upper=False, check_errors=True)
         lam = torch.cholesky_solve(b.unsqueeze(2), L)
         lam = lam.squeeze(2)
         return lam
@@ -675,7 +743,7 @@ class MultigridLayer(nn.Module):
         #eps = x[:,0]
 
         #print(x)
-        self.pde = self.mg_solver.pde_list[-1]
+        #self.pde = self.mg_solver.pde_list[-1]
         eps = x[:, self.pde.var_set.num_vars:].abs()#.max(dim=1)[0]
 
         #shape: batch, grid, order

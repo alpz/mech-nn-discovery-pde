@@ -108,10 +108,10 @@ def solve():
 
     u0,_,eps = pde(coeffs, rhs, iv_rhs, steps_list)
     
-    print(eps.max())
+    #print(eps.max())
     print(u0.shape)
-    #u0 = u0.reshape(1,*coord_dims)
-    u0 = u0.reshape(1,8,8)
+    u0 = u0.reshape(1,*coord_dims)
+    #u0 = u0.reshape(1,8,8)
     return u0
 
 #%%
@@ -126,4 +126,6 @@ plot = plt.pcolormesh(u0[0], cmap='viridis', shading='gouraud')
 # %%
 plot = plt.pcolormesh(u0[1], cmap='viridis', shading='gouraud')
 
+# %%
+u0
 # %%
