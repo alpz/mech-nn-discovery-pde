@@ -499,13 +499,24 @@ class PDESYSLP(nn.Module):
         #keep order
         #equation
         grid_size = np.prod(self.coord_dims)
-        coord_dims_up = np.array(self.coord_dims)*2
-        coord_dims_down = np.array(self.coord_dims)//2
+        #coord_dims_up = np.array(self.coord_dims)*2
+        #coord_dims_down = np.array(self.coord_dims)//2
 
         #count central constraint grids over mi over coord
         #central
-        ccount = len([1 for coord in range(self.n_coord) for mi in self.var_set.sorted_central_mi_indices[coord]])
-        self.num_grids_equation_central = ccount+1
+        self.central_grid_shapes = []
+        self.central_grid_sizes = []
+        for coord in range(self.n_coord):
+            nmi = len(self.var_set.sorted_central_mi_indices[coord])
+            size = self.var_set.grid_size*nmi
+            shape = list(self.coord_dims) + [nmi]
+
+            self.central_grid_shapes.append(shape)
+            self.central_grid_sizes.append(size)
+
+        #ccshape = (self.n_coord, )
+        #ccount = len([1 for coord in range(self.n_coord) for mi in self.var_set.sorted_central_mi_indices[coord]])
+        #self.num_grids_equation_central = ccount+1
 
         self.forward_grid_shapes = []
         self.forward_grid_sizes = []
@@ -547,11 +558,12 @@ class PDESYSLP(nn.Module):
     def lambda_flat_to_grid_set(self, z):
         """converts a flat Lagrange multiplier vector to a set of grids for interpolation/downsampling"""
         bs = z.shape[0]
+        len0 = 0
 
-        len0 = self.num_grids_equation_central*self.var_set.grid_size
+        len0 = len0 + self.var_set.grid_size
         offset = len0
 
-        eq_central_grids = z[:, :len0].reshape(bs, self.num_grids_equation_central, *self.coord_dims)
+        eq_grid = z[:, :len0].reshape(bs, *self.coord_dims)
 
 
         #forward backward grid shapes. TODO Assumes same
@@ -561,6 +573,20 @@ class PDESYSLP(nn.Module):
 
         #len1 = len0 + self.num_grids_forward_backward*self.var_set.grid_size
         #fb_grids = z[:, :len1].reshape(bs, self.num_grids_forward_backward, *self.coord_dims)
+        initial_grids = []
+        for grid_shape, grid_size in zip(self.initial_grid_shapes,self.initial_grid_sizes):
+            len0 = offset + grid_size
+            grid = z[:, offset:len0].reshape(bs, *grid_shape)
+            offset = len0
+            initial_grids.append(grid)
+
+        central_grids = []
+        for grid_shape, grid_size in zip(self.central_grid_shapes,self.central_grid_sizes):
+            len0 = offset + grid_size
+            print(offset, len0, grid_shape )
+            grid = z[:, offset:len0].reshape(bs, *tuple(grid_shape))
+            offset = len0
+            central_grids.append(grid)
 
         forward_grids = []
         for grid_shape, grid_size in zip(self.forward_grid_shapes,self.forward_grid_sizes):
@@ -576,44 +602,40 @@ class PDESYSLP(nn.Module):
             offset = len0
             backward_grids.append(grid)
 
-        initial_grids = []
-        for grid_shape, grid_size in zip(self.initial_grid_shapes,self.initial_grid_sizes):
-            len0 = len0 + grid_size
-            grid = z[:, offset:len0].reshape(bs, *grid_shape)
-            offset = len0
-            initial_grids.append(grid)
 
-        return eq_central_grids, forward_grids, backward_grids, initial_grids
+        return eq_grid, initial_grids, central_grids, forward_grids, backward_grids
 
-    def lambda_grids_to_flat(self, eq_central_grids, forward_grids, backward_grids, initial_grids):
-        bs = eq_central_grids.shape[0]
+    def lambda_grids_to_flat(self, eq_grid,initial_grids, central_grids, forward_grids, backward_grids):
+        bs = eq_grid.shape[0]
         #eq_central_grids, forward_grids, backward_grids, initial_grids = self.lambda_flat_to_grid_set(z)
 
-        eq_central_grids = eq_central_grids.reshape(bs, -1)
+        eq_grid = eq_grid.reshape(bs, -1)
 
+        initial_grids = [grid.reshape(bs, -1) for grid in initial_grids]
+        central_grids = [grid.reshape(bs, -1) for grid in central_grids]
         forward_grids = [grid.reshape(bs, -1) for grid in forward_grids]
         backward_grids = [grid.reshape(bs, -1) for grid in backward_grids]
-        initial_grids = [grid.reshape(bs, -1) for grid in initial_grids]
 
-        zp = torch.cat([eq_central_grids]+forward_grids+backward_grids+initial_grids, dim=1)
+        zp = torch.cat([eq_grid] +initial_grids+central_grids+forward_grids+backward_grids, dim=1)
 
         return zp
 
     def test_grid_transfer(self, z):
         bs = z.shape[0]
 
-        eq_central_grids, forward_grids, backward_grids, initial_grids = self.lambda_flat_to_grid_set(z)
+        eq_grid, initial_grids, central_grids, forward_grids, backward_grids = self.lambda_flat_to_grid_set(z)
 
-        eq_central_grids = eq_central_grids.reshape(bs, -1)
+        eq_grid = eq_grid.reshape(bs, -1)
 
+        central_grids = [grid.reshape(bs, -1) for grid in central_grids]
         forward_grids = [grid.reshape(bs, -1) for grid in forward_grids]
         backward_grids = [grid.reshape(bs, -1) for grid in backward_grids]
         initial_grids = [grid.reshape(bs, -1) for grid in initial_grids]
 
-        zp = torch.cat([eq_central_grids]+forward_grids+backward_grids+initial_grids, dim=1)
+        zp = torch.cat([eq_grid]+initial_grids+central_grids+forward_grids+backward_grids, dim=1)
 
         diff = (z-zp).pow(2).sum()
-        print('constraint diff ', diff)
+        print('constraint diff check', diff)
 
         assert(diff < 1e-4)
 
@@ -1134,27 +1156,27 @@ class PDESYSLP(nn.Module):
         self.row_perm[self.row_perm_inv] = torch.arange(self.row_perm_inv.shape[0])
 
 
-    def apply_sparse_row_perm(self, M, permutation):
-        #M = M[0].to_dense()[perm.unsqueeze(1), perm].unsqueeze(0)
-        #return M
-        #M = M.coalesce()
-        indices=M._indices().clone()
-        indices2=M._indices().clone()
-        values=M._values().clone()
-        rows = indices[1]
-        #cols = indices[2]
-        permuted_rows = permutation[rows]
-        #permuted_cols = permutation[cols]
-        indices2[1] = permuted_rows
-        #indices2[2] = permuted_cols
+    #def apply_sparse_row_perm(self, M, permutation):
+    #    #M = M[0].to_dense()[perm.unsqueeze(1), perm].unsqueeze(0)
+    #    #return M
+    #    #M = M.coalesce()
+    #    indices=M._indices().clone()
+    #    indices2=M._indices().clone()
+    #    values=M._values().clone()
+    #    rows = indices[1]
+    #    #cols = indices[2]
+    #    permuted_rows = permutation[rows]
+    #    #permuted_cols = permutation[cols]
+    #    indices2[1] = permuted_rows
+    #    #indices2[2] = permuted_cols
 
-        #print('rows ', rows)
-        #print('perm ', permutation)
-        #print('permed ', permuted_rows)
+    #    #print('rows ', rows)
+    #    #print('perm ', permutation)
+    #    #print('permed ', permuted_rows)
 
-        D = torch.sparse_coo_tensor(indices=indices2, 
-                                values=values, size=M.shape)
-        return D 
+    #    D = torch.sparse_coo_tensor(indices=indices2, 
+    #                            values=values, size=M.shape)
+    #    return D 
 
     def build_block_diag(self, A):
         print('Building block diagonal A')

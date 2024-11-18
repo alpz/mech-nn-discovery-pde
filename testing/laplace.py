@@ -110,7 +110,8 @@ def solve():
     
     print(eps.max())
     print(u0.shape)
-    u0 = u0.reshape(1,*coord_dims)
+    #u0 = u0.reshape(1,*coord_dims)
+    u0 = u0.reshape(1,8,8)
     return u0
 
 #%%

@@ -211,11 +211,14 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             rhs_list = [A_rhs] + coarse_rhs_list
 
             AAt_list, _, D_list = mg.make_AAt_matrices(A_list, rhs_list)
-            lam = mg.v_cycle_jacobi_start(AAt_list, rhs_list, D_list)
+            #lam = mg.v_cycle_jacobi_start(AAt_list, rhs_list, D_list)
             
+            #num_eps = mg.pde_list[-1].var_set.num_added_eps_vars
+            #num_var = mg.pde_list[-1].var_set.num_vars
 
             num_eps = pde.var_set.num_added_eps_vars
             num_var = pde.var_set.num_vars
+
             #u = l
             P_diag = torch.ones(num_eps).type_as(rhs)*1e5
             P_zeros = torch.zeros(num_var).type_as(rhs) +1e-5
@@ -223,6 +226,11 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             P_diag_inv = 1/P_diag
             P_diag_inv = P_diag_inv.unsqueeze(0)
 
+            lam_orig = mg.solve_coarsest(AAt_list[0], rhs_list[0])
+            lam = mg.solve_coarsest(AAt_list[1], rhs_list[1])
+            lam = mg.prolong2(1, lam, lam_orig)
+
+            #At = coarse_A_list[-1].transpose(1,2)
             #c = torch.zeros(num_var+num_eps, device=A.device).type_as(rhs)
             #rhs = c
             #rhs = P_diag_inv*rhs
