@@ -194,9 +194,9 @@ class MultigridSolver():
         else:
             raise ValueError('incorrect num coordinates')
 
-        print('ds coeffs ', coeffs.shape, new_shape)
+        #print('ds coeffs ', coeffs.shape, new_shape)
         coeffs = F.interpolate(coeffs, size=new_shape, mode=mode, align_corners=True)
-        print('ds coeffs ', coeffs.shape)
+        #print('ds coeffs ', coeffs.shape)
 
         new_grid_size = np.prod(np.array(new_shape))
         coeffs = coeffs.reshape(self.bs*self.n_ind_dim, n_orders, new_grid_size)
@@ -215,9 +215,9 @@ class MultigridSolver():
         else:
             raise ValueError('incorrect num coordinates')
 
-        print('ds rhs ', rhs.shape)
+        #print('ds rhs ', rhs.shape)
         rhs = F.interpolate(rhs, size=new_shape, mode=mode, align_corners=True)
-        print('ds rhs ', rhs.shape)
+        #print('ds rhs ', rhs.shape)
 
         new_grid_size = np.prod(np.array(new_shape))
         rhs = rhs.reshape(self.bs*self.n_ind_dim, new_grid_size)
@@ -231,7 +231,7 @@ class MultigridSolver():
             #steps_list[i] = steps_list[i].reshape(self.bs*self.n_ind_dim,*self.step_grid_shape[i])
             steps = steps_list[i]
             steps = steps.reshape(self.bs*self.n_ind_dim,old_shape[i]-1)
-            print('steps', old_shape)
+            #print('steps', old_shape)
             steps = steps[:, :-1].reshape(-1, old_shape[i]//2-1, 2).sum(dim=-1)
 
             new_steps_list.append(steps)
@@ -271,10 +271,10 @@ class MultigridSolver():
 
             iv = iv.reshape(self.bs*self.n_ind_dim, *iv_old_shape)
 
-            print(iv.shape, old_shape, tuple(iv_new_shape))
+            #print(iv.shape, old_shape, tuple(iv_new_shape))
 
             iv = F.interpolate(iv.unsqueeze(1), size=tuple(iv_new_shape), mode='bilinear', align_corners=True)
-            print('interp iv ', iv.shape)
+            #print('interp iv ', iv.shape)
             iv = iv.reshape(self.bs*self.n_ind_dim, -1)
 
             iv_list.append(iv)
@@ -342,8 +342,10 @@ class MultigridSolver():
         for i,init in enumerate(init_list):
 
             print('init ', init.shape, ish[i])
-            #rst_i = F.interpolate(init, size=ish[i], mode='bilinear', align_corners=True)
-            rst_i = F.interpolate(init, size=ish[i][-1], mode='linear', align_corners=True)
+            rst_i = F.interpolate(init.unsqueeze(1), size=tuple(ish[i]), mode='bilinear', align_corners=True)
+            rst_i = rst_i.squeeze(1)
+            print('interp init ', init.shape)
+            #rst_i = F.interpolate(init, size=ish[i][-1], mode='linear', align_corners=True)
             rst_init.append(rst_i)
 
         x_rst = rst_pde.lambda_grids_to_flat(rst_eq, rst_forward, rst_backward, rst_init)
@@ -352,33 +354,36 @@ class MultigridSolver():
 
     def prolong(self, idx, x):
         pde = self.pde_list[idx]
-        rst_pde = self.pde_list[idx-1]
+        pro_pde = self.pde_list[idx-1]
 
         eq, f_list,b_list, init_list = pde.lambda_flat_to_grid_set(x)
 
         rst_grid_shape = self.dim_list[idx-1]
 
-        fsh = rst_pde.forward_grid_shapes
-        bsh = rst_pde.backward_grid_shapes
-        ish = rst_pde.initial_grid_shapes
+        fsh = pro_pde.forward_grid_shapes
+        bsh = pro_pde.backward_grid_shapes
+        ish = pro_pde.initial_grid_shapes
 
         rst_eq = F.interpolate(eq, size=rst_grid_shape, mode='bilinear', align_corners=True)
         rst_forward = []
         for i,f in enumerate(f_list):
-            rst_f = F.interpolate(f, size=fsh[i], mode='bilinear', align_corners=True)
+            rst_f = F.interpolate(f.unsqueeze(1), size=fsh[i], mode='bilinear', align_corners=True)
+            rst_f = rst_f.squeeze(1)
             rst_forward.append(rst_f)
 
         rst_backward = []
         for i,b in enumerate(b_list):
-            rst_b = F.interpolate(b, size=bsh[i], mode='bilinear', align_corners=True)
+            rst_b = F.interpolate(b.unsqueeze(1), size=bsh[i], mode='bilinear', align_corners=True)
+            rst_b = rst_b.squeeze(1)
             rst_backward.append(rst_b)
 
         rst_init = []
         for i,init in enumerate(init_list):
-            rst_i = F.interpolate(init, size=ish[i], mode='bilinear', align_corners=True)
+            rst_i = F.interpolate(init.unsqueeze(1), size=tuple(ish[i]), mode='bilinear', align_corners=True)
+            rst_i = rst_i.squeeze(1)
             rst_init.append(rst_i)
 
-        x_rst = rst_pde.lambda_grids_to_flat(rst_eq, rst_forward, rst_backward, rst_init)
+        x_rst = pro_pde.lambda_grids_to_flat(rst_eq, rst_forward, rst_backward, rst_init)
 
         return x_rst
 
@@ -419,6 +424,7 @@ class MultigridSolver():
         A = A.to_dense()
         L,info = torch.linalg.cholesky_ex(A,upper=False)
         lam = torch.cholesky_solve(b.unsqueeze(2), L)
+        print('cholesksy ', lam.shape)
         lam = lam.squeeze(2)
         return lam
 
@@ -427,6 +433,7 @@ class MultigridSolver():
         b = b_list[idx]
         D = D_list[idx]
 
+        print('idx ', x.shape, idx)
         #pre-smooth
         x = self.smooth_jacobi(A, b, x, D)
         r = b-torch.bmm(A, x.unsqueeze(2)).squeeze(2)
@@ -439,7 +446,8 @@ class MultigridSolver():
             xH0 = torch.zeros_like(b_list[idx+1])
             deltaH = self.v_cycle(self, idx+1, A_list, b_list,xH0, D_list)
 
-        delta = self.prolong(idx, deltaH)
+        delta = self.prolong(idx+1, deltaH)
+        print('af idx', x.shape, delta.shape, idx)
         #correct
         x = x+delta
 
