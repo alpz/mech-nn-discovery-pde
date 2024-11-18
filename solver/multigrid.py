@@ -99,6 +99,12 @@ class MultigridSolver():
             eq_constraints = pde.build_equation_tensor(new_coeffs)
 
             A, A_rhs = pde.fill_constraints_torch(eq_constraints, new_rhs, new_iv_rhs, derivative_constraints)
+
+            num_eps = pde.var_set.num_added_eps_vars
+            num_var = pde.var_set.num_vars
+
+            A = A.to_dense()[:, :, :num_var]
+
             A_list.append(A)
             A_rhs_list.append(A_rhs)
 
@@ -415,42 +421,27 @@ class MultigridSolver():
 
         return x_rst
 
-    #def prolong(self, idx, x):
-    #    pde = self.pde_list[idx]
-    #    pro_pde = self.pde_list[idx-1]
 
-    #    eq, f_list,b_list, init_list = pde.lambda_flat_to_grid_set(x)
-    #    #x_rst = pde.lambda_grids_to_flat(eq, f_list, b_list, init_list)
-    #    #return x_rst
+    def prolong(self, idx, x):
+        pde = self.pde_list[idx]
+        pro_pde = self.pde_list[idx-1]
 
-    #    rst_grid_shape = self.dim_list[idx-1]
+        #bs, grid, num_mi
+        x = pde.get_solution_reshaped(x)
+        x = x.permute(0,2,1)
 
-    #    fsh = pro_pde.forward_grid_shapes
-    #    bsh = pro_pde.backward_grid_shapes
-    #    ish = pro_pde.initial_grid_shapes
+        x = x.reshape(*x.shape[0:2], *self.dim_list[idx])
 
-    #    rst_eq = F.interpolate(eq, size=rst_grid_shape, mode='bilinear', align_corners=True)
-    #    rst_forward = []
-    #    for i,f in enumerate(f_list):
-    #        rst_f = F.interpolate(f.unsqueeze(1), size=fsh[i], mode='bilinear', align_corners=True)
-    #        rst_f = rst_f.squeeze(1)
-    #        rst_forward.append(rst_f)
+        x = F.interpolate(x, size=(16,16), mode='bilinear', align_corners=False)
+        x = x.reshape(*x.shape[0:2], self.size_list[idx-1])
 
-    #    rst_backward = []
-    #    for i,b in enumerate(b_list):
-    #        rst_b = F.interpolate(b.unsqueeze(1), size=bsh[i], mode='bilinear', align_corners=True)
-    #        rst_b = rst_b.squeeze(1)
-    #        rst_backward.append(rst_b)
+        x = x.permute(0,2,1).reshape(x.shape[0], -1)
+        #eq, f_list,b_list, init_list = pde.lambda_flat_to_grid_set(x)
+        #x_rst = pde.lambda_grids_to_flat(eq, f_list, b_list, init_list)
+        #return x_rst
 
-    #    rst_init = []
-    #    for i,init in enumerate(init_list):
-    #        rst_i = F.interpolate(init.unsqueeze(1), size=tuple(ish[i]), mode='bilinear', align_corners=True)
-    #        rst_i = rst_i.squeeze(1)
-    #        rst_init.append(rst_i)
 
-    #    x_rst = pro_pde.lambda_grids_to_flat(rst_eq, rst_forward, rst_backward, rst_init)
-
-    #    return x_rst
+        return x
 
     def prolong2(self, idx, x, x_target):
     #def prolong(self, idx, x):

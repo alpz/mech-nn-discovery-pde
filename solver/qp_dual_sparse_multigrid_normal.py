@@ -238,9 +238,9 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
 
             print(rhs_list[0])
-            lam = mg.solve_coarsest(AtA_list[0], rhs_list[0])
-            #lam = mg.solve_coarsest(AtA_list[1], rhs_list[1])
-            #lam = mg.prolong2(1, lam, lam_orig)
+            #lam = mg.solve_coarsest(AtA_list[0], rhs_list[0])
+            lam = mg.solve_coarsest(AtA_list[1], rhs_list[1])
+            lam = mg.prolong(1, lam)
             #print(lam)
 
             #At = coarse_A_list[-1].transpose(1,2)
