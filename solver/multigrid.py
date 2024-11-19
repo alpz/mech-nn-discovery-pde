@@ -178,7 +178,7 @@ class MultigridSolver():
         num_var = pde.var_set.num_vars
 
         _P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*ds#*us
-        _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')/ds# +ds
+        _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')#/ds# +ds
         P_diag = torch.cat([_P_ones, _P_diag]).to(A.device)
         P_diag_inv = 1/P_diag
 
