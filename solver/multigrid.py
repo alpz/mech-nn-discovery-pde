@@ -411,7 +411,7 @@ class MultigridSolver():
 
         return x
 
-    def smooth_jacobi(self, A, b, x, D, nsteps=200, w=0.5):
+    def smooth_jacobi(self, A, b, x, D, nsteps=100, w=0.55):
         """Weighted Jacobi iteration"""
         Dinv = 1/D
 
