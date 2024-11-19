@@ -107,7 +107,7 @@ class MultigridSolver():
             num_eps = pde.var_set.num_added_eps_vars
             num_var = pde.var_set.num_vars
 
-            A = A.to_dense()#[:, :, :num_var]
+            #A = A.to_dense()#[:, :, :num_var]
 
             A_list.append(A)
             A_rhs_list.append(A_rhs)
@@ -181,7 +181,7 @@ class MultigridSolver():
         P_diag = torch.cat([_P_ones, _P_diag]).to(A.device)
         P_diag_inv = 1/P_diag
 
-        A = A.to_dense()#[:, :, :num_var]
+        #A = A.to_dense()#[:, :, :num_var]
         At = A.transpose(1,2)
         PinvA = P_diag_inv.unsqueeze(1)*A
         AtA = torch.mm(At[0], PinvA[0]).unsqueeze(0)
@@ -413,12 +413,12 @@ class MultigridSolver():
 
         #w = 2/3
         w = 0.5
-        #I = torch.sparse.spdiags(torch.ones(A.shape[1]), torch.tensor([0]), (A.shape[1], A.shape[2]), 
-        #                        layout=torch.sparse_coo)
-        #I = I.to(A.device).unsqueeze(0)
+        I = torch.sparse.spdiags(torch.ones(A.shape[1]), torch.tensor([0]), (A.shape[1], A.shape[2]), 
+                                layout=torch.sparse_coo)
+        I = I.to(A.device).unsqueeze(0)
         #I = I.to_dense()
 
-        I = torch.eye(A.shape[1], device=A.device)
+        #I = torch.eye(A.shape[1], device=A.device)
 
         #print('diff',(I-I2).pow(2).sum())
 

@@ -216,7 +216,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             num_eps = pde.var_set.num_added_eps_vars
             num_var = pde.var_set.num_vars
-            A = A.to_dense()#[:, :, :num_var]
+            #A = A.to_dense()#[:, :, :num_var]
 
             #u = l
             #P_diag = torch.ones(num_eps).type_as(rhs)*1e5
