@@ -42,6 +42,10 @@ class MultigridSolver():
         self.solver_dbl = solver_dbl
         self.init_index_mi_list = init_index_mi_list
 
+        
+        interp_modes={1:'linear', 2:'bilinear', 3:'trilinear'}
+        self.interp_mode = interp_modes[self.n_coord]
+
         if solver_dbl:
             print("Using double precision solver")
         else:
@@ -322,7 +326,7 @@ class MultigridSolver():
 
             #print(iv.shape, old_shape, tuple(iv_new_shape))
 
-            iv = F.interpolate(iv.unsqueeze(1), size=tuple(iv_new_shape), mode='bilinear', align_corners=True)
+            iv = F.interpolate(iv.unsqueeze(1), size=tuple(iv_new_shape), mode=self.interp_mode, align_corners=False)
             #print('interp iv ', iv.shape)
             iv = iv.reshape(self.bs*self.n_ind_dim, -1)
 
@@ -371,7 +375,7 @@ class MultigridSolver():
 
         x = x.reshape(*x.shape[0:2], *self.dim_list[idx])
 
-        x = F.interpolate(x, size=(8,8), mode='bilinear', align_corners=False)
+        x = F.interpolate(x, size=self.dim_list[idx+1], mode=self.interp_mode, align_corners=False)
         x = x.reshape(*x.shape[0:2], self.size_list[idx+1])
 
         x = x.permute(0,2,1).reshape(x.shape[0], -1)
@@ -393,7 +397,7 @@ class MultigridSolver():
 
         x = x.reshape(*x.shape[0:2], *self.dim_list[idx])
 
-        x = F.interpolate(x, size=(16,16), mode='bilinear', align_corners=False)
+        x = F.interpolate(x, size=self.dim_list[idx-1], mode=self.interp_mode, align_corners=False)
         x = x.reshape(*x.shape[0:2], self.size_list[idx-1])
 
         x = x.permute(0,2,1).reshape(x.shape[0], -1)

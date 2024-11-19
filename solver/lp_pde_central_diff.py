@@ -465,6 +465,7 @@ class PDESYSLP(nn.Module):
 
         for i,v in enumerate(var_list):
             if v == VarType.EPS:
+                continue
                 var_index = self.var_set.next_eps_var()
                 #var_index = self.var_set.get_eps()
                 var_repr = 'EPS'
@@ -822,11 +823,11 @@ class PDESYSLP(nn.Module):
             val_list = []
 
             #epsilon
-            var_list.append(VarType.EPS)
-            val_list.append(1)
+            #var_list.append(VarType.EPS)
+            #val_list.append(1)
 
-            self.tc_list_append(coord, 0, 1, forward=forward)
-            tc_count = tc_count+1
+            #self.tc_list_append(coord, 0, 1, forward=forward)
+            #tc_count = tc_count+1
 
             #i = order
             i = mi[coord]
@@ -934,7 +935,8 @@ class PDESYSLP(nn.Module):
                 next_3_grid = self.var_set.next_adjacent_grid_index(grid_index=next_2_grid, coord=coord)
                 next_4_grid = self.var_set.next_adjacent_grid_index(grid_index=next_3_grid, coord=coord)
 
-            var_list = [ VarType.EPS]
+            #var_list = [ VarType.EPS]
+            var_list = []
             #var_list.append((prev_grid, zeroth_order_index))
             var_list.append((grid_index, zeroth_order_index))
             var_list.append((next_grid, zeroth_order_index))
@@ -948,13 +950,16 @@ class PDESYSLP(nn.Module):
 
             if mi[coord]==1:
                 #values= [ -1, 1/12, -2/3, 0, 2/3, -1/12, -1*h]
-                values= [-1, -25/12, 4, -3, 4/3,-1/4, -1*h]
+                #values= [-1, -25/12, 4, -3, 4/3,-1/4, -1*h]
+                values= [-25/12, 4, -3, 4/3,-1/4, -1*h]
                 if backward:
-                    values= [-1, 25/12, -4, 3,-4/3,1/4, -1*h]
+                    #values= [-1, 25/12, -4, 3,-4/3,1/4, -1*h]
+                    values= [25/12, -4, 3,-4/3,1/4, -1*h]
             elif mi[coord] ==2:
                 #continue
                 #values= [ -1, -1/12, 4/3, -5/2, 4/3, -1/12, -1*h**2]
-                values= [ -1, 35/12, -104/12, 114/12, -56/12, 11/12, -1*h**2]
+                #values= [ -1, 35/12, -104/12, 114/12, -56/12, 11/12, -1*h**2]
+                values= [35/12, -104/12, 114/12, -56/12, 11/12, -1*h**2]
             else:
                 raise ValueError('Central diff not implemented for ' + str(mi[coord]))
 
@@ -984,7 +989,8 @@ class PDESYSLP(nn.Module):
             prev_grid = self.var_set.prev_adjacent_grid_index(grid_index=grid_index, coord=coord)
             prev_prev_grid = self.var_set.prev_adjacent_grid_index(grid_index=prev_grid, coord=coord)
 
-            var_list = [ VarType.EPS]
+            #var_list = [ VarType.EPS]
+            var_list = []
             var_list.append((prev_prev_grid, zeroth_order_index))
             var_list.append((prev_grid, zeroth_order_index))
             var_list.append((grid_index, zeroth_order_index))
@@ -996,9 +1002,11 @@ class PDESYSLP(nn.Module):
             m = (2*h)**(self.order-1)
 
             if mi[coord]==1:
-                values= [ -1, 1/12, -2/3, 0, 2/3, -1/12, -1*h]
+                #values= [ -1, 1/12, -2/3, 0, 2/3, -1/12, -1*h]
+                values= [ 1/12, -2/3, 0, 2/3, -1/12, -1*h]
             elif mi[coord] ==2:
-                values= [ -1, -1/12, 4/3, -5/2, 4/3, -1/12, -1*h**2]
+                #values= [ -1, -1/12, 4/3, -5/2, 4/3, -1/12, -1*h**2]
+                values= [ -1/12, 4/3, -5/2, 4/3, -1/12, -1*h**2]
             else:
                 raise ValueError('Central diff not implemented for ' + str(mi[coord]))
 
@@ -1321,8 +1329,11 @@ class PDESYSLP(nn.Module):
         ones = torch.ones_like(steps[:,0:2]).unsqueeze(-1)
         #values_list = []
         #coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
-        coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
-        coeffs2 = torch.cat([-ones, coeffs[...,1]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
+        #coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
+        #coeffs2 = torch.cat([-ones, coeffs[...,1]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
+
+        coeffs1 = torch.cat([ coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
+        coeffs2 = torch.cat([ coeffs[...,1]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
 
 
         coeffs_list = []
@@ -1394,13 +1405,15 @@ class PDESYSLP(nn.Module):
         values_list = []
         #coeffs1 = torch.cat([-ones, coeffs[...,0], -ones], dim=-1)
         #coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)
-        coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
+        #coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
+        coeffs1 = torch.cat([coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
         #coeffs1 = torch.cat([-ones, coeffs[...,0], -ones], dim=-1)
 
         #values_list.append(coeffs1)
         #if self.n_order > 2:
         #coeffs2 = torch.cat([-ones, coeffs[...,1]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)
-        coeffs2 = torch.cat([-ones, coeffs[...,1]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
+        #coeffs2 = torch.cat([-ones, coeffs[...,1]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
+        coeffs2 = torch.cat([ coeffs[...,1]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
         #coeffs2 = torch.cat([-ones, coeffs[...,1], -ones], dim=-1)
             #coeffs2 = torch.cat([-ones, coeffs[...,1], -ones], dim=-1)
         #values_list.append(coeffs2)
