@@ -153,8 +153,9 @@ class MultigridSolver():
         AtA_list = []
         D_list = []
         rhs_list = []
+        ds_list = [1e6,1e6,1e6]
         for i in range(self.n_grid):
-            AtA,D,P_diag_inv,A = self.make_AtA(self.pde_list[i], A_list[i])
+            AtA,D,P_diag_inv,A = self.make_AtA(self.pde_list[i], A_list[i], ds=ds_list[i])
             AtA_list.append(AtA)
             D_list.append(D)
 
@@ -165,7 +166,7 @@ class MultigridSolver():
 
         return AtA_list, rhs_list, D_list, 
 
-    def make_AtA(self, pde: PDESYSLPEPS, A, us=1e2, ds=1e-5):
+    def make_AtA(self, pde: PDESYSLPEPS, A, ds=1e5):
     #def make_AAt(self, pde: PDESYSLPEPS, A, us=1e1, ds=1e-2):
         #AGinvAt
         #P_diag = torch.ones(num_eps).type_as(rhs)*1e3
@@ -176,8 +177,8 @@ class MultigridSolver():
         num_eps = pde.var_set.num_added_eps_vars
         num_var = pde.var_set.num_vars
 
-        _P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*1e5#*us
-        _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')*1e-5# +ds
+        _P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*ds#*us
+        _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')/ds# +ds
         P_diag = torch.cat([_P_ones, _P_diag]).to(A.device)
         P_diag_inv = 1/P_diag
 
@@ -246,7 +247,7 @@ class MultigridSolver():
             raise ValueError('incorrect num coordinates')
 
         #print('ds coeffs ', coeffs.shape, new_shape)
-        coeffs = F.interpolate(coeffs, size=new_shape, mode=mode, align_corners=False)
+        coeffs = F.interpolate(coeffs, size=new_shape, mode=mode, align_corners=True)
         #print('ds coeffs ', coeffs.shape)
 
         new_grid_size = np.prod(np.array(new_shape))
@@ -267,7 +268,7 @@ class MultigridSolver():
             raise ValueError('incorrect num coordinates')
 
         #print('ds rhs ', rhs.shape)
-        rhs = F.interpolate(rhs, size=new_shape, mode=mode, align_corners=False)
+        rhs = F.interpolate(rhs, size=new_shape, mode=mode, align_corners=True)
         #print('ds rhs ', rhs.shape)
 
         new_grid_size = np.prod(np.array(new_shape))
@@ -326,7 +327,7 @@ class MultigridSolver():
 
             #print(iv.shape, old_shape, tuple(iv_new_shape))
 
-            iv = F.interpolate(iv.unsqueeze(1), size=tuple(iv_new_shape), mode=self.interp_mode, align_corners=False)
+            iv = F.interpolate(iv.unsqueeze(1), size=tuple(iv_new_shape), mode=self.interp_mode, align_corners=True)
             #print('interp iv ', iv.shape)
             iv = iv.reshape(self.bs*self.n_ind_dim, -1)
 
@@ -375,7 +376,8 @@ class MultigridSolver():
 
         x = x.reshape(*x.shape[0:2], *self.dim_list[idx])
 
-        x = F.interpolate(x, size=self.dim_list[idx+1], mode=self.interp_mode, align_corners=False)
+        x = F.interpolate(x, size=self.dim_list[idx+1], mode=self.interp_mode, 
+                          align_corners=True)
         x = x.reshape(*x.shape[0:2], self.size_list[idx+1])
 
         x = x.permute(0,2,1).reshape(x.shape[0], -1)
@@ -397,7 +399,8 @@ class MultigridSolver():
 
         x = x.reshape(*x.shape[0:2], *self.dim_list[idx])
 
-        x = F.interpolate(x, size=self.dim_list[idx-1], mode=self.interp_mode, align_corners=False)
+        x = F.interpolate(x, size=self.dim_list[idx-1], mode=self.interp_mode, 
+                          align_corners=True)
         x = x.reshape(*x.shape[0:2], self.size_list[idx-1])
 
         x = x.permute(0,2,1).reshape(x.shape[0], -1)
@@ -408,11 +411,10 @@ class MultigridSolver():
 
         return x
 
-    def smooth_jacobi(self, A, b, x, D, nsteps=15, w=2/3):
+    def smooth_jacobi(self, A, b, x, D, nsteps=200, w=0.5):
+        """Weighted Jacobi iteration"""
         Dinv = 1/D
 
-        #w = 2/3
-        w = 0.5
         I = torch.sparse.spdiags(torch.ones(A.shape[1]), torch.tensor([0]), (A.shape[1], A.shape[2]), 
                                 layout=torch.sparse_coo)
         I = I.to(A.device).unsqueeze(0)
@@ -477,7 +479,7 @@ class MultigridSolver():
             #print('resid ', dr, drn)
         else:
             xH0 = torch.zeros_like(b_list[idx+1])
-            deltaH = self.v_cycle(self, idx+1, A_list, b_list,xH0, D_list)
+            deltaH = self.v_cycle_jacobi(idx+1, A_list, b_list,xH0, D_list)
 
         delta = self.prolong(idx+1, deltaH)
         #print('af idx', x.shape, delta.shape, idx)
@@ -495,7 +497,7 @@ class MultigridSolver():
 
         return x
 
-    def v_cycle_jacobi_start(self, A_list, b_list, D_list, n_step=100):
+    def v_cycle_jacobi_start(self, A_list, b_list, D_list, n_step=1):
         x = torch.zeros_like(b_list[0])
         for step in range(n_step):
             x = self.v_cycle_jacobi(0, A_list, b_list, x, D_list)
