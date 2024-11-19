@@ -172,8 +172,8 @@ class MultigridSolver():
         num_eps = pde.var_set.num_added_eps_vars
         num_var = pde.var_set.num_vars
 
-        _P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')#*us
-        _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')# +ds
+        _P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*1e5#*us
+        _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')*1e-5# +ds
         P_diag = torch.cat([_P_ones, _P_diag]).to(A.device)
         P_diag_inv = 1/P_diag
 
@@ -363,63 +363,24 @@ class MultigridSolver():
 
     def restrict(self, idx, x):
         pde = self.pde_list[idx]
-        rst_pde = self.pde_list[idx+1]
+        #pro_pde = self.pde_list[idx-1]
 
-        eq, init_list, c_list, f_list,b_list = pde.lambda_flat_to_grid_set(x)
+        #bs, grid, num_mi
+        x = pde.get_solution_reshaped(x)
+        x = x.permute(0,2,1)
 
-        rst_grid_shape = self.dim_list[idx+1]
+        x = x.reshape(*x.shape[0:2], *self.dim_list[idx])
+
+        x = F.interpolate(x, size=(8,8), mode='bilinear', align_corners=False)
+        x = x.reshape(*x.shape[0:2], self.size_list[idx+1])
+
+        x = x.permute(0,2,1).reshape(x.shape[0], -1)
+        #eq, f_list,b_list, init_list = pde.lambda_flat_to_grid_set(x)
+        #x_rst = pde.lambda_grids_to_flat(eq, f_list, b_list, init_list)
+        #return x_rst
 
 
-        csh = rst_pde.central_grid_shapes
-        fsh = rst_pde.forward_grid_shapes
-        bsh = rst_pde.backward_grid_shapes
-        ish = rst_pde.initial_grid_shapes
-
-        rst_eq = F.interpolate(eq.unsqueeze(1), size=rst_grid_shape, mode='bilinear', align_corners=True)
-
-        rst_central = []
-        for i,c in enumerate(c_list):
-            #print('forward ', f.shape)
-            #rst_c = F.interpolate(c.unsqueeze(1), size=csh[i], mode='bilinear', align_corners=True)
-            #rst_c = rst_c.squeeze(1)
-            #rst_central.append(rst_c)
-
-            cin = c.permute(0,3,1,2)
-            #print('central permed ', cin.shape, csh[i])
-            rst_c = F.interpolate(cin, size=(8,8), mode='bilinear', align_corners=False)
-            #print('df ', rst_c.shape)
-
-            #rst_c = rst_c.permute(ran[0],*ran[2:], ran[1])
-            rst_c = rst_c.permute(0,2,3,1)
-
-            rst_central.append(rst_c)
-
-        rst_forward = []
-        for i,f in enumerate(f_list):
-            #print('forward ', f.shape)
-            rst_f = F.interpolate(f.unsqueeze(1), size=fsh[i], mode='bilinear', align_corners=False)
-            rst_f = rst_f.squeeze(1)
-            rst_forward.append(rst_f)
-
-        rst_backward = []
-        for i,b in enumerate(b_list):
-            rst_b = F.interpolate(b.unsqueeze(1), size=bsh[i], mode='bilinear', align_corners=False)
-            rst_b = rst_b.squeeze(1)
-            rst_backward.append(rst_b)
-
-        rst_init = []
-        for i,init in enumerate(init_list):
-
-            #print('init ', init.shape, ish[i])
-            rst_i = F.interpolate(init.unsqueeze(1), size=tuple(ish[i]), mode='bilinear', align_corners=False)
-            rst_i = rst_i.squeeze(1)
-            #print('interp init ', init.shape)
-            #rst_i = F.interpolate(init, size=ish[i][-1], mode='linear', align_corners=True)
-            rst_init.append(rst_i)
-
-        x_rst = rst_pde.lambda_grids_to_flat(rst_eq, rst_init, rst_central, rst_forward, rst_backward)
-
-        return x_rst
+        return x
 
 
     def prolong(self, idx, x):
@@ -443,132 +404,19 @@ class MultigridSolver():
 
         return x
 
-    def prolong2(self, idx, x, x_target):
-    #def prolong(self, idx, x):
-        pde = self.pde_list[idx]
-        pro_pde = self.pde_list[idx-1]
-
-        eq, init_list, c_list, f_list,b_list = pde.lambda_flat_to_grid_set(x)
-        eq_t, init_list_t, c_list_t, f_list_t,b_list_t = pro_pde.lambda_flat_to_grid_set(x_target)
-        #x_rst = pde.lambda_grids_to_flat(eq, f_list, b_list, init_list)
-        #return x_rst
-
-        rst_grid_shape = self.dim_list[idx-1]
-
-        csh = pro_pde.central_grid_shapes
-        fsh = pro_pde.forward_grid_shapes
-        bsh = pro_pde.backward_grid_shapes
-        ish = pro_pde.initial_grid_shapes
-
-        print('interp ', eq.shape, rst_grid_shape)
-        rst_eq = F.interpolate(eq.unsqueeze(1), size=rst_grid_shape, mode='bilinear', align_corners=True)
-
-        rst_central = []
-        #for i,c in enumerate(c_list):
-        #    ran = tuple(range(len(c.shape)))
-        #    print('shape ', ran)
-        #    print('central ', c.shape, csh[i])
-        #    c = c.permute(ran[0],ran[-1], *ran[1:-1])
-        #    print('central permed ', c.shape, csh[i])
-        #    rst_c = F.interpolate(c, size=csh[i][:-1], mode='bilinear', align_corners=True)
-        #    print('df ', rst_c.shape)
-
-        #    rst_c = rst_c.permute(ran[0],*ran[2:], ran[1])
-        #    print('dfaf permed', rst_c.shape)
-
-        #    #print(rst_c[i][...,0],c_list_t[i][...,0])
-
-        #    #rst_c = rst_c.squeeze(1)
-        #    rst_central.append(rst_c)
-
-        #for i,c in enumerate(c_list):
-        #    #ran = tuple(range(len(c.shape)))
-        #    #print('shape ', ran)
-        #    #coord 0
-        #    cin = c.permute(0,3,1,2).reshape(1,2,8,8).permute(0,1,3,2).reshape(1,2*8,8)
-        #    cin = F.interpolate(cin, size=16, mode='linear', align_corners=None)
-        #    #cin = torch.repeat_interleave(cin, repeats=2, dim=-1)
-        #    print('aft ',cin.shape)
-        #    cin = cin.reshape(1,2,8,16).permute(0,1,3,2)
-
-        #    cin = cin.reshape(1,2*16,8)
-        #    cin = F.interpolate(cin, size=16, mode='nearest', align_corners=None)
-        #    #cin = torch.repeat_interleave(cin, repeats=2, dim=-1)
-        #    cin = cin.reshape(1,2,16,16)
-
-        #    #rst_c = rst_c.permute(ran[0],*ran[2:], ran[1])
-        #    rst_c = cin.permute(0,2,3,1)
-        #    print('dfaf permed', rst_c.shape)
-
-        #    #print(rst_c[i][...,0],c_list_t[i][...,0])
-
-        #    #rst_c = rst_c.squeeze(1)
-        #    rst_central.append(rst_c)
-
-        for i,c in enumerate(c_list_t):
-            #ran = tuple(range(len(c.shape)))
-            #print('shape ', ran)
-            #coord 0
-            cin = c.permute(0,3,1,2)
-            cin1 = F.interpolate(cin[:,0].unsqueeze(1), size=(8,8), mode='nearest', align_corners=None)
-            cin1 = F.interpolate(cin1, size=(16,16), mode='nearest', align_corners=None)
-
-            cin2 = F.interpolate(cin[:,1].unsqueeze(1), size=(8,8), mode='nearest', align_corners=None)
-            cin2 = F.interpolate(cin2, size=(16,16), mode='nearest', align_corners=None)
-
-            cin = torch.cat([cin1,cin2], dim=1)
-
-            #cin = torch.repeat_interleave(cin, repeats=2, dim=-1)
-            print('aft ',cin.shape)
-
-            rst_c = cin.permute(0,2,3,1)
-            print('dfaf permed', rst_c.shape)
-
-            #print(rst_c[i][...,0],c_list_t[i][...,0])
-
-            #rst_c = rst_c.squeeze(1)
-            rst_central.append(rst_c)
-            #rst_central.append(c)
-
-        rst_forward = []
-        for i,f in enumerate(f_list):
-            #rst_f = F.interpolate(f.unsqueeze(1), size=fsh[i], mode='bilinear', align_corners=False)
-            #rst_f = F.interpolate(f.unsqueeze(1), size=fsh[i], mode='bilinear', align_corners=None)
-            rst_f = F.interpolate(f.unsqueeze(1), size=fsh[i], mode='nearest', align_corners=None)
-            rst_f = rst_f.squeeze(1)
-            rst_forward.append(rst_f)
-
-        rst_backward = []
-        for i,b in enumerate(b_list):
-            #rst_b = F.interpolate(b.unsqueeze(1), size=bsh[i], mode='bilinear', align_corners=None)
-            rst_b = F.interpolate(b.unsqueeze(1), size=bsh[i], mode='nearest', align_corners=None)
-            rst_b = rst_b.squeeze(1)
-            rst_backward.append(rst_b)
-
-        rst_init = []
-        for i,init in enumerate(init_list):
-            print('init ', init.shape, ish[i])
-            #rst_i = F.interpolate(init.unsqueeze(1), size=tuple(ish[i]), mode='bilinear', align_corners=None)
-            rst_i = F.interpolate(init.unsqueeze(1), size=tuple(ish[i]), mode='nearest', align_corners=None)
-            rst_i = rst_i.squeeze(1)
-            rst_init.append(rst_i)
-
-        new_c = [rst_central[0]] + c_list_t[1:]
-        #x_rst = pro_pde.lambda_grids_to_flat(rst_eq,init_list_t, rst_central, f_list_t, b_list_t)
-        #x_rst = pro_pde.lambda_grids_to_flat(rst_eq,rst_init, rst_central, f_list_t, b_list_t)
-        #x_rst = pro_pde.lambda_grids_to_flat(rst_eq,init_list_t, rst_central, rst_forward, rst_backward)
-        x_rst = pro_pde.lambda_grids_to_flat(eq_t,init_list_t, new_c, f_list_t, b_list_t)
-
-        return x_rst
-
-    def smooth_jacobi(self, A, b, x, D, nsteps=5, w=2/3):
+    def smooth_jacobi(self, A, b, x, D, nsteps=15, w=2/3):
         Dinv = 1/D
 
         #w = 2/3
-        w = 0.1
-        I = torch.sparse.spdiags(torch.ones(A.shape[1]), torch.tensor([0]), (A.shape[1], A.shape[2]), 
-                                layout=torch.sparse_coo)
-        I = I.to(A.device).unsqueeze(0)
+        w = 0.5
+        #I = torch.sparse.spdiags(torch.ones(A.shape[1]), torch.tensor([0]), (A.shape[1], A.shape[2]), 
+        #                        layout=torch.sparse_coo)
+        #I = I.to(A.device).unsqueeze(0)
+        #I = I.to_dense()
+
+        I = torch.eye(A.shape[1], device=A.device)
+
+        #print('diff',(I-I2).pow(2).sum())
 
         J = I - w*Dinv.unsqueeze(2)*A
 
@@ -643,7 +491,7 @@ class MultigridSolver():
 
         return x
 
-    def v_cycle_jacobi_start(self, A_list, b_list, D_list, n_step=10):
+    def v_cycle_jacobi_start(self, A_list, b_list, D_list, n_step=100):
         x = torch.zeros_like(b_list[0])
         for step in range(n_step):
             x = self.v_cycle_jacobi(0, A_list, b_list, x, D_list)

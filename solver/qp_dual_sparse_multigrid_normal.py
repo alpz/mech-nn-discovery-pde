@@ -211,7 +211,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             rhs_list = [A_rhs] + coarse_rhs_list
 
             AtA_list, rhs_list, D_list = mg.make_AtA_matrices(A_list, rhs_list)
-            #lam = mg.v_cycle_jacobi_start(AAt_list, rhs_list, D_list)
+            lam = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list)
             
 
             num_eps = pde.var_set.num_added_eps_vars
@@ -229,8 +229,8 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             num_ineq = pde.num_added_derivative_constraints
 
 
-            _P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')#*1e2
-            _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')# +ds
+            _P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*1e5
+            _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')*1e-5# +ds
             P_diag = torch.cat([_P_ones, _P_diag]).to(A.device)
             P_diag_inv = 1/P_diag
 
@@ -239,8 +239,8 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             print(rhs_list[0])
             #lam = mg.solve_coarsest(AtA_list[0], rhs_list[0])
-            lam = mg.solve_coarsest(AtA_list[1], rhs_list[1])
-            lam = mg.prolong(1, lam)
+            #lam = mg.solve_coarsest(AtA_list[1], rhs_list[1])
+            #lam = mg.prolong(1, lam)
             #print(lam)
 
             #At = coarse_A_list[-1].transpose(1,2)
