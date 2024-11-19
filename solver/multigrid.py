@@ -107,7 +107,7 @@ class MultigridSolver():
             num_eps = pde.var_set.num_added_eps_vars
             num_var = pde.var_set.num_vars
 
-            A = A.to_dense()[:, :, :num_var]
+            A = A.to_dense()#[:, :, :num_var]
 
             A_list.append(A)
             A_rhs_list.append(A_rhs)
@@ -181,7 +181,7 @@ class MultigridSolver():
         P_diag = torch.cat([_P_ones, _P_diag]).to(A.device)
         P_diag_inv = 1/P_diag
 
-        A = A.to_dense()[:, :, :num_var]
+        A = A.to_dense()#[:, :, :num_var]
         At = A.transpose(1,2)
         PinvA = P_diag_inv.unsqueeze(1)*A
         AtA = torch.mm(At[0], PinvA[0]).unsqueeze(0)
@@ -459,13 +459,13 @@ class MultigridSolver():
         b = b_list[idx]
         D = D_list[idx]
 
-        print('idx ', x.shape, idx)
+        #print('idx ', x.shape, idx)
         #pre-smooth
-        rn, rrn = self.get_residual_norm(A, x, b)
-        print('before smooth ', rn, rrn)
+        #rn, rrn = self.get_residual_norm(A, x, b)
+        #print('before smooth ', rn, rrn)
         x = self.smooth_jacobi(A, b, x, D)
-        rn, rrn = self.get_residual_norm(A, x, b)
-        print('frst smooth ', rn, rrn)
+        #rn, rrn = self.get_residual_norm(A, x, b)
+        #print('frst smooth ', rn, rrn)
         r = b-torch.bmm(A, x.unsqueeze(2)).squeeze(2)
 
         #ipdb.set_trace()
@@ -473,24 +473,24 @@ class MultigridSolver():
 
         if idx ==self.n_grid-2:
             deltaH = self.solve_coarsest(A_list[self.n_grid-1], rH)
-            dr, drn = self.get_residual_norm(A_list[self.n_grid-1], deltaH, rH)
-            print('resid ', dr, drn)
+            #dr, drn = self.get_residual_norm(A_list[self.n_grid-1], deltaH, rH)
+            #print('resid ', dr, drn)
         else:
             xH0 = torch.zeros_like(b_list[idx+1])
             deltaH = self.v_cycle(self, idx+1, A_list, b_list,xH0, D_list)
 
         delta = self.prolong(idx+1, deltaH)
-        print('af idx', x.shape, delta.shape, idx)
+        #print('af idx', x.shape, delta.shape, idx)
         #correct
         x = x+delta
-        dr, drn = self.get_residual_norm(A_list[0], x, b)
-        print('resid delta', dr, drn)
+        #dr, drn = self.get_residual_norm(A_list[0], x, b)
+        #print('resid delta', dr, drn)
 
         #smooth
         x = self.smooth_jacobi(A, b, x, D)
 
-        dr, drn = self.get_residual_norm(A_list[0], x, b)
-        print('resid delta', dr, drn)
+        #dr, drn = self.get_residual_norm(A_list[0], x, b)
+        #print('resid delta', dr, drn)
 
 
         return x
@@ -500,7 +500,7 @@ class MultigridSolver():
         for step in range(n_step):
             x = self.v_cycle_jacobi(0, A_list, b_list, x, D_list)
             r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
-            print('vcycle end norm ', r,rr)
+            print(f'{step}: vcycle end norm ', r,rr)
         return x
 
 class MultigridLayer(nn.Module):
