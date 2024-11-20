@@ -210,8 +210,14 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             A_list = [A] + coarse_A_list
             rhs_list = [A_rhs] + coarse_rhs_list
 
+
             AtA_list, rhs_list, D_list = mg.make_AtA_matrices(A_list, rhs_list)
-            lam = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list)
+            #make coarsest dense. TODO: use torch.spsolve
+            AtA_list[-1]= AtA_list[-1].to_dense()
+
+            L= mg.factor_coarsest(AtA_list[-1])
+
+            lam = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
             
 
             num_eps = pde.var_set.num_added_eps_vars
@@ -230,7 +236,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
 
             _P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*1e5
-            _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')*1e-5# +ds
+            _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')#*1e-5# +ds
             P_diag = torch.cat([_P_ones, _P_diag]).to(A.device)
             P_diag_inv = 1/P_diag
 

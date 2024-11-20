@@ -28,7 +28,7 @@ class PDEConfig:
     ilu_preconditioner=False
     ilu_fill_factor= 60.0
     sindpy_data = os.path.join(os.path.expanduser('~'),'data/pysindy/')
-    n_grid=3
+    n_grid=4
 
     #uncomment to choose linear solver sparse conjuate gradient
     #linear_solver = SolverType.SPARSE_INDIRECT_BLOCK_CG

@@ -27,6 +27,7 @@ class MultigridSolver():
         super().__init__()
         dtype = torch.float64 if solver_dbl else torch.float32
 
+        print("Multigrid: num grid ", n_grid)
         # placeholder step size
         self.step_size = 0.01
         self.coord_dims = coord_dims
@@ -54,13 +55,12 @@ class MultigridSolver():
 
         self.dim_list = []
         self.size_list = []
-        #for 32 only
         dims = coord_dims
         self.n_grid = n_grid
         for i in range(self.n_grid):
             dims = np.array(dims)
             size = np.prod(dims)
-            assert(np.max(dims)>=8)
+            assert(np.min(dims)>=8)
             self.dim_list.append(tuple(dims))
             self.size_list.append(size)
             dims = dims//2
@@ -85,6 +85,7 @@ class MultigridSolver():
             pde = self.pde_list[k]
             new_shape = self.dim_list[k]
             old_shape = self.dim_list[k-1]
+            print('creating grid ', self.dim_list[k])
 
             n_orders = len(pde.var_set.mi_list)
 
@@ -153,7 +154,7 @@ class MultigridSolver():
         AtA_list = []
         D_list = []
         rhs_list = []
-        ds_list = [1e6,1e6,1e6]
+        ds_list = [1e6]*self.n_grid
         for i in range(self.n_grid):
             AtA,D,P_diag_inv,A = self.make_AtA(self.pde_list[i], A_list[i], ds=ds_list[i])
             AtA_list.append(AtA)
@@ -411,7 +412,7 @@ class MultigridSolver():
 
         return x
 
-    def smooth_jacobi(self, A, b, x, D, nsteps=100, w=0.55):
+    def smooth_jacobi(self, A, b, x, D, nsteps=200, w=0.55):
         """Weighted Jacobi iteration"""
         Dinv = 1/D
 
@@ -431,7 +432,7 @@ class MultigridSolver():
 
         return x
 
-    def smooth_qmres(self, A, b,   nsteps):
+    def smooth_minres(self, A, b,   nsteps):
         pass
 
     def smooth_uzawa(self, A, b,   nsteps):
@@ -446,17 +447,23 @@ class MultigridSolver():
 
         return rnorm, rrnorm
 
-    def solve_coarsest(self, A, b):
+    def factor_coarsest(self, A):
+        #dense cholesky factor
+        L,info = torch.linalg.cholesky_ex(A,upper=False, check_errors=True)
+        return L
+
+    def solve_coarsest(self, L, b):
         #At = A.transpose(1,2)#.to_dense()
         #PAt = P_diag_inv.unsqueeze(2)*At
         #APAt = torch.bmm(A, PAt)
-        A = A.to_dense()
-        L,info = torch.linalg.cholesky_ex(A,upper=False, check_errors=True)
+        #A = A.to_dense()
+        #TODO: move factorization outside loop
+        #L,info = torch.linalg.cholesky_ex(A,upper=False, check_errors=True)
         lam = torch.cholesky_solve(b.unsqueeze(2), L)
         lam = lam.squeeze(2)
         return lam
 
-    def v_cycle_jacobi(self, idx, A_list, b_list, x, D_list):
+    def v_cycle_jacobi(self, idx, A_list, b_list, x, D_list, L):
         A = A_list[idx]
         b = b_list[idx]
         D = D_list[idx]
@@ -474,12 +481,13 @@ class MultigridSolver():
         rH = self.restrict(idx, r)
 
         if idx ==self.n_grid-2:
-            deltaH = self.solve_coarsest(A_list[self.n_grid-1], rH)
+            #deltaH = self.solve_coarsest(A_list[self.n_grid-1], rH)
+            deltaH = self.solve_coarsest(L, rH)
             #dr, drn = self.get_residual_norm(A_list[self.n_grid-1], deltaH, rH)
             #print('resid ', dr, drn)
         else:
             xH0 = torch.zeros_like(b_list[idx+1])
-            deltaH = self.v_cycle_jacobi(idx+1, A_list, b_list,xH0, D_list)
+            deltaH = self.v_cycle_jacobi(idx+1, A_list, b_list,xH0, D_list,L)
 
         delta = self.prolong(idx+1, deltaH)
         #print('af idx', x.shape, delta.shape, idx)
@@ -497,18 +505,18 @@ class MultigridSolver():
 
         return x
 
-    def v_cycle_jacobi_start(self, A_list, b_list, D_list, n_step=1):
+    def v_cycle_jacobi_start(self, A_list, b_list, D_list,L, n_step=1):
         x = torch.zeros_like(b_list[0])
-        for step in range(n_step):
-            x = self.v_cycle_jacobi(0, A_list, b_list, x, D_list)
-            r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
-            print(f'{step}: vcycle end norm ', r,rr)
+        #for step in range(n_step):
+        x = self.v_cycle_jacobi(0, A_list, b_list, x, D_list,L)
+        r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
+        print(f'vcycle end norm: ', r,rr)
         return x
 
 class MultigridLayer(nn.Module):
     """ Multigrid layer """
     def __init__(self, bs, order, n_ind_dim, n_iv, init_index_mi_list, coord_dims, n_iv_steps, solver_dbl=True, 
-                    gamma=0.5, alpha=0.1, double_ret=False, device=None):
+                    gamma=0.5, alpha=0.1, double_ret=False,n_grid=2, device=None):
         super().__init__()
         # placeholder step size
         self.step_size = 0.01
@@ -537,9 +545,9 @@ class MultigridLayer(nn.Module):
         dtype = torch.float64 if self.solver_dbl else torch.float32
 
         self.mg_solver = MultigridSolver(bs, order, n_ind_dim, n_iv, init_index_mi_list, coord_dims, 
-                                    n_iv_steps, solver_dbl=True,
+                                    n_iv_steps, solver_dbl=True, n_grid=n_grid,
                                     gamma=0.5, alpha=0.1, double_ret=False, 
-                                    n_grid=config.n_grid, device=None)
+                                    device=None)
         #self.pde = PDESYSLPEPS(bs=bs*self.n_ind_dim, n_equations=self.n_equations, n_auxiliary=0, coord_dims=self.coord_dims, step_size=self.step_size, order=self.order,
         #                 n_iv=self.n_iv, init_index_mi_list=init_index_mi_list, n_iv_steps=self.n_iv_steps, dtype=dtype, device=self.device)
 

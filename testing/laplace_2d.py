@@ -32,28 +32,42 @@ import torch.nn.functional as F
 from tqdm import tqdm
 #import discovery.plot as P
 
+from solver.multigrid import MultigridLayer
+
 cuda=True
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def solve():
     bs = 1
-    #coord_dims = (32,32,32)
+    coord_dims = (64,64,64)
     #coord_dims = (12,12,12)
     #coord_dims = (16,16,16)
-    coord_dims = (6,6,6)
+    #coord_dims = (8,8,8)
     # coord, mi_index, range_begin, range_end (inclusive)
-    iv_list = [(0,0, [0,0,0],[0,coord_dims[1]-1, coord_dims[2]-1]), 
-                (1,0, [1,0,0], [coord_dims[0]-1, 0, coord_dims[2]-1 ]), 
-                (2,0, [1,1,0], [coord_dims[0]-1, coord_dims[1]-1, 0 ]), 
-                #(0,1, [0,0],[0,self.coord_dims[1]-1]), 
-                (0,0, [coord_dims[0]-1,1,1],[coord_dims[0]-1,coord_dims[1]-1, coord_dims[2]-1]), 
-                (1,0, [1,coord_dims[1]-1, 1], [coord_dims[0]-2, coord_dims[1]-1, coord_dims[2]-1]),
-                (2,0, [1,1, coord_dims[2]-1], [coord_dims[0]-2, coord_dims[1]-2, coord_dims[2]-1])
+
+    #iv_list = [(0,0, [0,0,0],[0,coord_dims[1]-1, coord_dims[2]-1]), 
+    #            (1,0, [1,0,0], [coord_dims[0]-1, 0, coord_dims[2]-1 ]), 
+    #            (2,0, [1,1,0], [coord_dims[0]-1, coord_dims[1]-1, 0 ]), 
+    #            #(0,1, [0,0],[0,self.coord_dims[1]-1]), 
+    #            (0,0, [coord_dims[0]-1,1,1],[coord_dims[0]-1,coord_dims[1]-1, coord_dims[2]-1]), 
+    #            (1,0, [1,coord_dims[1]-1, 1], [coord_dims[0]-2, coord_dims[1]-1, coord_dims[2]-1]),
+    #            (2,0, [1,1, coord_dims[2]-1], [coord_dims[0]-2, coord_dims[1]-2, coord_dims[2]-1])
+    #            ]
+    iv_list = [lambda nx, ny, nz: (0,0, [0,0,0],[0,ny-1, nz-1]), 
+               lambda nx, ny, nz: (1,0, [1,0,0], [nx-1, 0, nz-1 ]), 
+               lambda nx, ny, nz: (2,0, [1,1,0], [nx-1, ny-1, 0 ]), 
+               lambda nx, ny, nz: (0,0, [nx-1,1,1],[nx-1,ny-1, nz-1]), 
+               lambda nx, ny, nz: (1,0, [1,ny-1, 1], [nx-2, ny-1, nz-1]),
+               lambda nx, ny, nz: (2,0, [1,1, nz-1], [nx-2, ny-2, nz-1])
                 ]
 
-    pde = PDEINDLayerEPS(bs=1, coord_dims=coord_dims, order=2, n_ind_dim=1, n_iv=1, 
-                        init_index_mi_list=iv_list,  n_iv_steps=1, double_ret=True, solver_dbl=True, device='gpu:0')
+    #pde = PDEINDLayerEPS(bs=1, coord_dims=coord_dims, order=2, n_ind_dim=1, n_iv=1, 
+    #                    init_index_mi_list=iv_list,  n_iv_steps=1, double_ret=True, solver_dbl=True, device='gpu:0')
+
+    pde = MultigridLayer(bs=bs, coord_dims=coord_dims, order=2, n_ind_dim=1, n_iv=1, 
+                        init_index_mi_list=iv_list, n_grid=4, 
+                        n_iv_steps=1, double_ret=True, solver_dbl=True)
 
 
     t_step_size = 0.1 
@@ -118,7 +132,7 @@ def solve():
     print('start pde')
     u0,_,eps = pde(coeffs, rhs, iv_rhs, steps_list)
     
-    print(eps.abs().max())
+    #print(eps.abs().max())
     print(u0.shape)
     u0 = u0.reshape(*coord_dims)
     return u0
@@ -128,11 +142,11 @@ u0=solve()
 
 # %%
 print(u0.shape)
-
+u0 = u0.cpu().numpy()
 
 # %%
 
 #plot = plt.pcolormesh(u0, cmap='RdBu', shading='gouraud')
 #plot = plt.pcolormesh(u0, cmap='RdBu', shading='gouraud')
-plot = plt.pcolormesh(u0[2], cmap='viridis', shading='gouraud')
+plot = plt.pcolormesh(u0[6], cmap='viridis', shading='gouraud')
 # %%
