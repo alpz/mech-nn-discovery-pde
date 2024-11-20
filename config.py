@@ -17,6 +17,7 @@ class ODEConfig:
 
 class PDEConfig:
     #pde_linear_solver = SolverType.DENSE_CHOLESKY_DUAL
+    #pde_linear_solver = SolverType.DENSE_CHOLESKY
     pde_linear_solver = SolverType.SPARSE_INDIRECT_CG_DUAL
     pde_gmres_max_iter = 100 
     pde_gmres_repeat =  40
@@ -28,7 +29,8 @@ class PDEConfig:
     ilu_preconditioner=False
     ilu_fill_factor= 60.0
     sindpy_data = os.path.join(os.path.expanduser('~'),'data/pysindy/')
-    n_grid=4
+    #relax
+    ds = 1e4
 
     #uncomment to choose linear solver sparse conjuate gradient
     #linear_solver = SolverType.SPARSE_INDIRECT_BLOCK_CG

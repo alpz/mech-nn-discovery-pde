@@ -9,6 +9,7 @@ import torch
 import solver.lp_pde
 from solver.lp_pde import PDESYSLP #as ODELP_sys
 from solver.lp_pde_central_diff import PDESYSLP as PDESYSLPEPS #as ODELP_sys
+#from solver.lp_sparse_central_diff_eps import PDESYSLP as PDESYSLPEPS2 #as ODELP_sys
 from torch.nn.parameter import Parameter
 import numpy as np
 
@@ -147,7 +148,7 @@ class PDEINDLayerEPS(nn.Module):
 
         dtype = torch.float64 if self.solver_dbl else torch.float32
 
-        self.pde = PDESYSLPEPS(bs=bs*self.n_ind_dim, n_equations=self.n_equations, n_auxiliary=0, coord_dims=self.coord_dims, step_size=self.step_size, order=self.order,
+        self.pde = PDESYSLP(bs=bs*self.n_ind_dim, n_equations=self.n_equations, n_auxiliary=0, coord_dims=self.coord_dims, step_size=self.step_size, order=self.order,
                          n_iv=self.n_iv, init_index_mi_list=init_index_mi_list, n_iv_steps=self.n_iv_steps, dtype=dtype, device=self.device)
 
         self.n_orders = len(self.pde.var_set.mi_list)

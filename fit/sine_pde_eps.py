@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch
 
 #from solver.ode_layer import ODEINDLayer
-from solver.pde_layer import PDEINDLayerEPS
+#from solver.pde_layer import PDEINDLayerEPS#, PDEINDLayer
 from torch.nn.parameter import Parameter
 import numpy as np
 
@@ -13,6 +13,7 @@ import torch.optim as optim
 import pytorch_lightning as pl
 
 from torch.utils.data import Dataset
+from solver.multigrid import MultigridLayer
 
 #Fit a noisy exponentially damped sine wave with a second order ODE
 
@@ -36,7 +37,7 @@ class SineDataset(Dataset):
         #self.y = np.sin((2*_yy+_xx))#.transpose(1,0)
         #self.y = np.sin((2*_yy+_xx))#.transpose(1,0)
         #self.y = np.sin((7*_yy+3*_xx))*np.cos(4*_xx)#.transpose(1,0)
-        self.y = self.y*self.damp
+        #self.y = self.y*self.damp
         
     def __len__(self):
         return 1
@@ -78,7 +79,8 @@ class Method(pl.LightningModule):
         y = batch
 
         #y = y.reshape((32,32))
-        y = y.reshape((32,32))
+        #y = y.reshape((32,32))
+        y = y.reshape((16,16))
         #y = y.reshape((4*128,4*128))
         t0 = y[0, 0:-1].reshape(-1)
         tn = y[-1, 1:-1].reshape(-1)
@@ -97,7 +99,7 @@ class Method(pl.LightningModule):
         
         
         self.log('train_loss', loss, prog_bar=True, logger=True)
-        self.log('eps', eps, prog_bar=True, logger=True)
+        #self.log('eps', eps, prog_bar=True, logger=True)
         
         self.func_list.append(u0.detach().cpu().numpy())
         self.coeffs_list.append(self.model.coeffs.squeeze().detach().cpu().numpy())
@@ -133,7 +135,8 @@ class Sine(nn.Module):
         dtype = torch.float64
         #self.coord_dims = (64,32)
         #self.coord_dims = (10,15)
-        self.coord_dims = (32,32)
+        #self.coord_dims = (32,32)
+        self.coord_dims = (16,16)
         #self.coord_dims = (48,48)
         #self.coord_dims = (8,8)
         #self.coord_dims = (10,10)
@@ -141,20 +144,39 @@ class Sine(nn.Module):
         #self.coord_dims = (64,32)
         self.n_iv = 1
         #coord, mi_index, begin, end
-        self.iv_list = [(0,0, [0,0],[0,self.coord_dims[1]-2]), 
-                        (1,0, [1,0], [self.coord_dims[0]-1, 0]), 
+        self.iv_list = [lambda nx,ny: (0,0, [0,0],[0,ny-2]), 
+                        lambda nx,ny:(1,0, [1,0], [nx-1, 0]), 
                         #(0,1, [0,0],[0,self.coord_dims[1]-1]), 
-                        (0,0, [self.coord_dims[0]-1,1],[self.coord_dims[0]-1,self.coord_dims[1]-2]), 
+                        lambda nx,ny:(0,0, [nx-1,1],[nx-1,ny-2]), 
                         #(1,2, [0,0], [self.coord_dims[0]-1, 0]),
                         #(1,3, [0,0], [self.coord_dims[0]-1, 0])
-                        (1,0, [0,self.coord_dims[1]-1], [self.coord_dims[0]-1, self.coord_dims[1]-1])
+                        lambda nx,ny:(1,0, [0,ny-1], [nx-1, ny-1])
                         ]
+        #nx = self.coord_dims[0]
+        #ny = self.coord_dims[1]
+
+        #self.iv_list = [(0,0, [0,0],[0,ny-2]), 
+        #                (1,0, [1,0], [nx-1, 0]), 
+        #                #(0,1, [0,0],[0,self.coord_dims[1]-1]), 
+        #                (0,0, [nx-1,1],[nx-1,ny-2]), 
+        #                #(1,2, [0,0], [self.coord_dims[0]-1, 0]),
+        #                #(1,3, [0,0], [self.coord_dims[0]-1, 0])
+        #                (1,0, [0,ny-1], [nx-1, ny-1])
+        #                ]
         #self.iv_list = [(1,0), (0,1)]
         #self.iv_list = [(0,0), (1,0)]
         #self.iv_list = [(0,0), (0,1),(1,0)]
 
-        self.pde = PDEINDLayerEPS(bs=bs, coord_dims=self.coord_dims, order=self.order, n_ind_dim=self.n_dim, n_iv=self.n_iv, init_index_mi_list=self.iv_list,  
-                                    n_iv_steps=1, gamma=0.5, alpha=0., double_ret=True, solver_dbl=True)
+        #self.pde = PDEINDLayerEPS(bs=bs, coord_dims=self.coord_dims, order=self.order, n_ind_dim=self.n_dim, n_iv=self.n_iv, init_index_mi_list=self.iv_list,  
+        #                            n_iv_steps=1, gamma=0.5, alpha=0., double_ret=True, solver_dbl=True)
+
+        #self.pde = PDEINDLayerEPS(bs=bs, coord_dims=self.coord_dims, order=self.order, n_ind_dim=self.n_dim, n_iv=self.n_iv, init_index_mi_list=self.iv_list,  
+        #                            n_iv_steps=1, gamma=0.5, alpha=0., double_ret=True, solver_dbl=True)
+
+        self.pde = MultigridLayer(bs=bs, coord_dims=self.coord_dims, order=2, 
+                                n_ind_dim=self.n_dim, n_iv=1, n_grid=2,
+                                init_index_mi_list=self.iv_list,  n_iv_steps=1, 
+                                double_ret=True, solver_dbl=True)
 
         #_coeffs = torch.tensor(np.random.random((self.n_dim, self.pde.grid_size, self.pde.n_orders)), dtype=dtype)
         #_coeffs = torch.tensor(np.random.random((self.n_dim, self.pde.grid_size, self.pde.n_orders)), dtype=dtype)
@@ -193,8 +215,8 @@ class Sine(nn.Module):
         #_rhs = np.array([0])
         #_rhs = torch.tensor(_rhs, dtype=dtype, device=self.device).reshape(1,1).repeat(self.bs, self.pde.grid_size)
         _rhs = torch.tensor(_rhs, dtype=dtype, device=self.device)#.reshape(1,1).repeat(self.bs, self.pde.grid_size)
-        #self.rhs = _rhs #nn.Parameter(_rhs)
-        self.rhs = nn.Parameter(_rhs)
+        self.rhs = _rhs #nn.Parameter(_rhs)
+        #self.rhs = nn.Parameter(_rhs)
 
         #self.steps0 = torch.logit(self.step_size*torch.ones(1,*self.pde.step_grid_shape[0]))
         #self.steps0 = torch.logit(self.step_size*torch.ones(1,*self.pde.step_grid_shape[0]))
@@ -225,17 +247,14 @@ class Sine(nn.Module):
             #nn.ReLU(),
             #nn.Linear(1024,1),
             nn.Linear(1024,self.pde.grid_size),
-            #nn.Tanh()
         )
 
         self.cf_nn = nn.Sequential(
             nn.Linear(1024,self.pde.n_orders),
-            #nn.Tanh()
         )
 
         self.iv_nn = nn.Sequential(
             nn.Linear(1024,2*self.coord_dims[0]-1 + 2*self.coord_dims[1]-3),
-            #nn.Tanh()
         )
 
 
@@ -312,7 +331,7 @@ class Sine(nn.Module):
         #print(eps, eps.abs().min(), eps.abs().mean())
 
 
-        return eps.max(), u0,_coeffs#, u1,u2,steps
+        return 0.001, u0,_coeffs#, u1,u2,steps
 
 method = Method()
 dataset = SineDataset(end=method.model.end, coord_dims=method.model.coord_dims)

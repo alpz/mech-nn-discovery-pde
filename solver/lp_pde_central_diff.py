@@ -1676,6 +1676,7 @@ class PDESYSLP(nn.Module):
         x = _x[:, :self.var_set.num_vars+self.var_set.num_added_eps_vars]
 
 
+        #ipdb.set_trace()
         ####### dense
         #x = x.reshape(b, 1, -1)
         #y = y.reshape(b, -1, 1)

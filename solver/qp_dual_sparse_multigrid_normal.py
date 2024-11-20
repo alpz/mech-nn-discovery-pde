@@ -26,6 +26,7 @@ import solver.minres_torch as MINRES
 #import solver.minres_torch_chol as MINRES
 #import solver.multigrid as MG
 
+
 def to_torch_coo(KKTs):
     row = torch.tensor(KKTs.row)
     col = torch.tensor(KKTs.col)
@@ -217,7 +218,9 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             L= mg.factor_coarsest(AtA_list[-1])
 
-            lam = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
+            #lam = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
+            lam = mg.solve_direct(AtA_list[0], rhs_list[0])
+            #lam = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
             
 
             num_eps = pde.var_set.num_added_eps_vars
@@ -235,15 +238,15 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             num_ineq = pde.num_added_derivative_constraints
 
 
-            _P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*1e5
-            _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')#*1e-5# +ds
+            _P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*config.ds#*1e5
+            _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')# +ds
             P_diag = torch.cat([_P_ones, _P_diag]).to(A.device)
             P_diag_inv = 1/P_diag
 
             P_diag_inv = P_diag_inv.unsqueeze(0)
 
 
-            print(rhs_list[0])
+            #print(rhs_list[0])
             #lam = mg.solve_coarsest(AtA_list[0], rhs_list[0])
             #lam = mg.solve_coarsest(AtA_list[2], rhs_list[2])
             #lam = mg.prolong(1, lam)
@@ -302,8 +305,9 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #diff = (msol - t).pow(2).sum()
             #print('ff ', diff)
             ###########
-            
-            ctx.save_for_backward(A, P_diag_inv, x, lam, None)
+            ctx.AtA_list = AtA_list
+            ctx.D_list = D_list
+            ctx.save_for_backward(A, P_diag_inv, x, lam, L)
             
             #if not double_ret:
             #    x = x.float()
@@ -314,7 +318,10 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
         @staticmethod
         def backward(ctx, dl_dzhat, dl_dlam):
             A,P_diag_inv, _x, _y, L = ctx.saved_tensors
-            At = A.transpose(1,2)
+            AtA_list = ctx.AtA_list
+            D_list = ctx.D_list
+
+            #At = A.transpose(1,2)
             #n = A.shape[1]
             #m = A.shape[2]
             #At = A.transpose(1,2)
@@ -322,28 +329,39 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             bs = dl_dzhat.shape[0]
             m = pde.num_constraints
 
-            dl_dzhat = -dl_dzhat
-
             #z = torch.zeros(bs, m, device=dl_dzhat.device).type_as(_x)
-            rhs = dl_dzhat #torch.cat([-dl_dzhat, z], dim=-1)
+            #rhs = dl_dzhat #torch.cat([-dl_dzhat, z], dim=-1)
+            #dl_dzhat = -dl_dzhat
 
-            #rhs = -dl_dzhat
-            rhs = P_diag_inv*rhs
-            rhs = torch.bmm(A, rhs.unsqueeze(2))
-            #TODO rhs is zero upto here. remove the above
-            rhs = rhs.squeeze(2) 
+            coarse_grads = mg.downsample_grad(dl_dzhat)
+            grad_list = [dl_dzhat] + coarse_grads
+            
+            #dnu = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L)
+            dnu = mg.solve_direct(AtA_list[0], grad_list[0])
 
-            #dnu, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=16000)
+            dx = torch.bmm(A, dnu.unsqueeze(2)).squeeze(2)
+            dx = P_diag_inv*(dx)
 
-            #print('back', info[1], info[2], dnu.shape)
-            ###### dense
-            dnu = torch.cholesky_solve(rhs.unsqueeze(2), L)
-            dnu = dnu.squeeze(2)
-            ######
+            _dx, _dnu = -dx,-dnu
+            #_dx, _dnu = dx,dnu
 
-            dx = dnu.unsqueeze(2)
-            dx = torch.bmm(At, dx)
-            dx = P_diag_inv*(dx.squeeze(2)- dl_dzhat ) 
+            ##rhs = -dl_dzhat
+            #rhs = P_diag_inv*rhs
+            #rhs = torch.bmm(A, rhs.unsqueeze(2))
+            ##TODO rhs is zero upto here. remove the above
+            #rhs = rhs.squeeze(2) 
+
+            ##dnu, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=16000)
+
+            ##print('back', info[1], info[2], dnu.shape)
+            ####### dense
+            #dnu = torch.cholesky_solve(rhs.unsqueeze(2), L)
+            #dnu = dnu.squeeze(2)
+            #######
+
+            #dx = dnu.unsqueeze(2)
+            #dx = torch.bmm(At, dx)
+            #dx = P_diag_inv*(dx.squeeze(2)- dl_dzhat ) 
 
 
             ####### check
@@ -363,8 +381,8 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #print('grad ', diff)
             ###############
             
-            _dx = dx
-            _dnu = dnu
+            #_dx = dx
+            #_dnu = dnu
 
             db = _dnu[:, :pde.num_added_equation_constraints] #torch.tensor(-dnu.squeeze())
             db = -db.squeeze(-1) #.reshape(bs,n_step*ode.n_equations)
@@ -381,13 +399,20 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
                 div_rhs = -div_rhs#.reshape(bs,n_iv*ode.n_equations)
             
 
+            #ipdb.set_trace()
             # step gradient
-            dD = pde.sparse_grad_derivative_constraint(_dx,_y)
-            dD = dD + pde.sparse_grad_derivative_constraint(_x,_dnu)
+            #dD = pde.sparse_grad_derivative_constraint(_dx,_y)
+            #dD = dD + pde.sparse_grad_derivative_constraint(_x,_dnu)
+
+            dD = pde.sparse_grad_derivative_constraint(_y, _dx)
+            dD = dD + pde.sparse_grad_derivative_constraint(_dnu, _x)
 
             # eq grad
-            dA = pde.sparse_grad_eq_constraint(_dx,_y)
-            dA = dA + pde.sparse_grad_eq_constraint(_x,_dnu)
+            #dA = pde.sparse_grad_eq_constraint(_dx,_y)
+            #dA = dA + pde.sparse_grad_eq_constraint(_x,_dnu)
+
+            dA = pde.sparse_grad_eq_constraint(_y, _dx)
+            dA = dA + pde.sparse_grad_eq_constraint(_dnu, _x)
 
             #if not double_ret:
             #    dA = dA.float()

@@ -33,6 +33,7 @@ from tqdm import tqdm
 #import discovery.plot as P
 
 from solver.multigrid import MultigridLayer
+import time
 
 cuda=True
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -130,7 +131,10 @@ def solve():
     iv_rhs = torch.cat([iv0,iv1, iv2, iv3, iv4, iv5], dim =0).cuda()
 
     print('start pde')
+    start = time.time()
     u0,_,eps = pde(coeffs, rhs, iv_rhs, steps_list)
+    end = time.time()-start
+    print('time', end)
     
     #print(eps.abs().max())
     print(u0.shape)
@@ -148,5 +152,5 @@ u0 = u0.cpu().numpy()
 
 #plot = plt.pcolormesh(u0, cmap='RdBu', shading='gouraud')
 #plot = plt.pcolormesh(u0, cmap='RdBu', shading='gouraud')
-plot = plt.pcolormesh(u0[6], cmap='viridis', shading='gouraud')
+plot = plt.pcolormesh(u0[7], cmap='viridis', shading='gouraud')
 # %%
