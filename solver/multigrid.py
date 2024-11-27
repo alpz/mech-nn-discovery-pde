@@ -14,7 +14,7 @@ from solver.lp_pde_central_diff import PDESYSLP as PDESYSLPEPS #as ODELP_sys
 #add multigrid
 #from solver.qp_dual_indirect_sparse_pde import QPFunction as QPFunctionSys
 #from solver.qp_dual_sparse_multigrid_normal import QPFunction as QPFunctionSys
-import solver.qp_dual_sparse_multigrid_normal2 as MGS #import QPFunction as QPFunctionSys
+import solver.qp_dual_sparse_multigrid_normal as MGS #import QPFunction as QPFunctionSys
 from config import PDEConfig as config
 
 from torch.autograd import gradcheck
@@ -182,7 +182,7 @@ class MultigridSolver():
         num_var = pde.var_set.num_vars
 
         _P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*config.ds#*us
-        _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')/config.ds# +ds
+        _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')#/config.ds# +ds
         P_diag = torch.cat([_P_ones, _P_diag]).to(A.device)
         P_diag_inv = 1/P_diag
 
@@ -435,7 +435,6 @@ class MultigridSolver():
     def smooth_jacobi(self, A, b, x, D, nsteps=200, w=0.55):
         """Weighted Jacobi iteration"""
         Dinv = 1/D
-        w= 0.2
 
         I = torch.sparse.spdiags(torch.ones(A.shape[1]), torch.tensor([0]), (A.shape[1], A.shape[2]), 
                                 layout=torch.sparse_coo)
@@ -552,7 +551,7 @@ class MultigridSolver():
             print(f'fmg step norm: ', r,rr)
         return u
 
-class _MultigridLayer(nn.Module):
+class MultigridLayer(nn.Module):
     """ Multigrid layer """
     def __init__(self, bs, order, n_ind_dim, n_iv, init_index_mi_list, coord_dims, n_iv_steps, solver_dbl=True, 
                     gamma=0.5, alpha=0.1, double_ret=False,n_grid=2, device=None):
@@ -687,7 +686,7 @@ class _MultigridLayer(nn.Module):
         return u0, u, eps
 
 
-class MultigridLayer(nn.Module):
+class _MultigridLayer(nn.Module):
     """ Multigrid layer """
     def __init__(self, bs, order, n_ind_dim, n_iv, init_index_mi_list, coord_dims, n_iv_steps, solver_dbl=True, 
                     gamma=0.5, alpha=0.1, double_ret=False,n_grid=2, device=None):

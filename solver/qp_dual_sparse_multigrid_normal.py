@@ -218,11 +218,11 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             L= mg.factor_coarsest(AtA_list[-1])
 
-            #lam = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
-            lam = mg.solve_direct(AtA_list[0], rhs_list[0])
+            lam = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
+            #lam = mg.solve_direct(AtA_list[0], rhs_list[0])
             #lam = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
-            nr, nrr = mg.get_residual_norm(AtA_list[0],lam, rhs_list[0])
-            print('forward', nr, nrr)
+            #nr, nrr = mg.get_residual_norm(AtA_list[0],lam, rhs_list[0])
+            #print('forward', nr, nrr)
             
 
             num_eps = pde.var_set.num_added_eps_vars
@@ -241,7 +241,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
 
             _P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*config.ds#*1e5
-            _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')/config.ds# +ds
+            _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')#/config.ds# +ds
             P_diag = torch.cat([_P_ones, _P_diag]).to(A.device)
             P_diag_inv = 1/P_diag
 

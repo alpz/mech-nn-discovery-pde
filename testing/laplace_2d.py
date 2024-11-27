@@ -39,10 +39,10 @@ cuda=True
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+#coord_dims = (32,32,32)
+coord_dims = (64,64,64)
 def solve():
     bs = 1
-    coord_dims = (64,64,64)
-    #coord_dims = (12,12,12)
     #coord_dims = (16,16,16)
     #coord_dims = (8,8,8)
     # coord, mi_index, range_begin, range_end (inclusive)
@@ -153,4 +153,21 @@ u0 = u0.cpu().numpy()
 #plot = plt.pcolormesh(u0, cmap='RdBu', shading='gouraud')
 #plot = plt.pcolormesh(u0, cmap='RdBu', shading='gouraud')
 plot = plt.pcolormesh(u0[7], cmap='viridis', shading='gouraud')
+# %%
+
+from IPython.display import HTML
+from matplotlib.animation import FuncAnimation
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots(1,1)
+cax0 = ax.pcolormesh(u0[-1].reshape(*coord_dims[1:]), shading='gouraud')
+#cax1 = ax[1].pcolormesh(func_list[-1].reshape(*coord_dims[1:]), cmap='RdBu', shading='gouraud')
+
+def animate(i):
+   cax0.set_array(u0[i].reshape(*coord_dims[1:]).flatten())
+   #cax1.set_array(func_list[i].reshape(*coord_dims).flatten())
+
+anim = FuncAnimation(fig, animate, interval=100, frames=coord_dims[0])
+HTML(anim.to_html5_video())
+
 # %%
