@@ -1618,6 +1618,19 @@ class PDESYSLP(nn.Module):
 
         return AG, rhs
 
+    def fill_constraints_torch_dense(self, eq_A, eq_rhs, iv_rhs, derivative_A):
+        bs = eq_rhs.shape[0]
+
+        initial_A = self.initial_A.to_dense().type_as(eq_A)
+        AG = torch.cat([eq_A, initial_A, derivative_A], dim=1)
+        #AG = torch.cat([eq_A, initial_A], dim=1)
+        if self.n_iv > 0:
+            rhs = torch.cat([eq_rhs, iv_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
+        else:
+            rhs = torch.cat([eq_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
+
+        return AG, rhs
+
     #def fill_constraints_torch(self, eq_values, eq_rhs, iv_rhs, derivative_A):
     def fill_constraints_torch_old(self, eq_A, eq_rhs, iv_rhs, derivative_A):
         bs = eq_rhs.shape[0]

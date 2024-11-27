@@ -21,7 +21,7 @@ from scipy.integrate import odeint
 from extras.source import write_source_files, create_log_dir
 
 #from solver.pde_layer import PDEINDLayerEPS
-from solver.multigrid import MultigridLayer
+from solver.multigrid import MultigridLayer2 as MultigridLayer
 #from solver.ode_layer import ODEINDLayer
 #import discovery.basis as B
 import ipdb

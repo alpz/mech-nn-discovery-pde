@@ -13,7 +13,7 @@ import torch.optim as optim
 import pytorch_lightning as pl
 
 from torch.utils.data import Dataset
-from solver.multigrid import MultigridLayer
+from solver.multigrid import MultigridLayer2 as MultigridLayer
 
 #Fit a noisy exponentially damped sine wave with a second order ODE
 
@@ -81,6 +81,7 @@ class Method(pl.LightningModule):
         #y = y.reshape((32,32))
         #y = y.reshape((32,32))
         y = y.reshape((16,16))
+        #y = y.reshape((6,6))
         #y = y.reshape((4*128,4*128))
         t0 = y[0, 0:-1].reshape(-1)
         tn = y[-1, 1:-1].reshape(-1)
@@ -136,6 +137,7 @@ class Sine(nn.Module):
         #self.coord_dims = (64,32)
         #self.coord_dims = (10,15)
         #self.coord_dims = (32,32)
+        #self.coord_dims = (16,16)
         self.coord_dims = (16,16)
         #self.coord_dims = (48,48)
         #self.coord_dims = (8,8)
@@ -215,7 +217,7 @@ class Sine(nn.Module):
         #_rhs = np.array([0])
         #_rhs = torch.tensor(_rhs, dtype=dtype, device=self.device).reshape(1,1).repeat(self.bs, self.pde.grid_size)
         _rhs = torch.tensor(_rhs, dtype=dtype, device=self.device)#.reshape(1,1).repeat(self.bs, self.pde.grid_size)
-        self.rhs = _rhs #nn.Parameter(_rhs)
+        self.rhs = nn.Parameter(_rhs)
         #self.rhs = nn.Parameter(_rhs)
 
         #self.steps0 = torch.logit(self.step_size*torch.ones(1,*self.pde.step_grid_shape[0]))
@@ -268,6 +270,7 @@ class Sine(nn.Module):
         #_coeffs = self.cf_nn(_res)
         #_coeffs[..., -2] = 1.
         rhs = self.rhs_nn(_res)
+        #rhs = self.rhs.type_as(_res)
         #iv_rhs = self.iv_nn(_res)
         #_coeffs = self.cf_nn(self.coeffs).clip(min=-5, max=5)
         #cnorm = _coeffs.pow(2).sum(dim=-1,keepdim=True).clip(min=1e-5)
