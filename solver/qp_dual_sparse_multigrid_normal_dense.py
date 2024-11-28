@@ -356,8 +356,12 @@ def QPFunction(pde, n_iv, gamma=1, alpha=1, double_ret=True):
             dnu1 = dnu.clone()
             dnu2 = dnu.clone()
 
-            dQ = dnu1.unsqueeze(2)*_x.unsqueeze(1)
-            dQ = dQ + _x.unsqueeze(2)*dnu1.unsqueeze(1)
+            #dQ = dnu1.unsqueeze(2)*_x.unsqueeze(1)
+            #dQ = dQ + _x.unsqueeze(2)*dnu1.unsqueeze(1)
+            #dQ = dQ/2
+
+            dQ = pde.sparse_AtA_grad(dnu1, _x)
+            dQ = dQ + pde.sparse_AtA_grad(_x, dnu1)
             dQ = dQ/2
 
             dq = dnu2

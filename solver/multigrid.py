@@ -819,8 +819,8 @@ class MultigridLayer2(nn.Module):
         #diff2 = (b2-c2).pow(2).sum()
         #print('diff ', diff, diff2)
         AtA,AtPrhs, At_rhs = self.make_AtA(self.pde, A, A_rhs)
-        AtA = AtA.to_dense()
-        At_rhs = At_rhs.to_dense()
+        #AtA = AtA.to_dense()
+        #At_rhs = At_rhs.to_dense()
 
         check=False
         if check:
