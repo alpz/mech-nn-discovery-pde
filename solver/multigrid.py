@@ -78,7 +78,7 @@ class MultigridSolver():
                         dtype=dtype, device=self.device)
             self.pde_list.append(pde)
 
-    @torch.no_grad()
+    #@torch.no_grad()
     def fill_coarse_grids(self, coeffs, rhs, iv_rhs, steps_list):
 
         A_list = []
@@ -108,7 +108,7 @@ class MultigridSolver():
             derivative_constraints = pde.build_derivative_tensor(new_steps_list)
             eq_constraints = pde.build_equation_tensor(new_coeffs)
 
-            A, A_rhs = pde.fill_constraints_torch(eq_constraints, new_rhs, new_iv_rhs, derivative_constraints)
+            A, A_rhs = pde.fill_constraints_torch2(eq_constraints, new_rhs, new_iv_rhs, derivative_constraints)
 
             num_eps = pde.var_set.num_added_eps_vars
             num_var = pde.var_set.num_vars
@@ -198,6 +198,7 @@ class MultigridSolver():
         # diagonal of AtG-1A
         D = (PinvA*A).sum(dim=1).to_dense()
 
+        #P_rhs = P_diag_inv*A_rhs
         P_rhs = P_diag_inv*A_rhs
         #P_rhs = A_rhs
         #AtPrhs = -torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)
@@ -325,7 +326,7 @@ class MultigridSolver():
 
         return rhs
 
-    @torch.no_grad()
+    #@torch.no_grad()
     def downsample_grad(self, gradient):
         bs = gradient.shape[0]
         grad_list = []
@@ -337,10 +338,10 @@ class MultigridSolver():
             pde = self.pde_list[k]
 
             n_orders = len(pde.var_set.mi_list)
-            #new_grad = self.downsample_coeffs(gradient, self.coord_dims,  new_shape, n_orders)
+            new_grad = self.downsample_coeffs(gradient, self.coord_dims,  new_shape, n_orders)
             #new_grad = self.downsample_coeffs(new_grad, self.coord_dims,  new_shape, n_orders)
             #new_grad = self.downsample_grads(new_grad, self.coord_dims,  new_shape, n_orders)
-            new_grad = self.downsample_grads(new_grad.clone(), old_shape,  new_shape, n_orders)
+            #new_grad = self.downsample_grads(new_grad.clone(), old_shape,  new_shape, n_orders)
             old_shape = new_shape
             new_grad = new_grad.reshape(bs,-1)
             grad_list.append(new_grad.clone())
@@ -363,12 +364,12 @@ class MultigridSolver():
         return new_steps_list
 
     def downsample_iv(self, iv_rhs, old_shape,  new_shape):
-        if len(old_shape) == 2:
-            mode='bilinear'
-        elif len(old_shape) == 3:
-            mode='trilinear'
-        else:
-            raise ValueError('incorrect num coordinates')
+        #if len(old_shape) == 2:
+        #    mode='bilinear'
+        #elif len(old_shape) == 3:
+        #    mode='trilinear'
+        #else:
+        #    raise ValueError('incorrect num coordinates')
 
         iv_rhs = iv_rhs.reshape(self.bs*self.n_ind_dim, -1)
         iv_list = []
