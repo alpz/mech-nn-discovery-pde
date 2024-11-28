@@ -48,7 +48,7 @@ class MultigridSolver():
         
         interp_modes={1:'linear', 2:'bilinear', 3:'trilinear'}
         #interp_modes={1:'nearest', 2:'nearest', 3:'nearest'}
-        self.align_corners = False
+        self.align_corners = True
         #self.align_corners = None
         self.interp_mode = interp_modes[self.n_coord]
 
@@ -184,7 +184,7 @@ class MultigridSolver():
         num_var = pde.var_set.num_vars
 
         _P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*ds #*config.ds#*us
-        _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')#/config.ds# +ds
+        _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')#/ds#/config.ds# +ds
         P_diag = torch.cat([_P_ones, _P_diag]).to(A.device)
         P_diag_inv = 1/P_diag
 
@@ -254,16 +254,25 @@ class MultigridSolver():
         coeffs = coeffs.permute(0,2,1)
         coeffs = coeffs.reshape(self.bs*self.n_ind_dim, n_orders, *old_shape)
 
-        if len(old_shape) == 2:
-            mode='bilinear'
-        elif len(old_shape) == 3:
-            mode='trilinear'
-        else:
-            raise ValueError('incorrect num coordinates')
+        #if len(old_shape) == 2:
+        #    mode='bilinear'
+        #elif len(old_shape) == 3:
+        #    mode='trilinear'
+        #else:
+        #    raise ValueError('incorrect num coordinates')
 
         #print('ds coeffs ', coeffs.shape, new_shape)
-        #coeffs = F.interpolate(coeffs, size=new_shape, mode=mode, align_corners=self.align_corners)
-        coeffs = F.interpolate(coeffs, size=new_shape, mode=mode, align_corners=False)
+        coeffs = F.interpolate(coeffs, size=new_shape, mode='bilinear', 
+                               align_corners=self.align_corners)
+        m = old_shape[0]
+        #print('ols s ', m)
+        #coeffs = coeffs.reshape(self.bs*self.n_ind_dim,n_orders,m//2,2,m//2,2)
+        #coeffs = coeffs[:, :, :, 0, :, 0]
+        #coeffs = coeffs.mean(dim=-1).mean(dim=3)
+
+        #coeffs = F.interpolate(coeffs, size=new_shape, mode=mode, 
+        #                       align_corners=False, antialias=True)
+        #coeffs = F.interpolate(coeffs, size=new_shape, mode=mode, align_corners=False)
         #coeffs = F.interpolate(coeffs, size=new_shape, mode='nearest')
         #print('ds coeffs ', coeffs.shape)
 
@@ -279,15 +288,15 @@ class MultigridSolver():
         coeffs = coeffs.permute(0,2,1)
         coeffs = coeffs.reshape(self.bs*self.n_ind_dim, n_orders, *old_shape)
 
-        if len(old_shape) == 2:
-            mode='bilinear'
-        elif len(old_shape) == 3:
-            mode='trilinear'
-        else:
-            raise ValueError('incorrect num coordinates')
+        #if len(old_shape) == 2:
+        #    mode='bilinear'
+        #elif len(old_shape) == 3:
+        #    mode='trilinear'
+        #else:
+        #    raise ValueError('incorrect num coordinates')
 
         #print('ds coeffs ', coeffs.shape, new_shape)
-        coeffs = F.interpolate(coeffs, size=new_shape, mode=mode, align_corners=self.align_corners)
+        coeffs = F.interpolate(coeffs, size=new_shape, mode='bilinear', align_corners=self.align_corners)
         #print('ds coeffs ', coeffs.shape)
 
         new_grid_size = np.prod(np.array(new_shape))
@@ -320,7 +329,8 @@ class MultigridSolver():
     def downsample_grad(self, gradient):
         bs = gradient.shape[0]
         grad_list = []
-        #new_grad = gradient
+        new_grad = gradient
+        old_shape = self.coord_dims
         for k in range(1, self.n_grid):
             #pde = self.pde_list[k]
             new_shape = self.dim_list[k]
@@ -329,11 +339,14 @@ class MultigridSolver():
             n_orders = len(pde.var_set.mi_list)
             #new_grad = self.downsample_coeffs(gradient, self.coord_dims,  new_shape, n_orders)
             #new_grad = self.downsample_coeffs(new_grad, self.coord_dims,  new_shape, n_orders)
-            new_grad = self.downsample_grads(gradient, self.coord_dims,  new_shape, n_orders)
+            #new_grad = self.downsample_grads(new_grad, self.coord_dims,  new_shape, n_orders)
+            new_grad = self.downsample_grads(new_grad.clone(), old_shape,  new_shape, n_orders)
+            old_shape = new_shape
             new_grad = new_grad.reshape(bs,-1)
-            grad_list.append(new_grad)
+            grad_list.append(new_grad.clone())
 
         return grad_list
+    
 
     def downsample_steps(self, steps_list, old_shape):
         new_steps_list = []
@@ -424,7 +437,7 @@ class MultigridSolver():
 
     #    return derivative_constraints, eq_constraints, steps_list, iv_rhs
 
-    def restrict(self, idx, x):
+    def restrict(self, idx, x, back=False):
         pde = self.pde_list[idx]
         #pro_pde = self.pde_list[idx-1]
 
@@ -434,7 +447,19 @@ class MultigridSolver():
 
         x = x.reshape(*x.shape[0:2], *self.dim_list[idx])
 
-        x = F.interpolate(x, size=self.dim_list[idx+1], 
+        if back:
+            x = F.interpolate(x, size=self.dim_list[idx+1], 
+                          mode='bilinear',
+                          align_corners=True)
+
+            #print('rback')
+            #s = self.dim_list[idx+1][0]
+            #x = x.reshape(1, -1, s,2,s,2)
+            #x = torch.repeat_interleave(x, 2, dim=2)
+            #x = torch.repeat_interleave(x, 2, dim=3)
+            #x = x[:,:,:,0,:,0]
+        else:
+            x = F.interpolate(x, size=self.dim_list[idx+1], 
                           mode=self.interp_mode, 
                           align_corners=self.align_corners)
         x = x.reshape(*x.shape[0:2], self.size_list[idx+1])
@@ -448,9 +473,9 @@ class MultigridSolver():
         return x
 
 
-    def prolong(self, idx, x):
+    def prolong(self, idx, x, back=False):
         pde = self.pde_list[idx]
-        pro_pde = self.pde_list[idx-1]
+        #pro_pde = self.pde_list[idx-1]
 
         #bs, grid, num_mi
         x = pde.get_solution_reshaped(x)
@@ -458,7 +483,17 @@ class MultigridSolver():
 
         x = x.reshape(*x.shape[0:2], *self.dim_list[idx])
 
-        x = F.interpolate(x, size=self.dim_list[idx-1], 
+        if back:
+            x = F.interpolate(x, size=self.dim_list[idx-1], 
+                          mode='bilinear',
+                          #mode=self.interp_mode, 
+                          align_corners=True)
+            #s = self.dim_list[idx][0]
+            #x = x.reshape(1, -1, s,s)
+            #x = torch.repeat_interleave(x, 2, dim=2)
+            #x = torch.repeat_interleave(x, 2, dim=3)
+        else:
+            x = F.interpolate(x, size=self.dim_list[idx-1], 
                           mode=self.interp_mode, 
                           align_corners=self.align_corners)
         x = x.reshape(*x.shape[0:2], self.size_list[idx-1])
@@ -474,7 +509,7 @@ class MultigridSolver():
     def smooth_jacobi(self, A, b, x, D, nsteps=200, w=0.55):
         """Weighted Jacobi iteration"""
         Dinv = 1/D
-        w=0.4
+        w=0.3
 
         I = torch.sparse.spdiags(torch.ones(A.shape[1]), torch.tensor([0]), (A.shape[1], A.shape[2]), 
                                 layout=torch.sparse_coo)
@@ -534,19 +569,28 @@ class MultigridSolver():
     #    lam = lam.squeeze(2)
     #    return lam
 
-    def v_cycle_jacobi(self, idx, A_list, b_list, x, D_list, L):
+    def v_cycle_jacobi(self, idx, A_list, b_list, x, D_list, L, back=False):
         A = A_list[idx]
         b = b_list[idx]
         D = D_list[idx]
 
+        if back:
+            dr, drn = self.get_residual_norm(A, x, b)
+            print('resid before smooth',idx, dr, drn)
         #pre-smooth
-        #x = self.smooth_jacobi(A, b, x, D, nsteps=200)
+        if back:
+            x = self.smooth_jacobi(A, b, x, D, nsteps=200)
+
         #ipdb.set_trace()
         #print(A.shape, x.shape, b.shape, D.shape)
         r = b-torch.bmm(A, x.unsqueeze(2)).squeeze(2)
 
+        if back:
+            dr, drn = self.get_residual_norm(A, x, b)
+            print('resid after smooth',idx, dr, drn)
+
         #ipdb.set_trace()
-        rH = self.restrict(idx, r)
+        rH = self.restrict(idx, r, back=back)
 
         if idx ==self.n_grid-2:
             #deltaH = self.solve_coarsest(A_list[self.n_grid-1], rH)
@@ -555,32 +599,41 @@ class MultigridSolver():
             #print('coarsest resid ', dr, drn)
         else:
             xH0 = torch.zeros_like(b_list[idx+1])
-            deltaH = self.v_cycle_jacobi(idx+1, A_list, b_list,xH0, D_list,L)
+            deltaH = self.v_cycle_jacobi(idx+1, A_list, b_list,xH0, D_list,L, back=back)
             #deltaH = self.v_cycle_jacobi(idx+1, A_list, b_list,deltaH, D_list,L)
 
-        delta = self.prolong(idx+1, deltaH)
+        delta = self.prolong(idx+1, deltaH, back=back)
+        #if back:
+        #    dr, drn = self.get_residual_norm(A, x, b)
+        #    print('resid delta',idx, dr, drn)
         #print('af idx', x.shape, delta.shape, idx)
         #correct
-        x = x+delta
-        #dr, drn = self.get_residual_norm(A_list[0], x, b)
-        #print('resid delta', dr, drn)
+        if back:
+            x = x+delta
+        else:
+            x = x+delta
+        #if back:
+        dr, drn = self.get_residual_norm(A, x, b)
+        print('resid plus delta',idx, dr, drn)
 
         #smooth
         x = self.smooth_jacobi(A, b, x, D, nsteps=200)
 
-        #dr, drn = self.get_residual_norm(A_list[0], x, b)
-        #print('resid delta', dr, drn)
+        #if back:
+        dr, drn = self.get_residual_norm(A, x, b)
+        print('resid smooth delta',idx, dr, drn)
 
 
         return x
 
-    def v_cycle_jacobi_start(self, A_list, b_list, D_list,L, n_step=1):
+    def v_cycle_jacobi_start(self, A_list, b_list, D_list,L, n_step=1, back=False):
         x = torch.zeros_like(b_list[0])
-        for step in range(n_step):
-            x = self.v_cycle_jacobi(0, A_list, b_list, x, D_list,L)
-            r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
-            print(f'vcycle end norm: ', r,rr)
-            return x
+        #x = torch.rand_like(b_list[0])
+        #for step in range(n_step):
+        x = self.v_cycle_jacobi(0, A_list, b_list, x, D_list,L, back=back)
+        r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
+        print(f'vcycle end norm: ', r,rr)
+        return x
 
     def full_multigrid_jacobi_start(self, A_list, b_list, D_list,L):
         u = self.solve_coarsest(L, b_list[-1])

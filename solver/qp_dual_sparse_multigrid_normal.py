@@ -25,6 +25,7 @@ import scipy.sparse as SPS
 import solver.minres_torch as MINRES
 #import solver.minres_torch_chol as MINRES
 #import solver.multigrid as MG
+import torch.nn.functional as F
 
 
 def to_torch_coo(KKTs):
@@ -240,6 +241,23 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             nr, nrr = mg.get_residual_norm(AtA_list[0],x, rhs_list[0])
             print('forward', nr, nrr)
 
+            ##shape: batch, grid, order
+            #x = pde.get_solution_reshaped(x)
+
+            #x = x.reshape(self.bs, self.n_ind_dim, *u.shape[1:])
+            ##shape: batch, step, vars, order
+            ##u = u.permute(0,2,1,3)
+
+            #u0 = u[:,:,:,0]
+
+            #x = pde.get_solution_reshaped(x)
+            #x = x.reshape(1,*x.shape[1:])
+            ##shape: batch, step, vars, order
+            ##u = u.permute(0,2,1,3)
+
+            #x[:,:,1:] = 0.
+            #x = x.reshape(1, -1)
+
             ctx.AtA_list = AtA_list
             ctx.D_list = D_list
             ctx.L = L
@@ -258,6 +276,18 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             D_list = ctx.D_list
             L = ctx.L
 
+            print(dl_dzhat)
+            ##shape: batch, grid, order
+            #dl_dzhat = pde.get_solution_reshaped(dl_dzhat)
+
+            #dl_dzhat = dl_dzhat.reshape(1,*dl_dzhat.shape[1:])
+            ##shape: batch, step, vars, order
+            #ipdb.set_trace()
+            ##u = u.permute(0,2,1,3)
+
+            #dl_dzhat[:,:,1:] = 0.
+            #dl_dzhat = dl_dzhat.reshape(1, -1)
+
             #At = A.transpose(1,2)
             #n = A.shape[1]
             #m = A.shape[2]
@@ -270,18 +300,22 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #rhs = dl_dzhat #torch.cat([-dl_dzhat, z], dim=-1)
             #dl_dzhat = -dl_dzhat
 
-            print(dl_dzhat.shape)
-            coarse_grads = mg.downsample_grad(dl_dzhat)
-            grad_list = [dl_dzhat] + coarse_grads
+            coarse_grads = mg.downsample_grad(dl_dzhat.clone())
+            grad_list = [dl_dzhat.clone()] + coarse_grads
             #grad_list =  [-g for g in grad_list]
             
             #dnu = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L)
-            dnu = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L)
+            dnu = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
             #dnu = solve_direct(AtA_list[0], grad_list[0])
+
+            #dnu = dnu.reshape(1, 8*8,5).permute(0,2,1).reshape(1,5,8,8)
+            #dnu = F.interpolate(dnu, (16,16), mode='bilinear')
+            #dnu = dnu.reshape(1, 5, 16*16).permute(0,2,1).reshape(1, -1)
 
             nr, nrr = mg.get_residual_norm(AtA_list[0],dnu, grad_list[0])
             print('backward', nr, nrr)
 
+            #dnu = solve_direct(AtA_list[0], grad_list[0])
 
             #dx = torch.bmm(A, dnu.unsqueeze(2)).squeeze(2)
             #dx = P_diag_inv*(dx)
