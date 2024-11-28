@@ -744,7 +744,7 @@ class MultigridLayer2(nn.Module):
 
         self.qpf = MGS.QPFunction(self.pde, self.n_iv, gamma=gamma, alpha=alpha, double_ret=double_ret)
 
-    def make_AtA(self, pde: PDESYSLPEPS, A, A_rhs, ds=1e2):
+    def make_AtA(self, pde: PDESYSLPEPS, A, A_rhs, ds=1e3):
     #def make_AAt(self, pde: PDESYSLPEPS, A, us=1e1, ds=1e-2):
         #AGinvAt
         #P_diag = torch.ones(num_eps).type_as(rhs)*1e3
