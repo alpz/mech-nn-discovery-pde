@@ -756,7 +756,7 @@ class MultigridLayer2(nn.Module):
         num_var = pde.var_set.num_vars
 
         _P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*ds#*us
-        _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')#/config.ds# +ds
+        _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')#/ds#/config.ds# +ds
         P_diag = torch.cat([_P_ones, _P_diag]).to(A.device)
         P_diag_inv = 1/P_diag
 
@@ -768,7 +768,8 @@ class MultigridLayer2(nn.Module):
         # diagonal of AtG-1A
         D = (PinvA*A).sum(dim=1).to_dense()
 
-        P_rhs = P_diag_inv.sqrt()*A_rhs
+        #P_rhs = P_diag_inv.sqrt()*A_rhs
+        P_rhs = P_diag_inv*A_rhs
         #P_rhs = A_rhs
         #AtPrhs = -torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)
         Atrhs = torch.bmm(At, A_rhs.unsqueeze(2)).squeeze(2)
@@ -806,7 +807,17 @@ class MultigridLayer2(nn.Module):
         #build coarse grids
         #coarse_A_list, coarse_rhs_list = self.mg_solver.fill_coarse_grids(coeffs, 
         #                                                        rhs, iv_rhs, steps_list)
-        A, A_rhs = self.pde.fill_constraints_torch_dense(eq_constraints.to_dense(), rhs, iv_rhs, derivative_constraints.to_dense())
+        #A, A_rhs = self.pde.fill_constraints_torch_dense(eq_constraints.to_dense(), rhs, iv_rhs, derivative_constraints.to_dense())
+        A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints, rhs, iv_rhs, derivative_constraints)
+        #B2 = A2.to_dense()
+        #C2 = A.to_dense()
+
+        #b2 = A_rhs.to_dense()
+        #c2 = A_rhs2.to_dense()
+
+        #diff = (B2-C2).pow(2).sum()
+        #diff2 = (b2-c2).pow(2).sum()
+        #print('diff ', diff, diff2)
         AtA,AtPrhs, At_rhs = self.make_AtA(self.pde, A, A_rhs)
         AtA = AtA.to_dense()
         At_rhs = At_rhs.to_dense()
@@ -849,6 +860,7 @@ class MultigridLayer2(nn.Module):
 
         #x= solve_direct(AtA, AtPrhs)
         x = self.qpf(AtA, AtPrhs)
+        #x = self.qpf(AtA, At_rhs)
 
         #x,lam = MGS.run(self.pde, eq_constraints, rhs, iv_rhs, derivative_constraints, 
         #                 None, None)

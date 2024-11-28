@@ -1117,6 +1117,8 @@ class PDESYSLP(nn.Module):
                                        dtype=self.dtype)
 
         full_A = torch.cat([eq_A, initial_A, derivative_A], dim=0)
+        #self.full_A_indices = full_A._indices()
+        #self.full_A_size = full_A.shape
 
         print(f'Constraints Shape eq {eq_A.shape}, init {initial_A.shape}, deriv {derivative_A.shape}')
         #print('first ', eq_A.shape, initial_A.shape, derivative_A.shape)
@@ -1135,6 +1137,10 @@ class PDESYSLP(nn.Module):
         eq_A = eq_A.unsqueeze(0)
         eq_A = torch.cat([eq_A]*self.bs, dim=0)
         
+
+        batch_A = torch.cat([full_A.unsqueeze(0)]*self.bs, dim=0)
+        self.batch_A_indices = batch_A._indices()
+        self.batch_A_size = batch_A.shape
 
         #(b, r2, c)
         if initial_A is not None:
@@ -1610,6 +1616,31 @@ class PDESYSLP(nn.Module):
 
         initial_A = self.initial_A.type_as(eq_A)
         AG = torch.cat([eq_A, initial_A, derivative_A], dim=1)
+        #AG = torch.cat([eq_A, initial_A], dim=1)
+        if self.n_iv > 0:
+            rhs = torch.cat([eq_rhs, iv_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
+        else:
+            rhs = torch.cat([eq_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
+
+        return AG, rhs
+
+
+    def fill_constraints_torch2(self, eq_A, eq_rhs, iv_rhs, derivative_A):
+        bs = eq_rhs.shape[0]
+
+        self.initial_A = self.initial_A.to(eq_A.device)
+        self.batch_A_indices = self.batch_A_indices.to(eq_A.device)
+
+        initial_values = self.initial_A._values()
+        eq_values = eq_A._values()
+        derivative_values = derivative_A._values()
+
+        values = torch.cat([eq_values, initial_values, derivative_values])
+
+        AG = torch.sparse_coo_tensor(self.batch_A_indices, values, size=self.batch_A_size, 
+                                     device=eq_A.device, dtype=self.dtype)
+
+        #AG = torch.cat([eq_A, initial_A, derivative_A], dim=1)
         #AG = torch.cat([eq_A, initial_A], dim=1)
         if self.n_iv > 0:
             rhs = torch.cat([eq_rhs, iv_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)

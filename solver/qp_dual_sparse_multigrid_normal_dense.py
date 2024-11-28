@@ -232,6 +232,7 @@ def QPFunction(pde, n_iv, gamma=1, alpha=1, double_ret=True):
 
             #lam = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
             #lam = solve_direct(AtA, rhs)
+            #lam = solve_direct(AtA, -rhs)
             lam = solve_direct(AtA, -rhs)
             #lam = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
             #nr, nrr = mg.get_residual_norm(AtA_list[0],lam, rhs_list[0])
