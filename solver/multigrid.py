@@ -14,8 +14,8 @@ from solver.lp_pde_central_diff import PDESYSLP as PDESYSLPEPS #as ODELP_sys
 #add multigrid
 #from solver.qp_dual_indirect_sparse_pde import QPFunction as QPFunctionSys
 #from solver.qp_dual_sparse_multigrid_normal import QPFunction as QPFunctionSys
-#import solver.qp_dual_sparse_multigrid_normal as MGS #import QPFunction as QPFunctionSys
-import solver.qp_dual_sparse_multigrid_normal_dense as MGS #import QPFunction as QPFunctionSys
+import solver.qp_dual_sparse_multigrid_normal as MGS #import QPFunction as QPFunctionSys
+#import solver.qp_dual_sparse_multigrid_normal_dense as MGS #import QPFunction as QPFunctionSys
 from config import PDEConfig as config
 
 from torch.autograd import gradcheck
@@ -48,7 +48,8 @@ class MultigridSolver():
         
         interp_modes={1:'linear', 2:'bilinear', 3:'trilinear'}
         #interp_modes={1:'nearest', 2:'nearest', 3:'nearest'}
-        self.align_corners = True
+        self.align_corners = False
+        #self.align_corners = None
         self.interp_mode = interp_modes[self.n_coord]
 
         if solver_dbl:
@@ -154,24 +155,24 @@ class MultigridSolver():
 
         return AAt, D
 
-    def make_AtA_matrices(self, A_list, A_rhs_list):
+    def make_coarse_AtA_matrices(self, A_list, A_rhs_list):
         AtA_list = []
         D_list = []
         rhs_list = []
-        ds_list = [1e6]*self.n_grid
-        for i in range(self.n_grid):
-            AtA,D,P_diag_inv,A = self.make_AtA(self.pde_list[i], A_list[i], ds=ds_list[i])
+        #ds_list = [1e6]*self.n_grid
+        for i in range(1,self.n_grid):
+            AtA,D,rhs = self.make_AtA(self.pde_list[i], A_list[i-1], A_rhs_list[i-1])
             AtA_list.append(AtA)
             D_list.append(D)
 
-            At = A.transpose(1,2)
-            rhs = P_diag_inv*A_rhs_list[i]
-            rhs = torch.bmm(At, rhs.unsqueeze(2)).squeeze(2)
+            #At = A.transpose(1,2)
+            #rhs = P_diag_inv*A_rhs_list[i]
+            #rhs = torch.bmm(At, rhs.unsqueeze(2)).squeeze(2)
             rhs_list.append(rhs)
 
         return AtA_list, rhs_list, D_list, 
 
-    def make_AtA(self, pde: PDESYSLPEPS, A, ds=1e3):
+    def make_AtA(self, pde: PDESYSLPEPS, A, A_rhs, ds=1e2):
     #def make_AAt(self, pde: PDESYSLPEPS, A, us=1e1, ds=1e-2):
         #AGinvAt
         #P_diag = torch.ones(num_eps).type_as(rhs)*1e3
@@ -182,7 +183,7 @@ class MultigridSolver():
         num_eps = pde.var_set.num_added_eps_vars
         num_var = pde.var_set.num_vars
 
-        _P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*config.ds#*us
+        _P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*ds #*config.ds#*us
         _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')#/config.ds# +ds
         P_diag = torch.cat([_P_ones, _P_diag]).to(A.device)
         P_diag_inv = 1/P_diag
@@ -190,13 +191,22 @@ class MultigridSolver():
         #A = A.to_dense()#[:, :, :num_var]
         At = A.transpose(1,2)
         PinvA = P_diag_inv.unsqueeze(1)*A
+
+        #TODO fix mm
         AtA = torch.mm(At[0], PinvA[0]).unsqueeze(0)
 
         # diagonal of AtG-1A
         D = (PinvA*A).sum(dim=1).to_dense()
 
+        P_rhs = P_diag_inv*A_rhs
+        #P_rhs = A_rhs
+        #AtPrhs = -torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)
+        #Atrhs = torch.bmm(At, A_rhs.unsqueeze(2)).squeeze(2)
+        AtPrhs = -torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)
 
-        return AtA, D, P_diag_inv,A
+
+        #return AtA, D, P_diag_inv,A
+        return AtA, D, AtPrhs
 
 
     def make_kkt_matrices(self, A_list, A_rhs_list):
@@ -237,6 +247,31 @@ class MultigridSolver():
         KKT = torch.cat([GA, AtZ], dim =2)
 
         return KKT, P_diag
+
+    def downsample_grads(self, coeffs, old_shape,  new_shape, n_orders):
+        grid_size = np.prod(np.array(old_shape))
+        coeffs = coeffs.reshape(self.bs*self.n_ind_dim, grid_size, n_orders)
+        coeffs = coeffs.permute(0,2,1)
+        coeffs = coeffs.reshape(self.bs*self.n_ind_dim, n_orders, *old_shape)
+
+        if len(old_shape) == 2:
+            mode='bilinear'
+        elif len(old_shape) == 3:
+            mode='trilinear'
+        else:
+            raise ValueError('incorrect num coordinates')
+
+        #print('ds coeffs ', coeffs.shape, new_shape)
+        #coeffs = F.interpolate(coeffs, size=new_shape, mode=mode, align_corners=self.align_corners)
+        coeffs = F.interpolate(coeffs, size=new_shape, mode=mode, align_corners=False)
+        #coeffs = F.interpolate(coeffs, size=new_shape, mode='nearest')
+        #print('ds coeffs ', coeffs.shape)
+
+        new_grid_size = np.prod(np.array(new_shape))
+        coeffs = coeffs.reshape(self.bs*self.n_ind_dim, n_orders, new_grid_size)
+        coeffs = coeffs.permute(0,2,1)
+
+        return coeffs
 
     def downsample_coeffs(self, coeffs, old_shape,  new_shape, n_orders):
         grid_size = np.prod(np.array(old_shape))
@@ -285,13 +320,16 @@ class MultigridSolver():
     def downsample_grad(self, gradient):
         bs = gradient.shape[0]
         grad_list = []
+        #new_grad = gradient
         for k in range(1, self.n_grid):
             #pde = self.pde_list[k]
             new_shape = self.dim_list[k]
             pde = self.pde_list[k]
 
             n_orders = len(pde.var_set.mi_list)
-            new_grad = self.downsample_coeffs(gradient, self.coord_dims,  new_shape, n_orders)
+            #new_grad = self.downsample_coeffs(gradient, self.coord_dims,  new_shape, n_orders)
+            #new_grad = self.downsample_coeffs(new_grad, self.coord_dims,  new_shape, n_orders)
+            new_grad = self.downsample_grads(gradient, self.coord_dims,  new_shape, n_orders)
             new_grad = new_grad.reshape(bs,-1)
             grad_list.append(new_grad)
 
@@ -436,6 +474,7 @@ class MultigridSolver():
     def smooth_jacobi(self, A, b, x, D, nsteps=200, w=0.55):
         """Weighted Jacobi iteration"""
         Dinv = 1/D
+        w=0.4
 
         I = torch.sparse.spdiags(torch.ones(A.shape[1]), torch.tensor([0]), (A.shape[1], A.shape[2]), 
                                 layout=torch.sparse_coo)
@@ -484,16 +523,16 @@ class MultigridSolver():
         lam = lam.squeeze(2)
         return lam
 
-    def solve_direct(self, A, b):
-        #At = A.transpose(1,2)#.to_dense()
-        #PAt = P_diag_inv.unsqueeze(2)*At
-        #APAt = torch.bmm(A, PAt)
-        A = A.to_dense()
-        #TODO: move factorization outside loop
-        L,info = torch.linalg.cholesky_ex(A,upper=False, check_errors=True)
-        lam = torch.cholesky_solve(b.unsqueeze(2), L)
-        lam = lam.squeeze(2)
-        return lam
+    #def solve_direct(self, A, b):
+    #    #At = A.transpose(1,2)#.to_dense()
+    #    #PAt = P_diag_inv.unsqueeze(2)*At
+    #    #APAt = torch.bmm(A, PAt)
+    #    A = A.to_dense()
+    #    #TODO: move factorization outside loop
+    #    L,info = torch.linalg.cholesky_ex(A,upper=False, check_errors=True)
+    #    lam = torch.cholesky_solve(b.unsqueeze(2), L)
+    #    lam = lam.squeeze(2)
+    #    return lam
 
     def v_cycle_jacobi(self, idx, A_list, b_list, x, D_list, L):
         A = A_list[idx]
@@ -502,6 +541,8 @@ class MultigridSolver():
 
         #pre-smooth
         #x = self.smooth_jacobi(A, b, x, D, nsteps=200)
+        #ipdb.set_trace()
+        #print(A.shape, x.shape, b.shape, D.shape)
         r = b-torch.bmm(A, x.unsqueeze(2)).squeeze(2)
 
         #ipdb.set_trace()
@@ -511,7 +552,7 @@ class MultigridSolver():
             #deltaH = self.solve_coarsest(A_list[self.n_grid-1], rH)
             deltaH = self.solve_coarsest(L, rH)
             #dr, drn = self.get_residual_norm(A_list[self.n_grid-1], deltaH, rH)
-            #print('resid ', dr, drn)
+            #print('coarsest resid ', dr, drn)
         else:
             xH0 = torch.zeros_like(b_list[idx+1])
             deltaH = self.v_cycle_jacobi(idx+1, A_list, b_list,xH0, D_list,L)
@@ -535,11 +576,11 @@ class MultigridSolver():
 
     def v_cycle_jacobi_start(self, A_list, b_list, D_list,L, n_step=1):
         x = torch.zeros_like(b_list[0])
-        #for step in range(n_step):
-        x = self.v_cycle_jacobi(0, A_list, b_list, x, D_list,L)
-        r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
-        print(f'vcycle end norm: ', r,rr)
-        return x
+        for step in range(n_step):
+            x = self.v_cycle_jacobi(0, A_list, b_list, x, D_list,L)
+            r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
+            print(f'vcycle end norm: ', r,rr)
+            return x
 
     def full_multigrid_jacobi_start(self, A_list, b_list, D_list,L):
         u = self.solve_coarsest(L, b_list[-1])
@@ -629,6 +670,9 @@ class MultigridLayer(nn.Module):
         coarse_A_list, coarse_rhs_list = self.mg_solver.fill_coarse_grids(coeffs, 
                                                                 rhs, iv_rhs, steps_list)
 
+        A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints, rhs, iv_rhs, derivative_constraints)
+        AtA,D, AtPrhs = self.mg_solver.make_AtA(self.pde, A, A_rhs)
+
         check=False
         if check:
             import sys
@@ -661,8 +705,11 @@ class MultigridLayer(nn.Module):
             sys.exit(0)
 
         #x = self.qpf(coeffs, rhs, iv_rhs, derivative_constraints)
-        x,lam = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints, 
-                         coarse_A_list, coarse_rhs_list)
+        #x,lam = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints, 
+        #                 coarse_A_list, coarse_rhs_list)
+
+        #x,lam = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints, 
+        x = self.qpf(AtA, AtPrhs, D, coarse_A_list, coarse_rhs_list)
 
         #x,lam = MGS.run(self.pde, eq_constraints, rhs, iv_rhs, derivative_constraints, 
         #                 coarse_A_list, coarse_rhs_list)
@@ -670,7 +717,7 @@ class MultigridLayer(nn.Module):
 
         #print(x)
         #self.pde = self.mg_solver.pde_list[-1]
-        eps = x[:, self.pde.var_set.num_vars:].abs()#.max(dim=1)[0]
+        eps = None #x[:, self.pde.var_set.num_vars:].abs()#.max(dim=1)[0]
 
         #shape: batch, grid, order
         u = self.pde.get_solution_reshaped(x)
@@ -686,16 +733,16 @@ class MultigridLayer(nn.Module):
         #return u0, u1, u2, eps#, steps
         return u0, u, eps
 
-def solve_direct(A, b):
-    #At = A.transpose(1,2)#.to_dense()
-    #PAt = P_diag_inv.unsqueeze(2)*At
-    #APAt = torch.bmm(A, PAt)
-    A = A.to_dense()
-    #TODO: move factorization outside loop
-    L,info = torch.linalg.cholesky_ex(A,upper=False, check_errors=True)
-    lam = torch.cholesky_solve(b.unsqueeze(2), L)
-    lam = lam.squeeze(2)
-    return lam
+#def solve_direct(A, b):
+#    #At = A.transpose(1,2)#.to_dense()
+#    #PAt = P_diag_inv.unsqueeze(2)*At
+#    #APAt = torch.bmm(A, PAt)
+#    A = A.to_dense()
+#    #TODO: move factorization outside loop
+#    L,info = torch.linalg.cholesky_ex(A,upper=False, check_errors=True)
+#    lam = torch.cholesky_solve(b.unsqueeze(2), L)
+#    lam = lam.squeeze(2)
+#    return lam
 
 class MultigridLayer2(nn.Module):
     """ Multigrid layer """

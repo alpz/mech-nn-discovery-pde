@@ -13,7 +13,8 @@ import torch.optim as optim
 import pytorch_lightning as pl
 
 from torch.utils.data import Dataset
-from solver.multigrid import MultigridLayer2 as MultigridLayer
+#from solver.multigrid import MultigridLayer2 as MultigridLayer
+from solver.multigrid import MultigridLayer
 
 #Fit a noisy exponentially damped sine wave with a second order ODE
 
@@ -79,8 +80,8 @@ class Method(pl.LightningModule):
         y = batch
 
         #y = y.reshape((32,32))
-        y = y.reshape((32,32))
-        #y = y.reshape((16,16))
+        #y = y.reshape((32,32))
+        y = y.reshape((16,16))
         #y = y.reshape((6,6))
         #y = y.reshape((4*128,4*128))
         t0 = y[0, 0:-1].reshape(-1)
@@ -136,8 +137,8 @@ class Sine(nn.Module):
         dtype = torch.float64
         #self.coord_dims = (64,32)
         #self.coord_dims = (10,15)
-        self.coord_dims = (32,32)
-        #self.coord_dims = (16,16)
+        #self.coord_dims = (32,32)
+        self.coord_dims = (16,16)
         #self.coord_dims = (16,16)
         #self.coord_dims = (48,48)
         #self.coord_dims = (8,8)
@@ -249,14 +250,17 @@ class Sine(nn.Module):
             #nn.ReLU(),
             #nn.Linear(1024,1),
             nn.Linear(1024,self.pde.grid_size),
+            #nn.Tanh()
         )
 
         self.cf_nn = nn.Sequential(
             nn.Linear(1024,self.pde.n_orders),
+            #nn.Tanh()
         )
 
         self.iv_nn = nn.Sequential(
             nn.Linear(1024,2*self.coord_dims[0]-1 + 2*self.coord_dims[1]-3),
+            #nn.Tanh()
         )
 
 
