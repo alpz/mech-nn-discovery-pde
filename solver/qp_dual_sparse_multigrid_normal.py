@@ -200,6 +200,26 @@ def solve_direct(A, b):
     return lam
 
 
+
+def solve_mg(pde, mg, AtA, At_rhs, D, coarse_A_list, coarse_rhs_list ):
+    AtA_list, rhs_list, D_list = mg.make_coarse_AtA_matrices(coarse_A_list, 
+                                                                coarse_rhs_list)
+    AtA_list = [AtA] + AtA_list
+    rhs_list = [At_rhs] + rhs_list
+    D_list = [D] + D_list
+
+    #negate
+    rhs_list  = [-rhs for rhs in rhs_list]
+
+    #make coarsest dense. TODO: use torch.spsolve
+    AtA_list[-1]= AtA_list[-1].to_dense()
+
+    L= mg.factor_coarsest(AtA_list[-1])
+
+    x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
+    #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
+    return x
+
 def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
     class QPFunctionFn(Function):
         #csr_rows = None

@@ -510,7 +510,7 @@ class MultigridSolver():
     def smooth_jacobi(self, A, b, x, D, nsteps=200, w=0.55):
         """Weighted Jacobi iteration"""
         Dinv = 1/D
-        w=0.3
+        w=0.4
 
         I = torch.sparse.spdiags(torch.ones(A.shape[1]), torch.tensor([0]), (A.shape[1], A.shape[2]), 
                                 layout=torch.sparse_coo)
@@ -763,7 +763,9 @@ class MultigridLayer(nn.Module):
         #                 coarse_A_list, coarse_rhs_list)
 
         #x,lam = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints, 
-        x = self.qpf(AtA, AtPrhs, D, coarse_A_list, coarse_rhs_list)
+        #x = self.qpf(AtA, AtPrhs, D, coarse_A_list, coarse_rhs_list)
+        x = MGS.solve_mg(self.pde, self.mg_solver, AtA, AtPrhs, D, coarse_A_list, coarse_rhs_list)
+
 
         #x,lam = MGS.run(self.pde, eq_constraints, rhs, iv_rhs, derivative_constraints, 
         #                 coarse_A_list, coarse_rhs_list)
