@@ -200,9 +200,30 @@ def solve_direct(A, b):
     return lam
 
 
+def solve_mg_gs(pde, mg, AtA, At_rhs, D, A_L, A_U, coarse_A_list, coarse_rhs_list ):
+    AtA_list, rhs_list, D_list, L_list, U_list  = mg.make_coarse_AtA_matrices(coarse_A_list, 
+                                                                coarse_rhs_list)
+    AtA_list = [AtA] + AtA_list
+    rhs_list = [At_rhs] + rhs_list
+    D_list = [D] + D_list
+    L_list = [A_L] + L_list
+    U_list = [A_U] + U_list
+
+    #negate
+    rhs_list  = [-rhs for rhs in rhs_list]
+
+    #make coarsest dense. TODO: use torch.spsolve
+    AtA_list[-1]= AtA_list[-1].to_dense()
+
+    L= mg.factor_coarsest(AtA_list[-1])
+
+    x = mg.v_cycle_gs_start(AtA_list, rhs_list, L_list, U_list, L)
+    #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
+    return x
+
 
 def solve_mg(pde, mg, AtA, At_rhs, D, coarse_A_list, coarse_rhs_list ):
-    AtA_list, rhs_list, D_list = mg.make_coarse_AtA_matrices(coarse_A_list, 
+    AtA_list, rhs_list, D_list,_,_ = mg.make_coarse_AtA_matrices(coarse_A_list, 
                                                                 coarse_rhs_list)
     AtA_list = [AtA] + AtA_list
     rhs_list = [At_rhs] + rhs_list
@@ -230,7 +251,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
         #perm = None
 
         @staticmethod
-        def forward(ctx, AtA, At_rhs, D, coarse_A_list, coarse_rhs_list ):
+        def forward(ctx, AtA, At_rhs, D, A_L, A_U, coarse_A_list, coarse_rhs_list ):
         #def forward(ctx, coeffs, rhs, iv_rhs):
             #bs = coeffs.shape[0]
             #bs = AtA.shape[0]
@@ -242,11 +263,13 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
 
 
-            AtA_list, rhs_list, D_list = mg.make_coarse_AtA_matrices(coarse_A_list, 
+            AtA_list, rhs_list, D_list,L_list,U_list = mg.make_coarse_AtA_matrices(coarse_A_list, 
                                                                      coarse_rhs_list)
             AtA_list = [AtA] + AtA_list
             rhs_list = [At_rhs] + rhs_list
             D_list = [D] + D_list
+            L_list = [A_L] + L_list
+            U_list = [A_U] + U_list
 
             #negate
             rhs_list  = [-rhs for rhs in rhs_list]
@@ -256,7 +279,8 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             L= mg.factor_coarsest(AtA_list[-1])
 
-            x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
+            #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
+            x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, L_list, U_list, L)
 
             nr, nrr = mg.get_residual_norm(AtA_list[0],x, rhs_list[0])
             print('forward', nr, nrr)

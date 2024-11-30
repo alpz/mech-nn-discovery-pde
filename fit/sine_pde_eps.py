@@ -80,8 +80,8 @@ class Method(pl.LightningModule):
         y = batch
 
         #y = y.reshape((32,32))
-        #y = y.reshape((32,32))
-        y = y.reshape((16,16))
+        y = y.reshape((32,32))
+        #y = y.reshape((16,16))
         #y = y.reshape((6,6))
         #y = y.reshape((4*128,4*128))
         t0 = y[0, 0:-1].reshape(-1)
@@ -137,8 +137,8 @@ class Sine(nn.Module):
         dtype = torch.float64
         #self.coord_dims = (64,32)
         #self.coord_dims = (10,15)
-        #self.coord_dims = (32,32)
-        self.coord_dims = (16,16)
+        self.coord_dims = (32,32)
+        #self.coord_dims = (16,16)
         #self.coord_dims = (16,16)
         #self.coord_dims = (48,48)
         #self.coord_dims = (8,8)
