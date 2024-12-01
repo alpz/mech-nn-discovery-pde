@@ -185,7 +185,7 @@ class MultigridSolver():
         rows = indices[0]
         cols = indices[1]
 
-        mask = (rows <= cols)
+        mask = (cols <= rows)
 
         new_indices = indices[:, mask]
         new_values = values[mask]
@@ -194,7 +194,7 @@ class MultigridSolver():
                                        size=M.size(), dtype=M.dtype)
         L = L.to_sparse_csr()
 
-        mask = (rows > cols)
+        mask = (cols > rows)
         new_indices = indices[:, mask]
         new_values = values[mask]
 
@@ -237,9 +237,11 @@ class MultigridSolver():
         AtPrhs = -torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)
 
         L,U = self.get_tril(AtA)
+        LA = torch.tril(AtA.to_dense())[0]
         diff =AtA.to_dense()-L.to_dense()-U.to_dense()
-        sumdiff = diff.pow(2).sum()
-        print('ata diff ', sumdiff)
+        ldiff = LA- L.to_dense()
+        sumdiff = ldiff.pow(2).sum()
+        print('lata diff ', sumdiff)
         
 
         #return AtA, D, P_diag_inv,A
@@ -560,10 +562,10 @@ class MultigridSolver():
         x = x[0]
         b = b[0]
         L = L.to_dense()
-        L = torch.tril(A.to_dense())[0]
-        A = A.to_dense()[0]
-        U = A-L
-        print('ll',L.shape)
+        #L = torch.tril(A.to_dense())[0]
+        #A = A.to_dense()[0]
+        #U = A-L
+        #print('ll',L.shape)
         nsteps =200
         for i in range(nsteps):
             x = torch.mm(-U, x.unsqueeze(1)).squeeze(1) + b

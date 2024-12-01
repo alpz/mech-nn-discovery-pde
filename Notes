@@ -51,3 +51,17 @@ TOOD
 2. random 5x5 chunk over space.
 3. solve rhs pde for parameter ub_t = NN. rhs = ub_t
 4. solve
+
+
+#######33
+Ax = b
+dA x + A dx  = db
+A dx = -dA x
+
+x = A-1 b
+dx = d(A-1) b
+dx = -A-1 dA A-1 b
+
+######
+Ax -b = 0
+dx/dA = 
