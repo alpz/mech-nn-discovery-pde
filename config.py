@@ -30,7 +30,9 @@ class PDEConfig:
     ilu_fill_factor= 60.0
     sindpy_data = os.path.join(os.path.expanduser('~'),'data/pysindy/')
     #relax
-    ds = 1e5
+    ds = 1e2
+
+    jacobi_w = 0.2
 
     #uncomment to choose linear solver sparse conjuate gradient
     #linear_solver = SolverType.SPARSE_INDIRECT_BLOCK_CG

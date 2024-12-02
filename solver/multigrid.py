@@ -109,6 +109,7 @@ class MultigridSolver():
             eq_constraints = pde.build_equation_tensor(new_coeffs)
 
             A, A_rhs = pde.fill_constraints_torch2(eq_constraints, new_rhs, new_iv_rhs, derivative_constraints)
+            #A, A_rhs = pde.fill_constraints_torch_dense(eq_constraints.to_dense(), new_rhs, new_iv_rhs, derivative_constraints.to_dense())
 
             num_eps = pde.var_set.num_added_eps_vars
             num_var = pde.var_set.num_vars
@@ -214,7 +215,7 @@ class MultigridSolver():
         num_eps = pde.var_set.num_added_eps_vars
         num_var = pde.var_set.num_vars
 
-        _P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*ds #*config.ds#*us
+        _P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*config.ds#*us
         _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')#/ds#/config.ds# +ds
         P_diag = torch.cat([_P_ones, _P_diag]).to(A.device)
         P_diag_inv = 1/P_diag
@@ -227,8 +228,11 @@ class MultigridSolver():
         #AtA = torch.mm(At[0], PinvA[0]).unsqueeze(0)
         AtA = [A, P_diag]
 
+        P_diag = P_diag.unsqueeze(0).repeat(self.bs,1).unsqueeze(2)
         # diagonal of AtG-1A
         D = (PinvA*A).sum(dim=1).to_dense()
+        #D = ((A.to_dense())).sum(dim=1).to_dense()
+        D = torch.ones_like(D)
 
         #P_rhs = P_diag_inv*A_rhs
         P_rhs = P_diag_inv*A_rhs
@@ -598,19 +602,21 @@ class MultigridSolver():
 
     def mult_AtA(self, A_list, x):
         A = A_list[0]
+        #x = x.to_dense()
+        #A = A.to_dense()
         Ginv = 1/A_list[1]
         At = A.transpose(1,2)
 
         x = torch.bmm(A, x.unsqueeze(2)).squeeze(2)
-        Ginvx = Ginv*x
+        Ginvx = Ginv*x#.to_dense()
         x = torch.bmm(At, Ginvx.unsqueeze(2)).squeeze(2)
 
-        return x
+        return x#.to_dense()
 
     def smooth_jacobi(self, As, b, x, D, nsteps=200, w=0.55):
         """Weighted Jacobi iteration"""
         Dinv = 1/D
-        w=0.3
+        w=config.jacobi_w
         #A = As[0]
 
         #I = torch.sparse.spdiags(torch.ones(A.shape[2]), torch.tensor([0]), (A.shape[2], A.shape[2]), 
@@ -705,7 +711,7 @@ class MultigridSolver():
         if idx ==self.n_grid-2:
             #deltaH = self.solve_coarsest(A_list[self.n_grid-1], rH)
             deltaH = self.solve_coarsest(L, rH)
-            dr, drn = self.get_residual_norm(As_list[self.n_grid-1], deltaH, rH)
+            #dr, drn = self.get_residual_norm(As_list[self.n_grid-1], deltaH, rH)
             #print('coarsest resid ', dr, drn)
         else:
             xH0 = torch.zeros_like(b_list[idx+1])
@@ -804,7 +810,7 @@ class MultigridSolver():
         x = self.v_cycle_jacobi(0, A_list, b_list, x, D_list,L, back=back)
         r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
         print(f'vcycle end norm: ', r,rr)
-        return x
+        return x#.to_dense()
 
     def full_multigrid_jacobi_start(self, A_list, b_list, D_list,L):
         u = self.solve_coarsest(L, b_list[-1])
@@ -894,8 +900,8 @@ class MultigridLayer(nn.Module):
         coarse_A_list, coarse_rhs_list = self.mg_solver.fill_coarse_grids(coeffs, 
                                                                 rhs, iv_rhs, steps_list)
 
-        #A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints, rhs, iv_rhs, derivative_constraints)
-        A, A_rhs = self.pde.fill_constraints_torch(eq_constraints, rhs, iv_rhs, derivative_constraints)
+        A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints, rhs, iv_rhs, derivative_constraints)
+        #A, A_rhs = self.pde.fill_constraints_torch(eq_constraints, rhs, iv_rhs, derivative_constraints)
         AtA,D, AtPrhs,A_L, A_U = self.mg_solver.make_AtA(self.pde, A, A_rhs)
 
         check=False
@@ -1082,8 +1088,8 @@ class MultigridLayer2(nn.Module):
         #build coarse grids
         #coarse_A_list, coarse_rhs_list = self.mg_solver.fill_coarse_grids(coeffs, 
         #                                                        rhs, iv_rhs, steps_list)
-        #A, A_rhs = self.pde.fill_constraints_torch_dense(eq_constraints.to_dense(), rhs, iv_rhs, derivative_constraints.to_dense())
-        A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints, rhs, iv_rhs, derivative_constraints)
+        A, A_rhs = self.pde.fill_constraints_torch_dense(eq_constraints.to_dense(), rhs, iv_rhs, derivative_constraints.to_dense())
+        #A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints, rhs, iv_rhs, derivative_constraints)
         #B2 = A2.to_dense()
         #C2 = A.to_dense()
 

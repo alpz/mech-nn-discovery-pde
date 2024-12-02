@@ -1,4 +1,6 @@
 #%%
+import os
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 from scipy.io import loadmat
 
 from config import PDEConfig
@@ -14,6 +16,7 @@ import matplotlib.pyplot as plt
 import torch
 import torch.optim as optim
 
+torch.autograd.set_detect_anomaly(True)
 
 from torch.utils.data import Dataset, DataLoader
 from scipy.integrate import odeint
@@ -39,9 +42,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def solve():
-    bs = 2
-    #coord_dims = (16,16)
-    coord_dims = (32,32)
+    bs = 20
+    coord_dims = (16,16)
+    #coord_dims = (32,32)
     n_ind_dim=1
     #iv_list = [(0,0, [0,0],[0,coord_dims[1]-2]), 
     #            (1,0, [1,0], [coord_dims[0]-1, 0]), 
@@ -63,7 +66,7 @@ def solve():
 
     #pde = PDEINDLayerEPS(bs=bs, coord_dims=coord_dims, order=2, n_ind_dim=n_ind_dim, n_iv=1, 
     pde = MultigridLayer(bs=bs, coord_dims=coord_dims, order=2, n_ind_dim=n_ind_dim, n_iv=1, 
-                        n_grid=3,
+                        n_grid=2,
                         init_index_mi_list=iv_list,  n_iv_steps=1, double_ret=True, solver_dbl=True)
 
 
@@ -95,6 +98,8 @@ def solve():
 
     #rhs = torch.zeros(bs, n_ind_dim, *coord_dims)
     rhs = torch.zeros(bs, *coord_dims, device=device)
+    rhs = nn.Parameter(rhs)
+    coeffs = nn.Parameter(coeffs)
 
     #iv
     x_steps = torch.linspace(0, 2*np.pi, coord_dims[0], device=device)
@@ -108,16 +113,18 @@ def solve():
     iv2 = x_bc[1:-1]
     iv3 = y_bc[:]
 
-    print('iv0', iv0.shape)
+    #print('iv0', iv0.shape)
     iv_rhs = torch.cat([iv0,iv1, iv2, iv3], dim =-1).to(device)
     iv_rhs = torch.stack([iv_rhs]*bs,dim=0)
-    print('ivrhs', iv_rhs.shape)
+    #print('ivrhs', iv_rhs.shape)
 
     u0,_,eps = pde(coeffs, rhs, iv_rhs, steps_list)
     
     #print(eps.max())
-    print(u0.shape)
+    #print(u0.shape)
     u0 = u0.reshape(bs,*coord_dims)
+    l = u0.mean()
+    l.backward()
 
     print('mem after',torch.cuda.mem_get_info(), (torch.cuda.mem_get_info()[1]-torch.cuda.mem_get_info()[0])/1e9)
     #u0 = u0.reshape(1,8,8)
