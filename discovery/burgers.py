@@ -20,7 +20,8 @@ from scipy.integrate import odeint
 
 from extras.source import write_source_files, create_log_dir
 
-from solver.pde_layer import PDEINDLayerEPS
+#from solver.pde_layer import PDEINDLayerEPS
+from solver.multigrid import MultigridLayer
 #from solver.ode_layer import ODEINDLayer
 #import discovery.basis as B
 import ipdb
@@ -204,13 +205,13 @@ class Model(nn.Module):
         self.param_in = nn.Parameter(torch.randn(1,64))
 
         self.coord_dims = solver_dim
-        self.iv_list = [(0,0, [0,0],[0,self.coord_dims[1]-1]), 
-                        (1,0, [1,0], [self.coord_dims[0]-1, 0]), 
+        self.iv_list = [lambda nx, ny: (0,0, [0,0],[0,ny-1]), 
+                        lambda nx, ny: (1,0, [1,0], [nx-1, 0]), 
                         #(0,1, [0,0],[0,self.coord_dims[1]-1]), 
                         #(0,0, [self.coord_dims[0]-1,1],[self.coord_dims[0]-1,self.coord_dims[1]-2]), 
                         #(1,2, [0,0], [self.coord_dims[0]-1, 0]),
                         #(1,3, [0,0], [self.coord_dims[0]-1, 0])
-                        (1,0, [1,self.coord_dims[1]-1], [self.coord_dims[0]-1, self.coord_dims[1]-1])
+                        lambda nx, ny: (1,0, [1,ny-1], [nx-1, ny-1])
                         ]
 
         #self.iv_len = self.coord_dims[1]-1 + self.coord_dims[0]-1 + self.coord_dims[1]-2 + self.coord_dims[0]
@@ -222,9 +223,13 @@ class Model(nn.Module):
         self.n_patches = 1 #self.n_patches_t*self.n_patches_x
         print('num patches ', self.n_patches)
 
-        self.pde = PDEINDLayerEPS(bs=bs*self.n_patches, coord_dims=self.coord_dims, order=self.order, n_ind_dim=self.n_dim, 
-                                  n_iv=self.n_iv, init_index_mi_list=self.iv_list,  
-                                  n_iv_steps=1, double_ret=True, solver_dbl=True)
+        #self.pde = PDEINDLayerEPS(bs=bs*self.n_patches, coord_dims=self.coord_dims, order=self.order, n_ind_dim=self.n_dim, 
+        #                          n_iv=self.n_iv, init_index_mi_list=self.iv_list,  
+        #                          n_iv_steps=1, double_ret=True, solver_dbl=True)
+
+        self.pde = MultigridLayer(bs=bs, coord_dims=self.coord_dims, order=2, n_ind_dim=self.n_ind_dim, n_iv=1, 
+                        n_grid=3,
+                        init_index_mi_list=self.iv_list,  n_iv_steps=1, double_ret=True, solver_dbl=True)
 
         # u, u_t, u_tt, u_x, u_xx
         self.num_multiindex = self.pde.n_orders
@@ -662,7 +667,7 @@ def optimize(opt_step, params_l1=0.001, nepoch=80):
 
         mean_loss = torch.tensor(losses).mean()
 
-        meps = eps.max().item()
+        meps = -1 #eps.max().item()
             #print(f'\nalpha, beta {xi}')
         #params=print_eq()
         params = params.detach().cpu().numpy()
