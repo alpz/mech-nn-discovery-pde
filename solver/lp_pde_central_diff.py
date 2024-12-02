@@ -1646,11 +1646,13 @@ class PDESYSLP(nn.Module):
         self.initial_A = self.initial_A.to(eq_A.device)
         self.batch_A_indices = self.batch_A_indices.to(eq_A.device)
 
-        initial_values = self.initial_A._values()
-        eq_values = eq_A._values()
-        derivative_values = derivative_A._values()
+        initial_values = self.initial_A._values().reshape(bs, -1)
+        eq_values = eq_A._values().reshape(bs, -1)
+        derivative_values = derivative_A._values().reshape(bs,-1)
 
-        values = torch.cat([eq_values, initial_values, derivative_values])
+        #print('shapes',initial_values.shape, eq_values.shape, eq_A.shape)
+        values = torch.cat([eq_values, initial_values, derivative_values], dim=-1)
+        values = values.reshape(-1)
 
         AG = torch.sparse_coo_tensor(self.batch_A_indices, values, size=self.batch_A_size, 
                                      device=eq_A.device, dtype=self.dtype)

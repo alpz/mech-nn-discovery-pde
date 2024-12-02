@@ -696,8 +696,8 @@ class MultigridSolver():
         r = b-self.mult_AtA(As, x) #torch.bmm(A, x.unsqueeze(2)).squeeze(2)
 
         #if back:
-        #    dr, drn = self.get_residual_norm(A, x, b)
-        #    print('resid after smooth',idx, dr, drn)
+        #dr, drn = self.get_residual_norm(As, x, b)
+        #print('resid init',idx, dr, drn)
 
         #ipdb.set_trace()
         rH = self.restrict(idx, r, back=back)
@@ -705,7 +705,7 @@ class MultigridSolver():
         if idx ==self.n_grid-2:
             #deltaH = self.solve_coarsest(A_list[self.n_grid-1], rH)
             deltaH = self.solve_coarsest(L, rH)
-            #dr, drn = self.get_residual_norm(A_list[self.n_grid-1], deltaH, rH)
+            dr, drn = self.get_residual_norm(As_list[self.n_grid-1], deltaH, rH)
             #print('coarsest resid ', dr, drn)
         else:
             xH0 = torch.zeros_like(b_list[idx+1])
@@ -714,8 +714,8 @@ class MultigridSolver():
 
         delta = self.prolong(idx+1, deltaH, back=back)
         #if back:
-        #    dr, drn = self.get_residual_norm(A, x, b)
-        #    print('resid delta',idx, dr, drn)
+        #dr, drn = self.get_residual_norm(As, x, b)
+        #print('resid delta',idx, dr, drn, delta.shape)
         #print('af idx', x.shape, delta.shape, idx)
         #correct
         #if back:
@@ -723,14 +723,14 @@ class MultigridSolver():
         #else:
         x = x+delta
         #if back:
-        #dr, drn = self.get_residual_norm(A, x, b)
+        #dr, drn = self.get_residual_norm(As, x, b)
         #print('resid plus delta',idx, dr, drn)
 
         #smooth
         x = self.smooth_jacobi(As, b, x, D, nsteps=200)
 
         #if back:
-        #dr, drn = self.get_residual_norm(A, x, b)
+        #dr, drn = self.get_residual_norm(As, x, b)
         #print('resid smooth delta',idx, dr, drn)
 
 
@@ -749,8 +749,8 @@ class MultigridSolver():
         r = b-torch.bmm(A, x.unsqueeze(2)).squeeze(2)
 
         #if idx !=0:
-        #    dr, drn = self.get_residual_norm(A, x, b)
-        #    print('after smooth delta',idx, dr, drn)
+        #dr, drn = self.get_residual_norm(A, x, b)
+        #print('er smooth delta',idx, dr, drn)
 
         rH = self.restrict(idx, r, back=back)
 
@@ -766,8 +766,8 @@ class MultigridSolver():
 
         delta = self.prolong(idx+1, deltaH, back=back)
         #if back:
-        dr, drn = self.get_residual_norm(A, x, b)
-        print('resid delta',idx, dr, drn)
+        #dr, drn = self.get_residual_norm(A, x, b)
+        #print('resid delta',idx, dr, drn)
         #print('af idx', x.shape, delta.shape, idx)
         #correct
         #if back:
@@ -775,15 +775,15 @@ class MultigridSolver():
         #else:
         x = x+delta
         #if back:
-        dr, drn = self.get_residual_norm(A, x, b)
-        print('resid plus delta',idx, dr, drn)
+        #dr, drn = self.get_residual_norm(A, x, b)
+        #print('resid plus delta',idx, dr, drn)
 
         #smooth
         x = self.smooth_gs(A, b, x, AL, U, nsteps=100)
 
         #if back:
-        dr, drn = self.get_residual_norm(A, x, b)
-        print('resid smooth delta',idx, dr, drn)
+        #dr, drn = self.get_residual_norm(A, x, b)
+        #print('resid smooth delta',idx, dr, drn)
 
 
         return x
@@ -894,7 +894,8 @@ class MultigridLayer(nn.Module):
         coarse_A_list, coarse_rhs_list = self.mg_solver.fill_coarse_grids(coeffs, 
                                                                 rhs, iv_rhs, steps_list)
 
-        A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints, rhs, iv_rhs, derivative_constraints)
+        #A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints, rhs, iv_rhs, derivative_constraints)
+        A, A_rhs = self.pde.fill_constraints_torch(eq_constraints, rhs, iv_rhs, derivative_constraints)
         AtA,D, AtPrhs,A_L, A_U = self.mg_solver.make_AtA(self.pde, A, A_rhs)
 
         check=False

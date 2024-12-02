@@ -39,7 +39,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def solve():
-    bs = 1
+    bs = 2
     #coord_dims = (16,16)
     coord_dims = (32,32)
     n_ind_dim=1
@@ -79,6 +79,8 @@ def solve():
     steps1 = steps1.expand(-1,n_ind_dim, coord_dims[1]-1)
     steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.1)
     steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.1)
+    steps0 = torch.stack([steps0]*bs,dim=0)
+    steps1 = torch.stack([steps1]*bs,dim=0)
     steps_list = [steps0, steps1]
 
 
@@ -106,14 +108,18 @@ def solve():
     iv2 = x_bc[1:-1]
     iv3 = y_bc[:]
 
+    print('iv0', iv0.shape)
     iv_rhs = torch.cat([iv0,iv1, iv2, iv3], dim =-1).to(device)
-    #iv_rhs = torch.stack([iv_rhs,iv_rhs],dim=0)
+    iv_rhs = torch.stack([iv_rhs]*bs,dim=0)
+    print('ivrhs', iv_rhs.shape)
 
     u0,_,eps = pde(coeffs, rhs, iv_rhs, steps_list)
     
     #print(eps.max())
     print(u0.shape)
-    u0 = u0.reshape(1,*coord_dims)
+    u0 = u0.reshape(bs,*coord_dims)
+
+    print('mem after',torch.cuda.mem_get_info(), (torch.cuda.mem_get_info()[1]-torch.cuda.mem_get_info()[0])/1e9)
     #u0 = u0.reshape(1,8,8)
     return u0
 
