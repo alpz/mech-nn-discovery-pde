@@ -232,7 +232,7 @@ class MultigridSolver():
         # diagonal of AtG-1A
         D = (PinvA*A).sum(dim=1).to_dense()
         #D = ((A.to_dense())).sum(dim=1).to_dense()
-        D = torch.ones_like(D)
+        #D = torch.ones_like(D)
 
         #P_rhs = P_diag_inv*A_rhs
         P_rhs = P_diag_inv*A_rhs
@@ -1090,7 +1090,7 @@ class MultigridLayer2(nn.Module):
         #                                                        rhs, iv_rhs, steps_list)
         A, A_rhs = self.pde.fill_constraints_torch_dense(eq_constraints.to_dense(), rhs, iv_rhs, derivative_constraints.to_dense())
         #A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints, rhs, iv_rhs, derivative_constraints)
-        #B2 = A2.to_dense()
+        #B3 = A2.to_dense()
         #C2 = A.to_dense()
 
         #b2 = A_rhs.to_dense()
