@@ -213,9 +213,11 @@ def solve_mg_gs(pde, mg, AtA, At_rhs, D, A_L, A_U, coarse_A_list, coarse_rhs_lis
     rhs_list  = [-rhs for rhs in rhs_list]
 
     #make coarsest dense. TODO: use torch.spsolve
-    AtA_list[-1]= AtA_list[-1].to_dense()
+    #AtA_list[-1]= AtA_list[-1].to_dense()
 
-    L= mg.factor_coarsest(AtA_list[-1])
+    AtA_coarsest = mg.get_AtA_dense(AtA_list[-1])
+    #L= mg.factor_coarsest(AtA_list[-1])
+    L= mg.factor_coarsest(AtA_coarsest)
 
     x = mg.v_cycle_gs_start(AtA_list, rhs_list, L_list, U_list, L)
     #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
@@ -233,9 +235,13 @@ def solve_mg(pde, mg, AtA, At_rhs, D, coarse_A_list, coarse_rhs_list ):
     rhs_list  = [-rhs for rhs in rhs_list]
 
     #make coarsest dense. TODO: use torch.spsolve
-    AtA_list[-1]= AtA_list[-1].to_dense()
+    #AtA_list[-1]= AtA_list[-1].to_dense()
 
-    L= mg.factor_coarsest(AtA_list[-1])
+    AtA_coarsest = mg.get_AtA_dense(AtA_list[-1])
+    #L= mg.factor_coarsest(AtA_list[-1])
+    L= mg.factor_coarsest(AtA_coarsest)
+
+    #L= mg.factor_coarsest(AtA_list[-1])
 
     x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
     #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)

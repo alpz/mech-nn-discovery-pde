@@ -224,7 +224,8 @@ class MultigridSolver():
         PinvA = P_diag_inv.unsqueeze(1)*A
 
         #TODO fix mm
-        AtA = torch.mm(At[0], PinvA[0]).unsqueeze(0)
+        #AtA = torch.mm(At[0], PinvA[0]).unsqueeze(0)
+        AtA = [A, P_diag]
 
         # diagonal of AtG-1A
         D = (PinvA*A).sum(dim=1).to_dense()
@@ -236,17 +237,30 @@ class MultigridSolver():
         #Atrhs = torch.bmm(At, A_rhs.unsqueeze(2)).squeeze(2)
         AtPrhs = -torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)
 
-        L,U = self.get_tril(AtA)
-        LA = torch.tril(AtA.to_dense())[0]
-        diff =AtA.to_dense()-L.to_dense()-U.to_dense()
-        ldiff = LA- L.to_dense()
-        sumdiff = ldiff.pow(2).sum()
-        print('lata diff ', sumdiff)
+        #L,U = self.get_tril(AtA)
+        L,U = None, None
+        #LA = torch.tril(AtA.to_dense())[0]
+        #diff =AtA.to_dense()-L.to_dense()-U.to_dense()
+        #ldiff = LA- L.to_dense()
+        #sumdiff = ldiff.pow(2).sum()
+        #print('lata diff ', sumdiff)
         
 
         #return AtA, D, P_diag_inv,A
         return AtA, D, AtPrhs,L,U
 
+    def get_AtA_dense(self, As):
+        A = As[0]
+        P_diag = As[1]
+        P_diag_inv = 1/P_diag
+        A = A.to_dense()
+        At = A.transpose(1,2)
+        PinvA = P_diag_inv.unsqueeze(1)*A
+
+        #TODO fix mm
+        AtA = torch.bmm(At, PinvA)#.unsqueeze(0)
+
+        return AtA
 
     #def make_kkt_matrices(self, A_list, A_rhs_list):
     #    KKT_list = []
@@ -582,24 +596,40 @@ class MultigridSolver():
             #x = x.unsqueeze(0)
         return x.unsqueeze(0)
 
-    def smooth_jacobi(self, A, b, x, D, nsteps=200, w=0.55):
+    def mult_AtA(self, A_list, x):
+        A = A_list[0]
+        Ginv = 1/A_list[1]
+        At = A.transpose(1,2)
+
+        x = torch.bmm(A, x.unsqueeze(2)).squeeze(2)
+        Ginvx = Ginv*x
+        x = torch.bmm(At, Ginvx.unsqueeze(2)).squeeze(2)
+
+        return x
+
+    def smooth_jacobi(self, As, b, x, D, nsteps=200, w=0.55):
         """Weighted Jacobi iteration"""
         Dinv = 1/D
         w=0.3
+        #A = As[0]
 
-        I = torch.sparse.spdiags(torch.ones(A.shape[1]), torch.tensor([0]), (A.shape[1], A.shape[2]), 
-                                layout=torch.sparse_coo)
-        I = I.to(A.device).unsqueeze(0)
+        #I = torch.sparse.spdiags(torch.ones(A.shape[2]), torch.tensor([0]), (A.shape[2], A.shape[2]), 
+        #                        layout=torch.sparse_coo)
+        #I = I.to(A.device).unsqueeze(0)
         #I = I.to_dense()
 
         #I = torch.eye(A.shape[1], device=A.device)
 
         #print('diff',(I-I2).pow(2).sum())
 
-        J = I - w*Dinv.unsqueeze(2)*A
+        #Jx = x - w*Dinv.uns(2)*Ax
+        #J = I - w*Dinv.unsqueeze(2)*A
 
         for i in range(nsteps):
-            x = torch.bmm(J, x.unsqueeze(2)).squeeze(2) + w*Dinv*b
+            #x = torch.bmm(J, x.unsqueeze(2)).squeeze(2) + w*Dinv*b
+            #print('jacobi', x.shape)
+            #x = x - w*Dinv.unsqueeze(2)*self.mult_AtA(As, x) + w*Dinv*b
+            x = x - w*Dinv*self.mult_AtA(As, x) + w*Dinv*b
         return x
 
     def smooth_minres(self, A, b,   nsteps):
@@ -608,8 +638,10 @@ class MultigridSolver():
     def smooth_uzawa(self, A, b,   nsteps):
         pass
 
-    def get_residual_norm(self, A, x, b):
-        r = b - torch.bmm(A, x.unsqueeze(2)).squeeze(2)
+    def get_residual_norm(self, As, x, b):
+        #r = b - torch.bmm(A, x.unsqueeze(2)).squeeze(2)
+        A = As[0]
+        r = b - self.mult_AtA(As, x) #torch.bmm(A, x.unsqueeze(2)).squeeze(2)
         d = b.pow(2).sum(dim=-1).sqrt()
 
         rnorm = r.pow(2).sum(dim=-1).sqrt()
@@ -619,6 +651,8 @@ class MultigridSolver():
 
     def factor_coarsest(self, A):
         #dense cholesky factor
+        #A = As[0]
+        #A = A.to_dense()
         L,info = torch.linalg.cholesky_ex(A,upper=False, check_errors=True)
         return L
 
@@ -644,8 +678,8 @@ class MultigridSolver():
     #    lam = lam.squeeze(2)
     #    return lam
 
-    def v_cycle_jacobi(self, idx, A_list, b_list, x, D_list, L, back=False):
-        A = A_list[idx]
+    def v_cycle_jacobi(self, idx, As_list, b_list, x, D_list, L, back=False):
+        As = As_list[idx]
         b = b_list[idx]
         D = D_list[idx]
 
@@ -658,7 +692,8 @@ class MultigridSolver():
 
         #ipdb.set_trace()
         #print(A.shape, x.shape, b.shape, D.shape)
-        r = b-torch.bmm(A, x.unsqueeze(2)).squeeze(2)
+        #r = b-torch.bmm(A, x.unsqueeze(2)).squeeze(2)
+        r = b-self.mult_AtA(As, x) #torch.bmm(A, x.unsqueeze(2)).squeeze(2)
 
         #if back:
         #    dr, drn = self.get_residual_norm(A, x, b)
@@ -674,7 +709,7 @@ class MultigridSolver():
             #print('coarsest resid ', dr, drn)
         else:
             xH0 = torch.zeros_like(b_list[idx+1])
-            deltaH = self.v_cycle_jacobi(idx+1, A_list, b_list,xH0, D_list,L, back=back)
+            deltaH = self.v_cycle_jacobi(idx+1, As_list, b_list,xH0, D_list,L, back=back)
             #deltaH = self.v_cycle_jacobi(idx+1, A_list, b_list,deltaH, D_list,L)
 
         delta = self.prolong(idx+1, deltaH, back=back)
@@ -692,7 +727,7 @@ class MultigridSolver():
         #print('resid plus delta',idx, dr, drn)
 
         #smooth
-        x = self.smooth_jacobi(A, b, x, D, nsteps=200)
+        x = self.smooth_jacobi(As, b, x, D, nsteps=200)
 
         #if back:
         #dr, drn = self.get_residual_norm(A, x, b)
