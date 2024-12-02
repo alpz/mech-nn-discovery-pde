@@ -32,7 +32,7 @@ class PDEConfig:
     #relax
     ds = 1e2
 
-    jacobi_w = 0.3
+    jacobi_w = 0.4
 
     #uncomment to choose linear solver sparse conjuate gradient
     #linear_solver = SolverType.SPARSE_INDIRECT_BLOCK_CG
