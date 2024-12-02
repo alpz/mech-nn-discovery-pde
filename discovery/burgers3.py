@@ -32,6 +32,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import discovery.plot as P
 
+from solver.multigrid import MultigridLayer
 
 log_dir, run_id = create_log_dir(root='logs')
 write_source_files(log_dir)
@@ -46,7 +47,7 @@ cuda=True
 #solver_dim=(10,256)
 solver_dim=(32,32)
 #solver_dim=(50,64)
-batch_size= 1
+batch_size=  1
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
 
@@ -188,9 +189,22 @@ class Model(nn.Module):
                         lambda nx,ny: (1,0, [0,ny-1], [nx-1, ny-1])
                         ]
 
-        self.pde = PDEINDLayerEPS(bs=bs, coord_dims=self.coord_dims, order=self.order, n_ind_dim=self.n_dim, 
-                                  n_iv=self.n_iv, init_index_mi_list=self.iv_list,  
-                                  n_iv_steps=1, double_ret=True, solver_dbl=True)
+        #self.iv_list = [lambda nx, ny: (0,0, [0,0],[0,ny-2]), 
+        #                lambda nx, ny: (1,0, [1,0], [nx-1, 0]), 
+        #                #(0,1, [0,0],[0,self.coord_dims[1]-1]), 
+        #                #(0,0, [self.coord_dims[0]-1,1],[self.coord_dims[0]-1,self.coord_dims[1]-2]), 
+        #                #(1,2, [0,0], [self.coord_dims[0]-1, 0]),
+        #                #(1,3, [0,0], [self.coord_dims[0]-1, 0])
+        #                lambda nx,ny: (1,0, [0,ny-1], [nx-1, ny-1])
+        #                ]
+
+        #self.pde = PDEINDLayerEPS(bs=bs, coord_dims=self.coord_dims, order=self.order, n_ind_dim=self.n_dim, 
+        #                          n_iv=self.n_iv, init_index_mi_list=self.iv_list,  
+        #                          n_iv_steps=1, double_ret=True, solver_dbl=True)
+
+        self.pde = MultigridLayer(bs=bs, coord_dims=self.coord_dims, order=2, n_ind_dim=self.n_ind_dim, n_iv=1, 
+                        n_grid=3,
+                        init_index_mi_list=self.iv_list,  n_iv_steps=1, double_ret=True, solver_dbl=True)
 
         # u, u_t, u_tt, u_x, u_xx
         self.num_multiindex = self.pde.n_orders
@@ -431,7 +445,7 @@ class Model(nn.Module):
             eps_list.append(eps)
 
         u0 = torch.stack(u0_list, dim=1)
-        eps = torch.stack(eps_list, dim=1).max()
+        eps = None #torch.stack(eps_list, dim=1).max()
 
         return u0, eps
 
@@ -575,7 +589,7 @@ def optimize(nepoch=5000):
             param_loss = params.abs()
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
-            loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.01*param_loss.mean()
+            loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() #+  0.01*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean()  +  0.001*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + 0.001*param_loss.mean()
             #loss = x_loss.mean() #+ 0.01*param_loss.mean()
@@ -605,7 +619,7 @@ def optimize(nepoch=5000):
 
         mean_loss = torch.tensor(losses).mean()
 
-        meps = eps.max().item()
+        meps = -1 # eps.max().item()
             #print(f'\nalpha, beta {xi}')
         params=print_eq()
         L.info(f'parameters\n{params}')

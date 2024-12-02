@@ -1643,12 +1643,12 @@ class PDESYSLP(nn.Module):
         """fill without using sparse cat"""
         bs = eq_rhs.shape[0]
 
-        self.initial_A = self.initial_A.to(eq_A.device)
+        self.initial_A = self.initial_A.to(eq_A.device).coalesce()
         self.batch_A_indices = self.batch_A_indices.to(eq_A.device)
 
-        initial_values = self.initial_A._values().reshape(bs, -1)
-        eq_values = eq_A._values().reshape(bs, -1)
-        derivative_values = derivative_A._values().reshape(bs,-1)
+        initial_values = self.initial_A.values().reshape(bs, -1)
+        eq_values = eq_A.values().reshape(bs, -1)
+        derivative_values = derivative_A.values().reshape(bs,-1)
 
         #print('shapes',initial_values.shape, eq_values.shape, eq_A.shape)
         values = torch.cat([eq_values, initial_values, derivative_values], dim=-1)

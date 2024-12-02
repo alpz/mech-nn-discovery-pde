@@ -724,6 +724,7 @@ class Model(nn.Module):
         #up_coeffs = self.up_coeffs.repeat(self.bs,self.pde.grid_size,1)
         #coeffs = self.up_coeffs.expand(self.bs,self.n_patches, self.pde.grid_size,-1)
         #coeffs = torch.tanh(coeffs)
+        print(self.coeff_in)
         coeffs = self.coeff_net(self.coeff_in).unsqueeze(1).expand(self.bs, self.pde.grid_size, -1)
 
         #print(self.param_net[-1].weight.data)

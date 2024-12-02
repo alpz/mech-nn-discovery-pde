@@ -177,7 +177,7 @@ class Sine(nn.Module):
         #                            n_iv_steps=1, gamma=0.5, alpha=0., double_ret=True, solver_dbl=True)
 
         self.pde = MultigridLayer(bs=bs, coord_dims=self.coord_dims, order=2, 
-                                n_ind_dim=self.n_dim, n_iv=1, n_grid=2,
+                                n_ind_dim=self.n_dim, n_iv=1, n_grid=3,
                                 init_index_mi_list=self.iv_list,  n_iv_steps=1, 
                                 double_ret=True, solver_dbl=True)
 
@@ -226,12 +226,12 @@ class Sine(nn.Module):
         #self.steps0 = torch.logit(self.step_size*torch.ones(1,self.pde.step_grid_shape[0][0],1))
         self.steps0 = torch.logit(self.step_size*torch.ones(1,self.coord_dims[0]-1))
         #self.steps0 = torch.logit(self.step_size*torch.ones(1,1,1))
-        self.steps0 = nn.Parameter(self.steps0)
+        #self.steps0 = nn.Parameter(self.steps0)
 
         self.steps1 = torch.logit(self.step_size*torch.ones(1,self.coord_dims[1]-1))
         #self.steps1 = torch.logit(self.step_size*torch.ones(1,*self.pde.step_grid_shape[1]))
         #self.steps1 = torch.logit(self.step_size*torch.ones(1,1,1))
-        self.steps1 = nn.Parameter(self.steps1)
+        #self.steps1 = nn.Parameter(self.steps1)
 
         self._dfnn = nn.Sequential(
             #nn.ReLU(),
@@ -271,6 +271,7 @@ class Sine(nn.Module):
         #_coeffs = 3*self.cf_nn(self.coeffs)
         #_coeffs = 3*self.cf_nn(_res)
         _coeffs = self.cf_nn(_res)
+        print(_coeffs)
         #_coeffs = self.cf_nn(_res)
         #_coeffs[..., -2] = 1.
         rhs = self.rhs_nn(_res)
@@ -288,6 +289,7 @@ class Sine(nn.Module):
         #print(coeffs, coeffs.shape)
         #coeffs = self.coeffs.unsqueeze(0).repeat(self.bs,1,self.pde.grid_size,1)
         coeffs = _coeffs.unsqueeze(0).repeat(self.bs,1,self.pde.grid_size,1)
+        #coeffs.register_hook(lambda grad: print("coeffs", grad))
         #coeffs = self.coeffs.unsqueeze(0).repeat(self.bs,1,self.pde.grid_size,1)
         #coeffs = coeffs.unsqueeze(0).repeat(self.bs,1,self.pde.grid_size,1)
         #coeffs = self.coeffs.unsqueeze(0).repeat(self.bs,1,1,1)

@@ -65,7 +65,7 @@ class MultigridSolver():
         for i in range(self.n_grid):
             dims = np.array(dims)
             size = np.prod(dims)
-            #assert(np.min(dims)>=8)
+            assert(np.min(dims)>=8)
             self.dim_list.append(tuple(dims))
             self.size_list.append(size)
             dims = dims//2
@@ -108,7 +108,7 @@ class MultigridSolver():
             derivative_constraints = pde.build_derivative_tensor(new_steps_list)
             eq_constraints = pde.build_equation_tensor(new_coeffs)
 
-            A, A_rhs = pde.fill_constraints_torch2(eq_constraints, new_rhs, new_iv_rhs, derivative_constraints)
+            A, A_rhs = pde.fill_constraints_torch2(eq_constraints.coalesce(), new_rhs, new_iv_rhs, derivative_constraints.coalesce())
             #A, A_rhs = pde.fill_constraints_torch_dense(eq_constraints.to_dense(), new_rhs, new_iv_rhs, derivative_constraints.to_dense())
 
             num_eps = pde.var_set.num_added_eps_vars
@@ -215,14 +215,19 @@ class MultigridSolver():
         num_eps = pde.var_set.num_added_eps_vars
         num_var = pde.var_set.num_vars
 
-        _P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*config.ds#*us
-        _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')#/ds#/config.ds# +ds
-        P_diag = torch.cat([_P_ones, _P_diag]).to(A.device)
+        #_P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*config.ds#*us
+        #_P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')#/ds#/config.ds# +ds
+
+        _P_diag = torch.ones(num_ineq, dtype=A.dtype, device=A.device)*config.ds#*us
+        _P_ones = torch.ones(num_eq, dtype=A.dtype, device=A.device)#/ds#/config.ds# +ds
+        P_diag = torch.cat([_P_ones, _P_diag])#.to(A.device)
         P_diag_inv = 1/P_diag
 
         #A = A.to_dense()#[:, :, :num_var]
         At = A.transpose(1,2)
         PinvA = P_diag_inv.unsqueeze(1)*A
+        #PinvA = A
+        #PinvA = A
 
         #TODO fix mm
         #AtA = torch.mm(At[0], PinvA[0]).unsqueeze(0)
@@ -230,8 +235,13 @@ class MultigridSolver():
 
         P_diag = P_diag.unsqueeze(0).repeat(self.bs,1).unsqueeze(2)
         # diagonal of AtG-1A
-        D = (PinvA*A).sum(dim=1).to_dense()
-        #D = ((A.to_dense())).sum(dim=1).to_dense()
+        #D = (PinvA*A).sum(dim=1).to_dense()
+        #D = (PinvA*A).sum(dim=1).to_dense()
+        D = torch.sparse.sum(PinvA*A, dim=1)
+        D = D.to_dense()
+        #D = ((A)).sum(dim=1).to_dense()
+        #D = torch.ones(A.shape[2], device=A.device)
+        #D.register_hook(lambda grad: print('D grad'))
         #D = torch.ones_like(D)
 
         #P_rhs = P_diag_inv*A_rhs
@@ -239,6 +249,7 @@ class MultigridSolver():
         #P_rhs = A_rhs
         #AtPrhs = -torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)
         #Atrhs = torch.bmm(At, A_rhs.unsqueeze(2)).squeeze(2)
+        #print('cuda al', At.shape, P_rhs.shape )
         AtPrhs = -torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)
 
         #L,U = self.get_tril(AtA)
@@ -753,6 +764,7 @@ class MultigridSolver():
         #    print('before sm resid delta',idx, dr, drn)
         #    x = self.smooth_gs(A, b, x, AL, U, nsteps=100)
         r = b-torch.bmm(A, x.unsqueeze(2)).squeeze(2)
+        r.register_hook(lambda grad: print("r gr"))
 
         #if idx !=0:
         #dr, drn = self.get_residual_norm(A, x, b)
@@ -810,6 +822,7 @@ class MultigridSolver():
         x = self.v_cycle_jacobi(0, A_list, b_list, x, D_list,L, back=back)
         r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
         print(f'vcycle end norm: ', r,rr)
+        #x = x.to_dense()
         return x#.to_dense()
 
     def full_multigrid_jacobi_start(self, A_list, b_list, D_list,L):
@@ -868,7 +881,7 @@ class MultigridLayer(nn.Module):
         self.step_grid_shape = self.pde.step_grid_shape
         #self.iv_grid_size = self.pde.t0_grid_size
 
-        self.qpf = MGS.QPFunction(self.pde, self.mg_solver, self.n_iv, gamma=gamma, alpha=alpha, double_ret=double_ret)
+        #self.qpf = MGS.QPFunction(self.pde, self.mg_solver, self.n_iv, gamma=gamma, alpha=alpha, double_ret=double_ret)
 
     def forward(self, coeffs, rhs, iv_rhs, steps_list):
         #interpolate and fill grids: coeffs, rhs, iv_rhs, steps
@@ -900,7 +913,8 @@ class MultigridLayer(nn.Module):
         coarse_A_list, coarse_rhs_list = self.mg_solver.fill_coarse_grids(coeffs, 
                                                                 rhs, iv_rhs, steps_list)
 
-        A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints, rhs, iv_rhs, derivative_constraints)
+        A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints.coalesce(), rhs, iv_rhs, 
+                                                    derivative_constraints.coalesce())
         #A, A_rhs = self.pde.fill_constraints_torch(eq_constraints, rhs, iv_rhs, derivative_constraints)
         AtA,D, AtPrhs,A_L, A_U = self.mg_solver.make_AtA(self.pde, A, A_rhs)
 
