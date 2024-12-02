@@ -46,11 +46,11 @@ fig, ax = plt.subplots(1,1)
 
 x = np.arange(64)
 y = np.arange(64)
-cax0 = ax.pcolormesh(data_list[-1][0], cmap='viridis', shading='gouraud')
+cax0 = ax.pcolormesh(data_list[-1][1], cmap='viridis', shading='gouraud')
 
 def animate(i):
     #cax0.set_array(data_list[i][:-1,:-1].ravel())
-    cax0.set_array(data_list[i][0].ravel())
+    cax0.set_array(data_list[i][1].ravel())
     #cax1.set_array(func_list[i].reshape(*coord_dims).flatten())
 
 anim = FuncAnimation(fig, animate, interval=100, frames=100)
@@ -62,5 +62,5 @@ data_c = np.stack(data_list, axis=0)
 data_c.shape
 # %%
 import numpy as np
-np.save('data/diffusion_01.npy', data_c)
+np.save('data/brusselator_01_1en3.npy', data_c)
 # %%
