@@ -3,7 +3,6 @@
 import torch
 import numpy as np
 import ipdb
-import solver.multigrid as MM
 
 def block_mv(A, x):
     """shape x: (b, d), A sparse block"""

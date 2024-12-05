@@ -723,7 +723,7 @@ class MultigridSolver():
         #print('resid before smooth',idx, dr, drn)
         ##pre-smooth
         ##if back:
-        x = self.smooth_jacobi(As, b, x, D, nsteps=100)
+        x = self.smooth_jacobi(As, b, x, D, nsteps=10)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
         #dr, drn = self.get_residual_norm(As, x, b)
@@ -753,7 +753,7 @@ class MultigridSolver():
             #print('els')
             deltaH = self.v_cycle_jacobi(idx+1, As_list, rH,xH0, D_list,L, back=back)
             #print('one')
-            deltaH = self.v_cycle_jacobi(idx+1, As_list, rH,deltaH, D_list,L, back=back)
+            #deltaH = self.v_cycle_jacobi(idx+1, As_list, rH,deltaH, D_list,L, back=back)
             #deltaH = self.v_cycle_jacobi(idx+1, As_list, rH,deltaH, D_list,L, back=back)
             #print('two')
             #deltaH = self.v_cycle_jacobi(idx+1, As_list, rH,deltaH, D_list,L, back=back)
@@ -774,7 +774,7 @@ class MultigridSolver():
         print('resid plus delta',idx, dr, drn)
 
         #smooth
-        x = self.smooth_jacobi(As, b, x, D, nsteps=100)
+        x = self.smooth_jacobi(As, b, x, D, nsteps=50)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
         #if back:

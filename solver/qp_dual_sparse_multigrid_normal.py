@@ -11,7 +11,7 @@ import scipy.sparse as SP
 import torch.linalg as TLA
 
 
-from solver.cg import cg_matvec
+#from solver.cg import cg_matvec
 
 
 import solver.cg as cg
@@ -296,7 +296,7 @@ def solve_mg_gmres(pde, mg, AtA, At_rhs, D, coarse_A_list, coarse_rhs_list ):
     #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
     mg_args = [AtA_list, D_list, L]
 
-    x,_ = cg.gmres(mg.AtA_act, rhs_list[0],x0=torch.zeros_like(rhs_list[0]), MG=mg, MG_args=mg_args, restart=20, maxiter=800)
+    x,_ = cg.gmres(mg.AtA_act, rhs_list[0],x0=torch.zeros_like(rhs_list[0]), MG=mg, MG_args=mg_args, restart=20, maxiter=40)
 
     r,rr = mg.get_residual_norm(AtA_list[0], x, rhs_list[0])
     print(f'gmres step norm: ', r,rr)
