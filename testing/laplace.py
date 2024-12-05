@@ -70,8 +70,11 @@ def solve():
                         init_index_mi_list=iv_list,  n_iv_steps=1, double_ret=True, solver_dbl=True)
 
 
-    t_step_size = 0.1 
-    x_step_size = 0.1
+    #t_step_size = 0.1 
+    #x_step_size = 0.1
+
+    t_step_size =  2*np.pi/coord_dims[0]
+    x_step_size = 2*np.pi/coord_dims[1]
     #self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
     #self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
 

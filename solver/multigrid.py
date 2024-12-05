@@ -49,7 +49,7 @@ class MultigridSolver():
         
         interp_modes={1:'linear', 2:'bilinear', 3:'trilinear'}
         #interp_modes={1:'nearest', 2:'nearest', 3:'nearest'}
-        self.align_corners = True
+        self.align_corners = False
         #self.align_corners = None
         self.interp_mode = interp_modes[self.n_coord]
 
@@ -85,8 +85,12 @@ class MultigridSolver():
         A_list = []
         A_rhs_list = []
 
+
         #steps are incrementally downsampled by adding pairs. The rest are done directly
         new_steps_list = steps_list
+        new_coeffs = coeffs
+        new_rhs = rhs
+        new_iv_rhs = iv_rhs
         for k in range(1, self.n_grid):
             pde = self.pde_list[k]
             new_shape = self.dim_list[k]
@@ -95,10 +99,15 @@ class MultigridSolver():
 
             n_orders = len(pde.var_set.mi_list)
 
-            new_coeffs = self.downsample_coeffs(coeffs, self.coord_dims,  new_shape, n_orders)
-            new_rhs = self.downsample_rhs(rhs, self.coord_dims,  new_shape)
+            #new_coeffs = self.downsample_coeffs(coeffs, self.coord_dims,  new_shape, n_orders)
+            #new_rhs = self.downsample_rhs(rhs, self.coord_dims,  new_shape)
+            #new_steps_list = self.downsample_steps(new_steps_list, old_shape)
+            #new_iv_rhs = self.downsample_iv(iv_rhs, self.coord_dims,  new_shape)
+
+            new_coeffs = self.downsample_coeffs(new_coeffs, old_shape,  new_shape, n_orders)
+            new_rhs = self.downsample_rhs(new_rhs, old_shape,  new_shape)
             new_steps_list = self.downsample_steps(new_steps_list, old_shape)
-            new_iv_rhs = self.downsample_iv(iv_rhs, self.coord_dims,  new_shape)
+            new_iv_rhs = self.downsample_iv(new_iv_rhs, old_shape,  new_shape)
 
             if self.solver_dbl:
                 new_coeffs = new_coeffs.double()
@@ -406,9 +415,8 @@ class MultigridSolver():
             pde = self.pde_list[k]
 
             n_orders = len(pde.var_set.mi_list)
-            new_grad = self.downsample_coeffs(gradient, self.coord_dims,  new_shape, n_orders)
             #new_grad = self.downsample_coeffs(new_grad, self.coord_dims,  new_shape, n_orders)
-            #new_grad = self.downsample_grads(new_grad, self.coord_dims,  new_shape, n_orders)
+            new_grad = self.downsample_grads(new_grad, self.coord_dims,  new_shape, n_orders)
             #new_grad = self.downsample_grads(new_grad.clone(), old_shape,  new_shape, n_orders)
             old_shape = new_shape
             new_grad = new_grad.reshape(bs,-1)
@@ -629,7 +637,7 @@ class MultigridSolver():
     def smooth_jacobi(self, As, b, x, D, nsteps=200, w=0.55):
         """Weighted Jacobi iteration"""
         Dinv = 1/D
-        w=0.3 #config.jacobi_w
+        w=0.5 #config.jacobi_w
         #A = As[0]
 
         #I = torch.sparse.spdiags(torch.ones(A.shape[2]), torch.tensor([0]), (A.shape[2], A.shape[2]), 
@@ -714,7 +722,7 @@ class MultigridSolver():
         #print('resid before smooth',idx, dr, drn)
         ##pre-smooth
         ##if back:
-        ##x = self.smooth_jacobi(As, b, x, D, nsteps=100)
+        x = self.smooth_jacobi(As, b, x, D, nsteps=200)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
         #dr, drn = self.get_residual_norm(As, x, b)
@@ -736,6 +744,7 @@ class MultigridSolver():
         if idx ==self.n_grid-2:
             #deltaH = self.solve_coarsest(A_list[self.n_grid-1], rH)
             deltaH = self.solve_coarsest(L, rH)
+            #deltaH = self.smooth_jacobi(As_list[idx+1], rH, torch.zeros_like(rH), D_list[idx+1], nsteps=200)
             #dr, drn = self.get_residual_norm(As_list[self.n_grid-1], deltaH, rH)
             #print('coarsest resid ', dr, drn)
         else:
@@ -743,7 +752,7 @@ class MultigridSolver():
             #print('els')
             deltaH = self.v_cycle_jacobi(idx+1, As_list, rH,xH0, D_list,L, back=back)
             #print('one')
-            #deltaH = self.v_cycle_jacobi(idx+1, As_list, rH,deltaH, D_list,L, back=back)
+            deltaH = self.v_cycle_jacobi(idx+1, As_list, rH,deltaH, D_list,L, back=back)
             #print('two')
             #deltaH = self.v_cycle_jacobi(idx+1, As_list, rH,deltaH, D_list,L, back=back)
             #deltaH = self.v_cycle_jacobi(idx+1, As_list, rH,deltaH, D_list,L, back=back)

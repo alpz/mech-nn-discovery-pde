@@ -187,9 +187,11 @@ class Sine(nn.Module):
         #_coeffs = torch.rand((self.n_dim, 1, self.pde.n_orders), dtype=dtype)
         #_coeffs = torch.rand((self.n_dim, 1, self.pde.n_orders), dtype=dtype)
         _coeffs = torch.randn((self.n_dim, 1, 1024), dtype=dtype)
-        #_coeffs = torch.randn((self.n_dim, self.pde.grid_size, self.pde.n_orders), dtype=dtype)
+        #_coeffs2 = torch.randn((self.n_dim, 1, 1024), dtype=dtype)
+        _coeffs2 = torch.randn((self.n_dim, 1, self.pde.n_orders), dtype=dtype)
         #_coeffs = torch.randn((self.n_dim, self.pde.grid_size, 256), dtype=dtype)
         self.coeffs = Parameter(_coeffs)
+        self.coeffs2 = Parameter(_coeffs2)
 
         #initial values grad and up
         if self.n_iv > 0:
@@ -270,7 +272,7 @@ class Sine(nn.Module):
         _res = self._dfnn(self.coeffs)
         #_coeffs = 3*self.cf_nn(self.coeffs)
         #_coeffs = 3*self.cf_nn(_res)
-        _coeffs = self.cf_nn(_res)
+        _coeffs = self.coeffs2 #self.cf_nn(_res)
         print(_coeffs)
         #_coeffs = self.cf_nn(_res)
         #_coeffs[..., -2] = 1.
