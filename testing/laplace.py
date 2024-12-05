@@ -45,6 +45,7 @@ def solve():
     bs = 1
     #coord_dims = (16,16)
     coord_dims = (32,32)
+    #coord_dims = (128,128)
     n_ind_dim=1
     #iv_list = [(0,0, [0,0],[0,coord_dims[1]-2]), 
     #            (1,0, [1,0], [coord_dims[0]-1, 0]), 
@@ -127,8 +128,8 @@ def solve():
     #print(u0.shape)
     u0 = u0.reshape(bs,*coord_dims)
 
-    l = u0.sum()
-    l.backward()
+    #l = u0.sum()
+    #l.backward()
 
     print('mem after',torch.cuda.mem_get_info(), (torch.cuda.mem_get_info()[1]-torch.cuda.mem_get_info()[0])/1e9)
     #u0 = u0.reshape(1,8,8)

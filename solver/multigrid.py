@@ -214,7 +214,7 @@ class MultigridSolver():
         #U = U.to_sparse_csr()
         return L,U
 
-    def make_AtA(self, pde: PDESYSLPEPS, A, A_rhs, ds=1e2):
+    def make_AtA(self, pde: PDESYSLPEPS, A, A_rhs, ds=1e2, save=False):
     #def make_AAt(self, pde: PDESYSLPEPS, A, us=1e1, ds=1e-2):
         #AGinvAt
         #P_diag = torch.ones(num_eps).type_as(rhs)*1e3
@@ -240,7 +240,8 @@ class MultigridSolver():
         #PinvA = A
 
         #TODO fix mm
-        #AtA = torch.mm(At[0], PinvA[0]).unsqueeze(0)
+        if save: 
+            self.AtA_act = torch.mm(At[0], PinvA[0]).unsqueeze(0)
         AtA = [A, P_diag]
 
         P_diag = P_diag.unsqueeze(0).repeat(self.bs,1).unsqueeze(2)
@@ -722,7 +723,7 @@ class MultigridSolver():
         #print('resid before smooth',idx, dr, drn)
         ##pre-smooth
         ##if back:
-        x = self.smooth_jacobi(As, b, x, D, nsteps=200)
+        x = self.smooth_jacobi(As, b, x, D, nsteps=100)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
         #dr, drn = self.get_residual_norm(As, x, b)
@@ -753,6 +754,7 @@ class MultigridSolver():
             deltaH = self.v_cycle_jacobi(idx+1, As_list, rH,xH0, D_list,L, back=back)
             #print('one')
             deltaH = self.v_cycle_jacobi(idx+1, As_list, rH,deltaH, D_list,L, back=back)
+            #deltaH = self.v_cycle_jacobi(idx+1, As_list, rH,deltaH, D_list,L, back=back)
             #print('two')
             #deltaH = self.v_cycle_jacobi(idx+1, As_list, rH,deltaH, D_list,L, back=back)
             #deltaH = self.v_cycle_jacobi(idx+1, As_list, rH,deltaH, D_list,L, back=back)
@@ -772,7 +774,7 @@ class MultigridSolver():
         print('resid plus delta',idx, dr, drn)
 
         #smooth
-        x = self.smooth_jacobi(As, b, x, D, nsteps=200)
+        x = self.smooth_jacobi(As, b, x, D, nsteps=100)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
         #if back:
@@ -863,6 +865,13 @@ class MultigridSolver():
 
             r,rr = self.get_residual_norm(A_list[idx], u, b_list[idx] )
             print(f'fmg step norm: ', r,rr)
+
+        #print(self.AtA_act.shape, b_list[0].shape, u.shape)
+        u,_ = CG.gmres(self.AtA_act, b_list[0], u, restart=20, maxiter=800)
+        #u,_ = CG.cg(self.AtA_act, b_list[0], u, maxiter=100)
+
+        r,rr = self.get_residual_norm(A_list[0], u, b_list[0] )
+        print(f'gmres step norm: ', r,rr)
         return u
 
 class MultigridLayer(nn.Module):
@@ -945,7 +954,7 @@ class MultigridLayer(nn.Module):
         A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints.coalesce(), rhs, iv_rhs, 
                                                     derivative_constraints.coalesce())
         #A, A_rhs = self.pde.fill_constraints_torch(eq_constraints, rhs, iv_rhs, derivative_constraints)
-        AtA,D, AtPrhs,A_L, A_U = self.mg_solver.make_AtA(self.pde, A, A_rhs)
+        AtA,D, AtPrhs,A_L, A_U = self.mg_solver.make_AtA(self.pde, A, A_rhs, save=True)
 
         check=False
         if check:
@@ -984,7 +993,8 @@ class MultigridLayer(nn.Module):
 
         #x,lam = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints, 
         #x = self.qpf(AtA, AtPrhs, D, None, None, coarse_A_list, coarse_rhs_list)
-        x = MGS.solve_mg(self.pde, self.mg_solver, AtA, AtPrhs, D, coarse_A_list, coarse_rhs_list)
+        #x = MGS.solve_mg(self.pde, self.mg_solver, AtA, AtPrhs, D, coarse_A_list, coarse_rhs_list)
+        x = MGS.solve_mg_gmres(self.pde, self.mg_solver, AtA, AtPrhs, D, coarse_A_list, coarse_rhs_list)
         #x = MGS.solve_mg_gs(self.pde, self.mg_solver, AtA, AtPrhs, D, A_L,A_U, coarse_A_list, coarse_rhs_list)
 
 

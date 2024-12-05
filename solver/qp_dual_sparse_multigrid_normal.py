@@ -260,12 +260,49 @@ def solve_mg(pde, mg, AtA, At_rhs, D, coarse_A_list, coarse_rhs_list ):
     #L= mg.factor_coarsest(AtA_list[-1])
 
     #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
-    x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
+    #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
+
+    #print('solving direct ata')
+    #x = solve_direct_AtA(AtA_list[0], rhs_list[0])
+    x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
+
+    return x
+
+
+def solve_mg_gmres(pde, mg, AtA, At_rhs, D, coarse_A_list, coarse_rhs_list ):
+    AtA_list, rhs_list, D_list,_,_ = mg.make_coarse_AtA_matrices(coarse_A_list, 
+                                                                coarse_rhs_list)
+    AtA_list = [AtA] + AtA_list
+    rhs_list = [At_rhs] + rhs_list
+    D_list = [D] + D_list
+
+    #negate
+    rhs_list  = [-rhs for rhs in rhs_list]
+
+    #make coarsest dense. TODO: use torch.spsolve
+    #AtA_list[-1]= AtA_list[-1].to_dense()
+
+    AtA_coarsest = mg.get_AtA_dense(AtA_list[-1])
+    #L= mg.factor_coarsest(AtA_list[-1])
+    L= mg.factor_coarsest(AtA_coarsest)
+
+    #L= mg.factor_coarsest(AtA_list[-1])
+
+    #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
+    #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
 
     #print('solving direct ata')
     #x = solve_direct_AtA(AtA_list[0], rhs_list[0])
     #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
+    mg_args = [AtA_list, D_list, L]
+
+    x,_ = cg.gmres(mg.AtA_act, rhs_list[0],x0=torch.zeros_like(rhs_list[0]), MG=mg, MG_args=mg_args, restart=20, maxiter=800)
+
+    r,rr = mg.get_residual_norm(AtA_list[0], x, rhs_list[0])
+    print(f'gmres step norm: ', r,rr)
+
     return x
+
 
 def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
     class QPFunctionFn(Function):

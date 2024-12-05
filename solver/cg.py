@@ -3,6 +3,7 @@
 import torch
 import numpy as np
 import ipdb
+import solver.multigrid as MM
 
 def block_mv(A, x):
     """shape x: (b, d), A sparse block"""
@@ -153,9 +154,14 @@ def apply_M(M, x):
     mx = torch.cat(mx_list, dim=0)
     mx = mx.to(device)
     return mx
+
+def apply_MG(MG, MG_args, b):
+
+    x = MG.v_cycle_jacobi_start(MG_args[0], [b], MG_args[1],MG_args[2], n_step=1, back=False)
+    return x
     
 @torch.no_grad()
-def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None,
+def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None, MG=None, MG_args=None,
           callback=None, atol=1e-5, callback_type=None):
     """Uses Generalized Minimal RESidual iteration to solve ``Ax = b``.
 
@@ -247,11 +253,12 @@ def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None,
     while True:
         #mx = psolve(x)
         mx = x
-        if M is not None:
+        #if M is not None:
+        if MG is not None:
             #mx = M.solve(x[0].cpu().numpy())
             #mx = torch.tensor(mx).unsqueeze(0)
             #mx = mx.to(x.device)
-            mx = apply_M(M, mx)
+            mx = apply_MG(MG, MG_args, mx)
         #r = b - matvec(mx)
         #r = b - torch.mm(A, mx.unsqueeze(1)).squeeze(1)
         #print(A, mx.shape)
@@ -273,11 +280,13 @@ def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None,
         for j in range(restart):
             #z = psolve(v)
             z = v #psolve(v)
-            if M is not None:
+            #if M is not None:
+            if MG is not None:
                 #z = M.solve(z[0].cpu().numpy())
                 #z = torch.tensor(z).unsqueeze(0)
                 #z = z.to(x.device)
-                z = apply_M(M, z)
+                #z = apply_M(M, z)
+                z = apply_MG(MG, MG_args, z)
             #u = matvec(z)
             #u = torch.mm(A, z.unsqueeze(1)).squeeze(1)
             u = torch.bmm(A, z.unsqueeze(2)).squeeze(2)
