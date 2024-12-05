@@ -199,6 +199,22 @@ def solve_direct(A, b):
     lam = lam.squeeze(2)
     return lam
 
+def solve_direct_AtA(As, b):
+    #At = A.transpose(1,2)#.to_dense()
+    #PAt = P_diag_inv.unsqueeze(2)*At
+    #APAt = torch.bmm(A, PAt)
+    A = As[0]
+    G = 1/As[1]
+    A = A.to_dense()
+    At= A.transpose(1,2)
+
+    AtA = torch.bmm(At, G.unsqueeze(1)*A)
+    #TODO: move factorization outside loop
+    L,info = torch.linalg.cholesky_ex(AtA,upper=False, check_errors=True)
+    lam = torch.cholesky_solve(b.unsqueeze(2), L)
+    lam = lam.squeeze(2)
+    return lam
+
 
 def solve_mg_gs(pde, mg, AtA, At_rhs, D, A_L, A_U, coarse_A_list, coarse_rhs_list ):
     AtA_list, rhs_list, D_list, L_list, U_list  = mg.make_coarse_AtA_matrices(coarse_A_list, 
@@ -243,7 +259,11 @@ def solve_mg(pde, mg, AtA, At_rhs, D, coarse_A_list, coarse_rhs_list ):
 
     #L= mg.factor_coarsest(AtA_list[-1])
 
+    #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
     x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
+
+    #print('solving direct ata')
+    #x = solve_direct_AtA(AtA_list[0], rhs_list[0])
     #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
     return x
 
