@@ -317,39 +317,39 @@ class MultigridSolver():
 
     #    return KKT, P_diag
 
-    #def downsample_grads(self, coeffs, old_shape,  new_shape, n_orders):
-    #    grid_size = np.prod(np.array(old_shape))
-    #    coeffs = coeffs.reshape(self.bs*self.n_ind_dim, grid_size, n_orders)
-    #    coeffs = coeffs.permute(0,2,1)
-    #    coeffs = coeffs.reshape(self.bs*self.n_ind_dim, n_orders, *old_shape)
+    def downsample_grads(self, coeffs, old_shape,  new_shape, n_orders):
+        grid_size = np.prod(np.array(old_shape))
+        coeffs = coeffs.reshape(self.bs*self.n_ind_dim, grid_size, n_orders)
+        coeffs = coeffs.permute(0,2,1)
+        coeffs = coeffs.reshape(self.bs*self.n_ind_dim, n_orders, *old_shape)
 
-    #    #if len(old_shape) == 2:
-    #    #    mode='bilinear'
-    #    #elif len(old_shape) == 3:
-    #    #    mode='trilinear'
-    #    #else:
-    #    #    raise ValueError('incorrect num coordinates')
+        #if len(old_shape) == 2:
+        #    mode='bilinear'
+        #elif len(old_shape) == 3:
+        #    mode='trilinear'
+        #else:
+        #    raise ValueError('incorrect num coordinates')
 
-    #    #print('ds coeffs ', coeffs.shape, new_shape)
-    #    coeffs = F.interpolate(coeffs, size=new_shape, mode='bilinear', 
-    #                           align_corners=self.align_corners)
-    #    m = old_shape[0]
-    #    #print('ols s ', m)
-    #    #coeffs = coeffs.reshape(self.bs*self.n_ind_dim,n_orders,m//2,2,m//2,2)
-    #    #coeffs = coeffs[:, :, :, 0, :, 0]
-    #    #coeffs = coeffs.mean(dim=-1).mean(dim=3)
+        #print('ds coeffs ', coeffs.shape, new_shape)
+        coeffs = F.interpolate(coeffs, size=new_shape, mode='bilinear', 
+                               align_corners=self.align_corners)
+        m = old_shape[0]
+        #print('ols s ', m)
+        #coeffs = coeffs.reshape(self.bs*self.n_ind_dim,n_orders,m//2,2,m//2,2)
+        #coeffs = coeffs[:, :, :, 0, :, 0]
+        #coeffs = coeffs.mean(dim=-1).mean(dim=3)
 
-    #    #coeffs = F.interpolate(coeffs, size=new_shape, mode=mode, 
-    #    #                       align_corners=False, antialias=True)
-    #    #coeffs = F.interpolate(coeffs, size=new_shape, mode=mode, align_corners=False)
-    #    #coeffs = F.interpolate(coeffs, size=new_shape, mode='nearest')
-    #    #print('ds coeffs ', coeffs.shape)
+        #coeffs = F.interpolate(coeffs, size=new_shape, mode=mode, 
+        #                       align_corners=False, antialias=True)
+        #coeffs = F.interpolate(coeffs, size=new_shape, mode=mode, align_corners=False)
+        #coeffs = F.interpolate(coeffs, size=new_shape, mode='nearest')
+        #print('ds coeffs ', coeffs.shape)
 
-    #    new_grid_size = np.prod(np.array(new_shape))
-    #    coeffs = coeffs.reshape(self.bs*self.n_ind_dim, n_orders, new_grid_size)
-    #    coeffs = coeffs.permute(0,2,1)
+        new_grid_size = np.prod(np.array(new_shape))
+        coeffs = coeffs.reshape(self.bs*self.n_ind_dim, n_orders, new_grid_size)
+        coeffs = coeffs.permute(0,2,1)
 
-    #    return coeffs
+        return coeffs
 
     def downsample_coeffs(self, coeffs, old_shape,  new_shape, n_orders):
         grid_size = np.prod(np.array(old_shape))
@@ -395,26 +395,26 @@ class MultigridSolver():
         return rhs
 
     ##@torch.no_grad()
-    #def downsample_grad(self, gradient):
-    #    bs = gradient.shape[0]
-    #    grad_list = []
-    #    new_grad = gradient
-    #    old_shape = self.coord_dims
-    #    for k in range(1, self.n_grid):
-    #        #pde = self.pde_list[k]
-    #        new_shape = self.dim_list[k]
-    #        pde = self.pde_list[k]
+    def downsample_grad(self, gradient):
+        bs = gradient.shape[0]
+        grad_list = []
+        new_grad = gradient
+        old_shape = self.coord_dims
+        for k in range(1, self.n_grid):
+            #pde = self.pde_list[k]
+            new_shape = self.dim_list[k]
+            pde = self.pde_list[k]
 
-    #        n_orders = len(pde.var_set.mi_list)
-    #        new_grad = self.downsample_coeffs(gradient, self.coord_dims,  new_shape, n_orders)
-    #        #new_grad = self.downsample_coeffs(new_grad, self.coord_dims,  new_shape, n_orders)
-    #        #new_grad = self.downsample_grads(new_grad, self.coord_dims,  new_shape, n_orders)
-    #        #new_grad = self.downsample_grads(new_grad.clone(), old_shape,  new_shape, n_orders)
-    #        old_shape = new_shape
-    #        new_grad = new_grad.reshape(bs,-1)
-    #        grad_list.append(new_grad.clone())
+            n_orders = len(pde.var_set.mi_list)
+            new_grad = self.downsample_coeffs(gradient, self.coord_dims,  new_shape, n_orders)
+            #new_grad = self.downsample_coeffs(new_grad, self.coord_dims,  new_shape, n_orders)
+            #new_grad = self.downsample_grads(new_grad, self.coord_dims,  new_shape, n_orders)
+            #new_grad = self.downsample_grads(new_grad.clone(), old_shape,  new_shape, n_orders)
+            old_shape = new_shape
+            new_grad = new_grad.reshape(bs,-1)
+            grad_list.append(new_grad.clone())
 
-    #    return grad_list
+        return grad_list
     
 
     def downsample_steps(self, steps_list, old_shape):
@@ -629,7 +629,7 @@ class MultigridSolver():
     def smooth_jacobi(self, As, b, x, D, nsteps=200, w=0.55):
         """Weighted Jacobi iteration"""
         Dinv = 1/D
-        w=0.5 #config.jacobi_w
+        w=0.3 #config.jacobi_w
         #A = As[0]
 
         #I = torch.sparse.spdiags(torch.ones(A.shape[2]), torch.tensor([0]), (A.shape[2], A.shape[2]), 
@@ -705,7 +705,7 @@ class MultigridSolver():
 
     def v_cycle_jacobi(self, idx, As_list, b, x, D_list, L, back=False):
         As = As_list[idx]
-        b = b
+        #b = b
         D = D_list[idx]
 
         #print(As[0].shape, b.shape)
@@ -850,7 +850,7 @@ class MultigridSolver():
         for idx in reversed(range(self.n_grid-1)):
             print('fmg idx', idx)
             u = self.prolong(idx+1, u)
-            u = self.v_cycle_jacobi(idx, A_list, b_list, u, D_list,L)
+            u = self.v_cycle_jacobi(idx, A_list, b_list[idx], u, D_list,L)
 
             r,rr = self.get_residual_norm(A_list[idx], u, b_list[idx] )
             print(f'fmg step norm: ', r,rr)
@@ -901,7 +901,7 @@ class MultigridLayer(nn.Module):
         self.step_grid_shape = self.pde.step_grid_shape
         #self.iv_grid_size = self.pde.t0_grid_size
 
-        #self.qpf = MGS.QPFunction(self.pde, self.mg_solver, self.n_iv, gamma=gamma, alpha=alpha, double_ret=double_ret)
+        self.qpf = MGS.QPFunction(self.pde, self.mg_solver, self.n_iv, gamma=gamma, alpha=alpha, double_ret=double_ret)
 
     def forward(self, coeffs, rhs, iv_rhs, steps_list):
         #interpolate and fill grids: coeffs, rhs, iv_rhs, steps
@@ -974,7 +974,7 @@ class MultigridLayer(nn.Module):
         #                 coarse_A_list, coarse_rhs_list)
 
         #x,lam = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints, 
-        #x = self.qpf(AtA, AtPrhs, D, coarse_A_list, coarse_rhs_list)
+        #x = self.qpf(AtA, AtPrhs, D, None, None, coarse_A_list, coarse_rhs_list)
         x = MGS.solve_mg(self.pde, self.mg_solver, AtA, AtPrhs, D, coarse_A_list, coarse_rhs_list)
         #x = MGS.solve_mg_gs(self.pde, self.mg_solver, AtA, AtPrhs, D, A_L,A_U, coarse_A_list, coarse_rhs_list)
 

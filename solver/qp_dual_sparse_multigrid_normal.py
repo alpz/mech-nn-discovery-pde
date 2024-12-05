@@ -301,12 +301,13 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             rhs_list  = [-rhs for rhs in rhs_list]
 
             #make coarsest dense. TODO: use torch.spsolve
-            AtA_list[-1]= AtA_list[-1].to_dense()
+            #AtA_list[-1]= AtA_list[-1].to_dense()
+            AtA_coarsest = mg.get_AtA_dense(AtA_list[-1])
 
-            L= mg.factor_coarsest(AtA_list[-1])
+            L= mg.factor_coarsest(AtA_coarsest)
 
             #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
-            x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, L_list, U_list, L)
+            x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
 
             nr, nrr = mg.get_residual_norm(AtA_list[0],x, rhs_list[0])
             print('forward', nr, nrr)
