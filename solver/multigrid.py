@@ -724,7 +724,7 @@ class MultigridSolver():
         #print('resid before smooth',idx, dr, drn)
         ##pre-smooth
         ##if back:
-        x = self.smooth_jacobi(As, b, x, D, nsteps=200)
+        x = self.smooth_jacobi(As, b, x, D, nsteps=5)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
         #dr, drn = self.get_residual_norm(As, x, b)
@@ -746,7 +746,7 @@ class MultigridSolver():
         if idx ==self.n_grid-2:
             #deltaH = self.solve_coarsest(A_list[self.n_grid-1], rH)
             deltaH = self.solve_coarsest(L, rH)
-            #deltaH = self.smooth_jacobi(As_list[idx+1], rH, torch.zeros_like(rH), D_list[idx+1], nsteps=100)
+            #deltaH = self.smooth_jacobi(As_list[idx+1], rH, torch.zeros_like(rH), D_list[idx+1], nsteps=10)
             #dr, drn = self.get_residual_norm(As_list[self.n_grid-1], deltaH, rH)
             #print('coarsest resid ', dr, drn)
         else:
@@ -771,16 +771,16 @@ class MultigridSolver():
         #else:
         x = x+delta
         #if back:
-        dr, drn = self.get_residual_norm(As, x, b)
-        print('resid plus delta',idx, dr, drn)
+        #dr, drn = self.get_residual_norm(As, x, b)
+        #print('resid plus delta',idx, dr, drn)
 
         #smooth
-        x = self.smooth_jacobi(As, b, x, D, nsteps=200)
+        x = self.smooth_jacobi(As, b, x, D, nsteps=5)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
         #if back:
-        dr, drn = self.get_residual_norm(As, x, b)
-        print('resid smooth delta',idx, dr, drn)
+        #dr, drn = self.get_residual_norm(As, x, b)
+        #print('resid smooth delta',idx, dr, drn)
 
 
         return x
@@ -852,8 +852,8 @@ class MultigridSolver():
         #x = torch.rand_like(b_list[0])
         for step in range(n_step):
             x = self.v_cycle_jacobi(0, A_list, b_list[0], x, D_list,L, back=back)
-            r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
-            print(f'vcycle end norm: ', r,rr)
+            #r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
+            #print(f'vcycle end norm: ', r,rr)
         #x = x.to_dense()
         return x#.to_dense()
 
