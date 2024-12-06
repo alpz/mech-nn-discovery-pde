@@ -1138,7 +1138,8 @@ class PDESYSLP(nn.Module):
         
 
         batch_A = torch.cat([full_A.unsqueeze(0)]*self.bs, dim=0)
-        self.batch_A_indices = batch_A._indices()
+        batch_A = batch_A.coalesce()
+        self.batch_A_indices = batch_A.indices()
         self.batch_A_size = batch_A.shape
 
         #(b, r2, c)

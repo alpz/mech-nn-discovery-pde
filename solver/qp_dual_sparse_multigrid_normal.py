@@ -249,7 +249,7 @@ def solve_mg(pde, mg, AtA, At_rhs, D, coarse_A_list, coarse_rhs_list ):
 
     #negate
     #rhs_list  = [-rhs for rhs in rhs_list]
-    rhs_list  = [rhs for rhs in rhs_list]
+    rhs_list  = [-rhs for rhs in rhs_list]
 
     #make coarsest dense. TODO: use torch.spsolve
     #AtA_list[-1]= AtA_list[-1].to_dense()
@@ -261,10 +261,10 @@ def solve_mg(pde, mg, AtA, At_rhs, D, coarse_A_list, coarse_rhs_list ):
     #L= mg.factor_coarsest(AtA_list[-1])
 
     #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
-    x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
+    #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
 
     #print('solving direct ata')
-    #x = solve_direct_AtA(AtA_list[0], rhs_list[0])
+    x = solve_direct_AtA(AtA_list[0], rhs_list[0])
     #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
 
     return x

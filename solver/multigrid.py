@@ -15,6 +15,7 @@ from solver.lp_pde_central_diff import PDESYSLP as PDESYSLPEPS #as ODELP_sys
 #from solver.qp_dual_indirect_sparse_pde import QPFunction as QPFunctionSys
 #from solver.qp_dual_sparse_multigrid_normal import QPFunction as QPFunctionSys
 import solver.qp_dual_sparse_multigrid_normal as MGS #import QPFunction as QPFunctionSys
+#import solver.qp_dual_sparse_multigrid_normal2 as MGS #import QPFunction as QPFunctionSys
 #import solver.qp_dual_sparse_multigrid_normal_dense as MGS #import QPFunction as QPFunctionSys
 from config import PDEConfig as config
 import solver.cg as CG
@@ -49,7 +50,7 @@ class MultigridSolver():
         
         interp_modes={1:'linear', 2:'bilinear', 3:'trilinear'}
         #interp_modes={1:'nearest', 2:'nearest', 3:'nearest'}
-        self.align_corners = True
+        self.align_corners = False
         #self.align_corners = None
         self.interp_mode = interp_modes[self.n_coord]
 
@@ -638,7 +639,7 @@ class MultigridSolver():
     def smooth_jacobi(self, As, b, x, D, nsteps=200, w=0.55):
         """Weighted Jacobi iteration"""
         Dinv = 1/D
-        w=0.5 #config.jacobi_w
+        w=0.3 #config.jacobi_w
         #A = As[0]
 
         #I = torch.sparse.spdiags(torch.ones(A.shape[2]), torch.tensor([0]), (A.shape[2], A.shape[2]), 
@@ -723,7 +724,7 @@ class MultigridSolver():
         #print('resid before smooth',idx, dr, drn)
         ##pre-smooth
         ##if back:
-        x = self.smooth_jacobi(As, b, x, D, nsteps=10)
+        x = self.smooth_jacobi(As, b, x, D, nsteps=200)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
         #dr, drn = self.get_residual_norm(As, x, b)
@@ -744,8 +745,8 @@ class MultigridSolver():
         #print(idx, self.n_grid, len(As_list))
         if idx ==self.n_grid-2:
             #deltaH = self.solve_coarsest(A_list[self.n_grid-1], rH)
-            #deltaH = self.solve_coarsest(L, rH)
-            deltaH = self.smooth_jacobi(As_list[idx+1], rH, torch.zeros_like(rH), D_list[idx+1], nsteps=30)
+            deltaH = self.solve_coarsest(L, rH)
+            #deltaH = self.smooth_jacobi(As_list[idx+1], rH, torch.zeros_like(rH), D_list[idx+1], nsteps=100)
             #dr, drn = self.get_residual_norm(As_list[self.n_grid-1], deltaH, rH)
             #print('coarsest resid ', dr, drn)
         else:
@@ -774,7 +775,7 @@ class MultigridSolver():
         print('resid plus delta',idx, dr, drn)
 
         #smooth
-        x = self.smooth_jacobi(As, b, x, D, nsteps=20)
+        x = self.smooth_jacobi(As, b, x, D, nsteps=200)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
         #if back:
@@ -953,7 +954,18 @@ class MultigridLayer(nn.Module):
 
         A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints.coalesce(), rhs, iv_rhs, 
                                                     derivative_constraints.coalesce())
-        #A, A_rhs = self.pde.fill_constraints_torch(eq_constraints, rhs, iv_rhs, derivative_constraints)
+
+        #A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints, rhs, iv_rhs, 
+        #                                            derivative_constraints)
+
+        #A0, A_rhs0 = self.pde.fill_constraints_torch(eq_constraints, rhs, iv_rhs, 
+        #                                            derivative_constraints)
+
+        #Adiff = A0.to_dense() - A.to_dense()
+        #Adiff = Adiff.pow(2).sum()
+        #rdiff = (A_rhs - A_rhs0).pow(2).sum()
+        #print('dif A r', Adiff, rdiff)
+
         AtA,D, AtPrhs,A_L, A_U = self.mg_solver.make_AtA(self.pde, A, A_rhs, save=True)
 
         check=False
@@ -1031,189 +1043,190 @@ class MultigridLayer(nn.Module):
 #    lam = lam.squeeze(2)
 #    return lam
 
-class MultigridLayer2(nn.Module):
-    """ Multigrid layer """
-    def __init__(self, bs, order, n_ind_dim, n_iv, init_index_mi_list, coord_dims, n_iv_steps, solver_dbl=True, 
-                    gamma=0.5, alpha=0.1, double_ret=False,n_grid=2, device=None):
-        super().__init__()
-        # placeholder step size
-        self.step_size = 0.01
-        #self.end = n_step * self.step_size
-        #self.n_step = n_step #int(self.end / self.step_size)
-        self.coord_dims = coord_dims
-        self.n_coord = len(coord_dims)
-        self.order = order
-
-        self.n_ind_dim = n_ind_dim
-        self.n_dim = 1 
-        self.n_equations =1 # n_equations
-        self.n_iv = n_iv
-        self.n_iv_steps = 1 #n_iv_steps
-        self.bs = bs
-        #self.n_coeff = self.n_step * (self.order + 1)
-        self.device = device
-        self.solver_dbl = solver_dbl
-        #dtype = torch.float64 if DBL else torch.float32
-
-        if solver_dbl:
-            print("Using double precision solver")
-        else:
-            print("Using single precision solver")
-
-        dtype = torch.float64 if self.solver_dbl else torch.float32
-
-        #self.mg_solver = MultigridSolver(bs, order, n_ind_dim, n_iv, init_index_mi_list, coord_dims, 
-        #                            n_iv_steps, solver_dbl=True, n_grid=n_grid,
-        #                            gamma=0.5, alpha=0.1, double_ret=False, 
-        #                            device=None)
-        self.pde = PDESYSLPEPS(bs=bs*self.n_ind_dim, n_equations=self.n_equations, n_auxiliary=0, coord_dims=self.coord_dims, step_size=self.step_size, order=self.order,
-                         n_iv=self.n_iv, init_index_mi_list=init_index_mi_list, n_iv_steps=self.n_iv_steps, dtype=dtype, device=self.device)
-
-        #self.pde = self.mg_solver.pde_list[0]
-        self.n_orders = len(self.pde.var_set.mi_list)
-        self.grid_size = self.pde.var_set.grid_size
-        #self.step_grid_size = self.pde.step_grid_size
-        self.step_grid_shape = self.pde.step_grid_shape
-        #self.iv_grid_size = self.pde.t0_grid_size
-
-        self.qpf = MGS.QPFunction(self.pde, self.n_iv, gamma=gamma, alpha=alpha, double_ret=double_ret)
-
-    def make_AtA(self, pde: PDESYSLPEPS, A, A_rhs, ds=1e3):
-    #def make_AAt(self, pde: PDESYSLPEPS, A, us=1e1, ds=1e-2):
-        #AGinvAt
-        #P_diag = torch.ones(num_eps).type_as(rhs)*1e3
-        #P_zeros = torch.zeros(num_var).type_as(rhs) +1e-5
-        num_eq = pde.num_added_equation_constraints + pde.num_added_initial_constraints
-        num_ineq = pde.num_added_derivative_constraints
-
-        num_eps = pde.var_set.num_added_eps_vars
-        num_var = pde.var_set.num_vars
-
-        _P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*ds#*us
-        _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')#/ds#/config.ds# +ds
-        P_diag = torch.cat([_P_ones, _P_diag]).to(A.device)
-        P_diag_inv = 1/P_diag
-
-        #A = A.to_dense()#[:, :, :num_var]
-        At = A.transpose(1,2)
-        PinvA = P_diag_inv.unsqueeze(1)*A
-        AtA = torch.mm(At[0], PinvA[0]).unsqueeze(0)
-
-        # diagonal of AtG-1A
-        D = (PinvA*A).sum(dim=1).to_dense()
-
-        #P_rhs = P_diag_inv.sqrt()*A_rhs
-        P_rhs = P_diag_inv*A_rhs
-        #P_rhs = A_rhs
-        #AtPrhs = -torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)
-        Atrhs = torch.bmm(At, A_rhs.unsqueeze(2)).squeeze(2)
-        AtPrhs = -torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)
-        #AtPrhs = torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)
-
-        return AtA, AtPrhs, Atrhs
-
-    def forward(self, coeffs, rhs, iv_rhs, steps_list):
-        #interpolate and fill grids: coeffs, rhs, iv_rhs, steps
-        #
-        
-        #build finest grid data
-        coeffs = coeffs.reshape(self.bs*self.n_ind_dim, self.grid_size, self.n_orders)
-        rhs = rhs.reshape(self.bs*self.n_ind_dim, self.grid_size)
-
-        if iv_rhs is not None:
-            #iv_rhs = iv_rhs.reshape(self.bs*self.n_ind_dim, self.n_iv*self.iv_grid_size)
-            iv_rhs = iv_rhs.reshape(self.bs*self.n_ind_dim, -1)
-
-        for i in range(self.n_coord):
-            #steps_list[i] = steps_list[i].reshape(self.bs*self.n_ind_dim,*self.step_grid_shape[i])
-            steps_list[i] = steps_list[i].reshape(self.bs*self.n_ind_dim,self.coord_dims[i]-1)
-
-
-        if self.solver_dbl:
-            coeffs = coeffs.double()
-            rhs = rhs.double()
-            iv_rhs = iv_rhs.double() if iv_rhs is not None else None
-            steps_list = [steps.double() for steps in steps_list]
-
-        derivative_constraints = self.pde.build_derivative_tensor(steps_list)
-        eq_constraints = self.pde.build_equation_tensor(coeffs)
-
-        #build coarse grids
-        #coarse_A_list, coarse_rhs_list = self.mg_solver.fill_coarse_grids(coeffs, 
-        #                                                        rhs, iv_rhs, steps_list)
-        A, A_rhs = self.pde.fill_constraints_torch_dense(eq_constraints.to_dense(), rhs, iv_rhs, derivative_constraints.to_dense())
-        #A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints, rhs, iv_rhs, derivative_constraints)
-        #B3 = A2.to_dense()
-        #C2 = A.to_dense()
-
-        #b2 = A_rhs.to_dense()
-        #c2 = A_rhs2.to_dense()
-
-        #diff = (B2-C2).pow(2).sum()
-        #diff2 = (b2-c2).pow(2).sum()
-        #print('diff ', diff, diff2)
-        AtA,AtPrhs, At_rhs,A_L,A_U = self.make_AtA(self.pde, A, A_rhs)
-        #AtA = AtA.to_dense()
-        #At_rhs = At_rhs.to_dense()
-
-        check=False
-        if check:
-            import sys
-            #test = gradcheck(self.qpf, iv_rhs, eps=1e-4, atol=1e-3, rtol=0.001, check_undefined_grad=False, check_batched_grad=True)
-            #test = gradcheck(self.qpf, (coeffs,rhs,iv_rhs), eps=1e-6, atol=1e-5, rtol=0.001, check_undefined_grad=True, check_batched_grad=True)
-            #try: 
-            torch.set_printoptions(precision=4, threshold=1000000, edgeitems=None, linewidth=None, profile=None, sci_mode=None)
-
-            test = gradcheck(self.qpf, (AtA, At_rhs), 
-                            eps=1e-12, atol=1e-4, rtol=0.001, fast_mode=False)
-            #except Exception as e:
-            #    string = e.args[0].split('tensor')
-            #    numerical = string[1].split('analytical')[0]
-            #    analytical = 'torch.tensor' + string[2]
-            #    numerical = 'torch.tensor' + numerical
-
-            #    #print(e)
-            #    print(string[0])
-            #    print('numerical', numerical)
-            #    print('--------')
-            #    print('analytical', analytical)
-            #    d = eval(numerical)
-            #    a = eval(analytical)
-            #    print('diff')
-            #    diff = (d-a).abs()
-            #    print(diff)
-            #    print(diff> 0.01)
-            #    print(diff.max())
-            #    print(d.shape)
-            sys.exit(0)
-
-
-        #x = self.qpf(coeffs, rhs, iv_rhs, derivative_constraints)
-        #x = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints, 
-        #                 None, None)
-
-        #x= solve_direct(AtA, AtPrhs)
-        x = self.qpf(AtA, AtPrhs)
-        #x = self.qpf(AtA, At_rhs)
-
-        #x,lam = MGS.run(self.pde, eq_constraints, rhs, iv_rhs, derivative_constraints, 
-        #                 None, None)
-        #eps = x[:,0]
-
-        #print(x)
-        #self.pde = self.mg_solver.pde_list[-1]
-        eps =  None #x[:, self.pde.var_set.num_vars:].abs()#.max(dim=1)[0]
-
-        #shape: batch, grid, order
-        u = self.pde.get_solution_reshaped(x)
-
-        u = u.reshape(self.bs, self.n_ind_dim, *u.shape[1:])
-        #shape: batch, step, vars, order
-        #u = u.permute(0,2,1,3)
-
-        u0 = u[:,:,:,0]
-        #u1 = u[:,:,:,1]
-        #u2 = u[:,:,:,2]
-        
-        #return u0, u1, u2, eps#, steps
-        return u0, u, eps
+#class MultigridLayer2(nn.Module):
+#    """ Multigrid layer """
+#    def __init__(self, bs, order, n_ind_dim, n_iv, init_index_mi_list, coord_dims, n_iv_steps, solver_dbl=True, 
+#                    gamma=0.5, alpha=0.1, double_ret=False,n_grid=2, device=None):
+#        super().__init__()
+#        # placeholder step size
+#        self.step_size = 0.01
+#        #self.end = n_step * self.step_size
+#        #self.n_step = n_step #int(self.end / self.step_size)
+#        self.coord_dims = coord_dims
+#        self.n_coord = len(coord_dims)
+#        self.order = order
+#
+#        self.n_ind_dim = n_ind_dim
+#        self.n_dim = 1 
+#        self.n_equations =1 # n_equations
+#        self.n_iv = n_iv
+#        self.n_iv_steps = 1 #n_iv_steps
+#        self.bs = bs
+#        #self.n_coeff = self.n_step * (self.order + 1)
+#        self.device = device
+#        self.solver_dbl = solver_dbl
+#        #dtype = torch.float64 if DBL else torch.float32
+#
+#        if solver_dbl:
+#            print("Using double precision solver")
+#        else:
+#            print("Using single precision solver")
+#
+#        dtype = torch.float64 if self.solver_dbl else torch.float32
+#
+#        #self.mg_solver = MultigridSolver(bs, order, n_ind_dim, n_iv, init_index_mi_list, coord_dims, 
+#        #                            n_iv_steps, solver_dbl=True, n_grid=n_grid,
+#        #                            gamma=0.5, alpha=0.1, double_ret=False, 
+#        #                            device=None)
+#        self.pde = PDESYSLPEPS(bs=bs*self.n_ind_dim, n_equations=self.n_equations, n_auxiliary=0, coord_dims=self.coord_dims, step_size=self.step_size, order=self.order,
+#                         n_iv=self.n_iv, init_index_mi_list=init_index_mi_list, n_iv_steps=self.n_iv_steps, dtype=dtype, device=self.device)
+#
+#        #self.pde = self.mg_solver.pde_list[0]
+#        self.n_orders = len(self.pde.var_set.mi_list)
+#        self.grid_size = self.pde.var_set.grid_size
+#        #self.step_grid_size = self.pde.step_grid_size
+#        self.step_grid_shape = self.pde.step_grid_shape
+#        #self.iv_grid_size = self.pde.t0_grid_size
+#
+#        self.qpf = MGS.QPFunction(self.pde, self.n_iv, gamma=gamma, alpha=alpha, double_ret=double_ret)
+#
+#    def make_AtA(self, pde: PDESYSLPEPS, A, A_rhs, ds=1e3):
+#    #def make_AAt(self, pde: PDESYSLPEPS, A, us=1e1, ds=1e-2):
+#        #AGinvAt
+#        #P_diag = torch.ones(num_eps).type_as(rhs)*1e3
+#        #P_zeros = torch.zeros(num_var).type_as(rhs) +1e-5
+#        num_eq = pde.num_added_equation_constraints + pde.num_added_initial_constraints
+#        num_ineq = pde.num_added_derivative_constraints
+#
+#        num_eps = pde.var_set.num_added_eps_vars
+#        num_var = pde.var_set.num_vars
+#
+#        _P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*ds#*us
+#        _P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')#/ds#/config.ds# +ds
+#        P_diag = torch.cat([_P_ones, _P_diag]).to(A.device)
+#        P_diag_inv = 1/P_diag
+#
+#        #A = A.to_dense()#[:, :, :num_var]
+#        At = A.transpose(1,2)
+#        PinvA = P_diag_inv.unsqueeze(1)*A
+#        AtA = torch.mm(At[0], PinvA[0]).unsqueeze(0)
+#
+#        # diagonal of AtG-1A
+#        D = (PinvA*A).sum(dim=1).to_dense()
+#
+#        #P_rhs = P_diag_inv.sqrt()*A_rhs
+#        P_rhs = P_diag_inv*A_rhs
+#        #P_rhs = A_rhs
+#        #AtPrhs = -torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)
+#        Atrhs = torch.bmm(At, A_rhs.unsqueeze(2)).squeeze(2)
+#        AtPrhs = -torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)
+#        #AtPrhs = torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)
+#
+#        return AtA, AtPrhs, Atrhs
+#
+#    def forward(self, coeffs, rhs, iv_rhs, steps_list):
+#        #interpolate and fill grids: coeffs, rhs, iv_rhs, steps
+#        #
+#        
+#        #build finest grid data
+#        coeffs = coeffs.reshape(self.bs*self.n_ind_dim, self.grid_size, self.n_orders)
+#        rhs = rhs.reshape(self.bs*self.n_ind_dim, self.grid_size)
+#
+#        if iv_rhs is not None:
+#            #iv_rhs = iv_rhs.reshape(self.bs*self.n_ind_dim, self.n_iv*self.iv_grid_size)
+#            iv_rhs = iv_rhs.reshape(self.bs*self.n_ind_dim, -1)
+#
+#        for i in range(self.n_coord):
+#            #steps_list[i] = steps_list[i].reshape(self.bs*self.n_ind_dim,*self.step_grid_shape[i])
+#            steps_list[i] = steps_list[i].reshape(self.bs*self.n_ind_dim,self.coord_dims[i]-1)
+#
+#
+#        if self.solver_dbl:
+#            coeffs = coeffs.double()
+#            rhs = rhs.double()
+#            iv_rhs = iv_rhs.double() if iv_rhs is not None else None
+#            steps_list = [steps.double() for steps in steps_list]
+#
+#        derivative_constraints = self.pde.build_derivative_tensor(steps_list)
+#        eq_constraints = self.pde.build_equation_tensor(coeffs)
+#
+#        #build coarse grids
+#        #coarse_A_list, coarse_rhs_list = self.mg_solver.fill_coarse_grids(coeffs, 
+#        #                                                        rhs, iv_rhs, steps_list)
+#        A, A_rhs = self.pde.fill_constraints_torch_dense(eq_constraints.to_dense(), rhs, iv_rhs, derivative_constraints.to_dense())
+#        #A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints, rhs, iv_rhs, derivative_constraints)
+#        #B3 = A2.to_dense()
+#        #C2 = A.to_dense()
+#
+#        #b2 = A_rhs.to_dense()
+#        #c2 = A_rhs2.to_dense()
+#
+#        #diff = (B2-C2).pow(2).sum()
+#        #diff2 = (b2-c2).pow(2).sum()
+#        #print('diff ', diff, diff2)
+#        AtA,AtPrhs, At_rhs,A_L,A_U = self.make_AtA(self.pde, A, A_rhs)
+#        #AtA = AtA.to_dense()
+#        #At_rhs = At_rhs.to_dense()
+#
+#        check=False
+#        if check:
+#            import sys
+#            #test = gradcheck(self.qpf, iv_rhs, eps=1e-4, atol=1e-3, rtol=0.001, check_undefined_grad=False, check_batched_grad=True)
+#            #test = gradcheck(self.qpf, (coeffs,rhs,iv_rhs), eps=1e-6, atol=1e-5, rtol=0.001, check_undefined_grad=True, check_batched_grad=True)
+#            #try: 
+#            torch.set_printoptions(precision=4, threshold=1000000, edgeitems=None, linewidth=None, profile=None, sci_mode=None)
+#
+#            test = gradcheck(self.qpf, (AtA, At_rhs), 
+#                            eps=1e-12, atol=1e-4, rtol=0.001, fast_mode=False)
+#            #except Exception as e:
+#            #    string = e.args[0].split('tensor')
+#            #    numerical = string[1].split('analytical')[0]
+#            #    analytical = 'torch.tensor' + string[2]
+#            #    numerical = 'torch.tensor' + numerical
+#
+#            #    #print(e)
+#            #    print(string[0])
+#            #    print('numerical', numerical)
+#            #    print('--------')
+#            #    print('analytical', analytical)
+#            #    d = eval(numerical)
+#            #    a = eval(analytical)
+#            #    print('diff')
+#            #    diff = (d-a).abs()
+#            #    print(diff)
+#            #    print(diff> 0.01)
+#            #    print(diff.max())
+#            #    print(d.shape)
+#            sys.exit(0)
+#
+#
+#        #x = self.qpf(coeffs, rhs, iv_rhs, derivative_constraints)
+#        #x = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints, 
+#        #                 None, None)
+#
+#        #x= solve_direct(AtA, AtPrhs)
+#        x = self.qpf(AtA, AtPrhs)
+#        #x = self.qpf(AtA, At_rhs)
+#
+#        #x,lam = MGS.run(self.pde, eq_constraints, rhs, iv_rhs, derivative_constraints, 
+#        #                 None, None)
+#        #eps = x[:,0]
+#
+#        #print(x)
+#        #self.pde = self.mg_solver.pde_list[-1]
+#        eps =  None #x[:, self.pde.var_set.num_vars:].abs()#.max(dim=1)[0]
+#
+#        #shape: batch, grid, order
+#        u = self.pde.get_solution_reshaped(x)
+#
+#        u = u.reshape(self.bs, self.n_ind_dim, *u.shape[1:])
+#        #shape: batch, step, vars, order
+#        #u = u.permute(0,2,1,3)
+#
+#        u0 = u[:,:,:,0]
+#        #u1 = u[:,:,:,1]
+#        #u2 = u[:,:,:,2]
+#        
+#        #return u0, u1, u2, eps#, steps
+#        return u0, u, eps
+#
