@@ -71,9 +71,9 @@ def solve():
                         n_iv_steps=1, double_ret=True, solver_dbl=True)
 
 
-    t_step_size = 2*np.pi/coord_dims[0]
-    x_step_size = 2*np.pi/coord_dims[1]
-    y_step_size = 2*np.pi/coord_dims[2]
+    t_step_size = 0.1 #2*np.pi/coord_dims[0]
+    x_step_size = 0.1 #2*np.pi/coord_dims[1]
+    y_step_size = 0.1 #2*np.pi/coord_dims[2]
     #self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
     #self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
 
@@ -136,6 +136,7 @@ def solve():
     end = time.time()-start
     print('time', end)
     
+    print('mem after',torch.cuda.mem_get_info(), (torch.cuda.mem_get_info()[1]-torch.cuda.mem_get_info()[0])/1e9)
     #print(eps.abs().max())
     print(u0.shape)
     u0 = u0.reshape(*coord_dims)

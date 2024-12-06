@@ -49,7 +49,7 @@ class MultigridSolver():
         
         interp_modes={1:'linear', 2:'bilinear', 3:'trilinear'}
         #interp_modes={1:'nearest', 2:'nearest', 3:'nearest'}
-        self.align_corners = False
+        self.align_corners = True
         #self.align_corners = None
         self.interp_mode = interp_modes[self.n_coord]
 
@@ -744,8 +744,8 @@ class MultigridSolver():
         #print(idx, self.n_grid, len(As_list))
         if idx ==self.n_grid-2:
             #deltaH = self.solve_coarsest(A_list[self.n_grid-1], rH)
-            deltaH = self.solve_coarsest(L, rH)
-            #deltaH = self.smooth_jacobi(As_list[idx+1], rH, torch.zeros_like(rH), D_list[idx+1], nsteps=200)
+            #deltaH = self.solve_coarsest(L, rH)
+            deltaH = self.smooth_jacobi(As_list[idx+1], rH, torch.zeros_like(rH), D_list[idx+1], nsteps=30)
             #dr, drn = self.get_residual_norm(As_list[self.n_grid-1], deltaH, rH)
             #print('coarsest resid ', dr, drn)
         else:
@@ -774,7 +774,7 @@ class MultigridSolver():
         print('resid plus delta',idx, dr, drn)
 
         #smooth
-        x = self.smooth_jacobi(As, b, x, D, nsteps=50)
+        x = self.smooth_jacobi(As, b, x, D, nsteps=20)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
         #if back:
@@ -867,11 +867,11 @@ class MultigridSolver():
             print(f'fmg step norm: ', r,rr)
 
         #print(self.AtA_act.shape, b_list[0].shape, u.shape)
-        u,_ = CG.gmres(self.AtA_act, b_list[0], u, restart=20, maxiter=800)
+        #u,_ = CG.gmres(self.AtA_act, b_list[0], u, restart=20, maxiter=800)
         #u,_ = CG.cg(self.AtA_act, b_list[0], u, maxiter=100)
 
-        r,rr = self.get_residual_norm(A_list[0], u, b_list[0] )
-        print(f'gmres step norm: ', r,rr)
+        #r,rr = self.get_residual_norm(A_list[0], u, b_list[0] )
+        #print(f'gmres step norm: ', r,rr)
         return u
 
 class MultigridLayer(nn.Module):

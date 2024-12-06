@@ -157,6 +157,7 @@ def apply_M(M, x):
 def apply_MG(MG, MG_args, b):
 
     x = MG.v_cycle_jacobi_start(MG_args[0], [b], MG_args[1],MG_args[2], n_step=1, back=False)
+    #x = MG.full_multigrid_jacobi_start(MG_args[0], [b], MG_args[1],MG_args[2])
     return x
     
 @torch.no_grad()
