@@ -423,8 +423,8 @@ class MultigridSolver():
             pde = self.pde_list[k]
 
             n_orders = len(pde.var_set.mi_list)
-            #new_grad = self.downsample_coeffs(new_grad, old_shape,  new_shape, n_orders)
-            new_grad = self.downsample_grads(gradient, self.coord_dims,  new_shape, n_orders)
+            new_grad = self.downsample_coeffs(new_grad, old_shape,  new_shape, n_orders)
+            #new_grad = self.downsample_grads(gradient, self.coord_dims,  new_shape, n_orders)
             #new_grad = self.downsample_grads(new_grad.clone(), old_shape,  new_shape, n_orders)
             old_shape = new_shape
             new_grad = new_grad.reshape(bs,-1)

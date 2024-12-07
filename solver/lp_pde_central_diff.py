@@ -1117,7 +1117,7 @@ class PDESYSLP(nn.Module):
                                        dtype=self.dtype)
 
         full_A = torch.cat([eq_A, initial_A, derivative_A], dim=0)
-        #full_AtA = torch.mm(full_A.transpose(0,1),full_A)
+        full_AtA = torch.mm(full_A.transpose(0,1),full_A)
 
         print(f'Constraints Shape eq {eq_A.shape}, init {initial_A.shape}, deriv {derivative_A.shape}')
         #print('first ', eq_A.shape, initial_A.shape, derivative_A.shape)
@@ -1128,7 +1128,7 @@ class PDESYSLP(nn.Module):
         #derivative_rhs = torch.tensor(derivative_rhs, dtype=self.dtype, device=self.device)
         derivative_rhs = torch.tensor(derivative_rhs, dtype=self.dtype)
 
-        #self.set_row_col_sorted_indices(full_AtA)
+        self.set_row_col_sorted_indices(full_AtA)
 
 
         #Add batch dim
@@ -1215,79 +1215,79 @@ class PDESYSLP(nn.Module):
 
         #bsmat = torch.sparse_coo_tensor(indices = bindices, values =bvalues, size=bmat.shape)
     
-    #def get_row_col_sorted_indices(self, row, col, num_constraints):
-    #    """ Compute indices sorted by row and column and repeats. Useful for sparse outer product when computing constraint derivatives"""
-    #    indices = np.stack([row, col], axis=0)
+    def get_row_col_sorted_indices(self, row, col, num_constraints):
+        """ Compute indices sorted by row and column and repeats. Useful for sparse outer product when computing constraint derivatives"""
+        indices = np.stack([row, col], axis=0)
 
-    #    row_sorted = indices[:, indices[0,:].argsort()]
-    #    column_sorted = indices[:, indices[1,:].argsort()]
+        row_sorted = indices[:, indices[0,:].argsort()]
+        column_sorted = indices[:, indices[1,:].argsort()]
 
-    #    #_, row_counts = np.unique(row_sorted[0], return_counts=True)
-    #    #_, column_counts = np.unique(column_sorted[1], return_counts=True)
-
-
-    #    row_counts = np.bincount(row_sorted[0], minlength=num_constraints)
-    #    total_vars = self.var_set.num_vars + self.var_set.num_added_eps_vars
-    #    column_counts = np.bincount(column_sorted[1], minlength=total_vars)
-
-    #    row_count = row.shape[0]
-    #    #add batch dimension
-    #    batch_dim = torch.arange(self.bs).repeat_interleave(repeats=row_count).unsqueeze(0)
-
-    #    row_sorted = torch.tensor(row_sorted)
-    #    column_sorted = torch.tensor(column_sorted)
-
-    #    row_sorted = row_sorted.repeat(1, self.bs)
-    #    column_sorted = column_sorted.repeat(1, self.bs)
-
-    #    row_sorted = torch.cat([batch_dim, row_sorted], dim=0)
-    #    column_sorted = torch.cat([batch_dim, column_sorted], dim=0)
-
-    #    #ipdb.set_trace()
-    #    
-    #    return row_sorted, column_sorted, row_counts, column_counts
-
-    #def set_row_col_sorted_indices(self, full_AtA):
-    #    ############## AtA indices
-    #    full_AtA_indices = full_AtA._indices()
-    #    full_AtA_size = full_AtA.shape
-    #    AtA_rows = full_AtA_indices[0]
-    #    AtA_columns = full_AtA_indices[1]
-
-    #    row_sorted, column_sorted, row_counts, column_counts = self.get_row_col_sorted_indices(AtA_rows, 
-    #                                        AtA_columns, 
-    #                                        full_AtA.shape[0])
-
-    #    self.AtA_row_sorted = torch.tensor(row_sorted)
-    #    self.AtA_column_sorted = torch.tensor(column_sorted)
-    #    self.AtA_row_counts = torch.tensor(row_counts)
-    #    self.AtA_column_counts = torch.tensor(column_counts)
-
-    #    ############## derivative indices sorted and counted
-    #    derivative_rows = np.array(self.row_dict[ConstraintType.Derivative])
-    #    derivative_columns = np.array(self.col_dict[ConstraintType.Derivative])
-    #    #row_sorted, column_sorted, row_counts, column_counts = self.get_row_col_sorted_indices(derivative_rows, derivative_columns)
-    #    row_sorted, column_sorted, row_counts, column_counts = self.get_row_col_sorted_indices(derivative_rows, derivative_columns, self.num_added_derivative_constraints)
-    #    
-
-    #    self.derivative_row_sorted = torch.tensor(row_sorted)
-    #    self.derivative_column_sorted = torch.tensor(column_sorted)
-    #    self.derivative_row_counts = torch.tensor(row_counts)
-    #    self.derivative_column_counts = torch.tensor(column_counts)
-    #    ##############
+        #_, row_counts = np.unique(row_sorted[0], return_counts=True)
+        #_, column_counts = np.unique(column_sorted[1], return_counts=True)
 
 
-    #    ###############equation indices sorted and counted
-    #    eq_rows = np.array(self.row_dict[ConstraintType.Equation])
-    #    eq_columns = np.array(self.col_dict[ConstraintType.Equation])
-    #    #row_sorted, column_sorted, row_counts, column_counts = self.get_row_col_sorted_indices(eq_rows, eq_columns)
-    #    row_sorted, column_sorted, row_counts, column_counts = self.get_row_col_sorted_indices(eq_rows, eq_columns, self.num_added_equation_constraints)
+        row_counts = np.bincount(row_sorted[0], minlength=num_constraints)
+        total_vars = self.var_set.num_vars + self.var_set.num_added_eps_vars
+        column_counts = np.bincount(column_sorted[1], minlength=total_vars)
 
-    #    self.eq_row_sorted = torch.tensor(row_sorted)
-    #    self.eq_column_sorted = torch.tensor(column_sorted)
-    #    self.eq_row_counts = torch.tensor(row_counts)
-    #    self.eq_column_counts = torch.tensor(column_counts)
-    #    #################
+        row_count = row.shape[0]
+        #add batch dimension
+        batch_dim = torch.arange(self.bs).repeat_interleave(repeats=row_count).unsqueeze(0)
+
+        row_sorted = torch.tensor(row_sorted)
+        column_sorted = torch.tensor(column_sorted)
+
+        row_sorted = row_sorted.repeat(1, self.bs)
+        column_sorted = column_sorted.repeat(1, self.bs)
+
+        row_sorted = torch.cat([batch_dim, row_sorted], dim=0)
+        column_sorted = torch.cat([batch_dim, column_sorted], dim=0)
+
+        #ipdb.set_trace()
+        
+        return row_sorted, column_sorted, row_counts, column_counts
+
+    def set_row_col_sorted_indices(self, full_AtA):
+        ############## AtA indices
+        full_AtA_indices = full_AtA._indices()
+        full_AtA_size = full_AtA.shape
+        AtA_rows = full_AtA_indices[0]
+        AtA_columns = full_AtA_indices[1]
+
+        row_sorted, column_sorted, row_counts, column_counts = self.get_row_col_sorted_indices(AtA_rows, 
+                                            AtA_columns, 
+                                            full_AtA.shape[0])
+
+        self.AtA_row_sorted = torch.tensor(row_sorted)
+        self.AtA_column_sorted = torch.tensor(column_sorted)
+        self.AtA_row_counts = torch.tensor(row_counts)
+        self.AtA_column_counts = torch.tensor(column_counts)
+
+        ############### derivative indices sorted and counted
+        #derivative_rows = np.array(self.row_dict[ConstraintType.Derivative])
+        #derivative_columns = np.array(self.col_dict[ConstraintType.Derivative])
+        ##row_sorted, column_sorted, row_counts, column_counts = self.get_row_col_sorted_indices(derivative_rows, derivative_columns)
+        #row_sorted, column_sorted, row_counts, column_counts = self.get_row_col_sorted_indices(derivative_rows, derivative_columns, self.num_added_derivative_constraints)
+        
+
+        #self.derivative_row_sorted = torch.tensor(row_sorted)
+        #self.derivative_column_sorted = torch.tensor(column_sorted)
+        #self.derivative_row_counts = torch.tensor(row_counts)
+        #self.derivative_column_counts = torch.tensor(column_counts)
+        ###############
+
+
+        ################equation indices sorted and counted
+        #eq_rows = np.array(self.row_dict[ConstraintType.Equation])
+        #eq_columns = np.array(self.col_dict[ConstraintType.Equation])
+        ##row_sorted, column_sorted, row_counts, column_counts = self.get_row_col_sorted_indices(eq_rows, eq_columns)
+        #row_sorted, column_sorted, row_counts, column_counts = self.get_row_col_sorted_indices(eq_rows, eq_columns, self.num_added_equation_constraints)
+
+        #self.eq_row_sorted = torch.tensor(row_sorted)
+        #self.eq_column_sorted = torch.tensor(column_sorted)
+        #self.eq_row_counts = torch.tensor(row_counts)
+        #self.eq_column_counts = torch.tensor(column_counts)
+        ##################
 
     def expand_steps(self, coord, steps):
         expand_shape_step = self.step_grid_expand_shape[coord]
@@ -1726,52 +1726,52 @@ class PDESYSLP(nn.Module):
         self.fill_constraints_torch(coeffs, rhs, iv_rhs, derivative_A)
         #self.fill_constraints_torch_test(coeffs, rhs, iv_rhs, derivative_A)
 
-    #def sparse_AtA_grad(self, _x, _y):
-    #    """ sparse x y' for AtA"""
-    #    #dx = _dx[:,0:n_step].reshape(bs, n_step,1)
-    #    #dA = dx*nu.reshape(bs, 1,num_coeffs)
-    #    #correct x, y shapes
+    def sparse_AtA_grad(self, _x, _y):
+        """ sparse x y' for AtA"""
+        #dx = _dx[:,0:n_step].reshape(bs, n_step,1)
+        #dA = dx*nu.reshape(bs, 1,num_coeffs)
+        #correct x, y shapes
 
-    #    b = _x.shape[0]
-    #    #copy x across columns. copy y across rows
-    #    #y = _y[:, self.num_added_equation_constraints+self.num_added_initial_constraints: self.num_added_equation_constraints+self.num_added_initial_constraints+self.num_added_derivative_constraints]
-    #    #x = _x[:, :self.var_set.num_vars+self.var_set.num_added_eps_vars]
+        b = _x.shape[0]
+        #copy x across columns. copy y across rows
+        #y = _y[:, self.num_added_equation_constraints+self.num_added_initial_constraints: self.num_added_equation_constraints+self.num_added_initial_constraints+self.num_added_derivative_constraints]
+        #x = _x[:, :self.var_set.num_vars+self.var_set.num_added_eps_vars]
 
 
-    #    #ipdb.set_trace()
-    #    ####### dense
-    #    #x = x.reshape(b, 1, -1)
-    #    #y = y.reshape(b, -1, 1)
+        #ipdb.set_trace()
+        ####### dense
+        #x = x.reshape(b, 1, -1)
+        #y = y.reshape(b, -1, 1)
 
-    #    #dA = y*x#.reshape(b, -1, 1)
-    #    #return dA
-    #    ##########
+        #dA = y*x#.reshape(b, -1, 1)
+        #return dA
+        ##########
 
-    #    x = _x.reshape(b,-1)
-    #    y = _y.reshape(b,-1)
+        x = _x.reshape(b,-1)
+        y = _y.reshape(b,-1)
 
-    #    self.AtA_row_counts = self.AtA_row_counts.to(x.device)
-    #    self.AtA_column_counts = self.AtA_column_counts.to(x.device)
+        self.AtA_row_counts = self.AtA_row_counts.to(x.device)
+        self.AtA_column_counts = self.AtA_column_counts.to(x.device)
 
-    #    y_repeat = torch.repeat_interleave(y, self.AtA_row_counts, dim=-1)
-    #    x_repeat = torch.repeat_interleave(x, self.AtA_column_counts, dim=-1)
+        y_repeat = torch.repeat_interleave(y, self.AtA_row_counts, dim=-1)
+        x_repeat = torch.repeat_interleave(x, self.AtA_column_counts, dim=-1)
 
-    #    x_repeat = x_repeat.reshape(-1)
-    #    y_repeat = y_repeat.reshape(-1)
+        x_repeat = x_repeat.reshape(-1)
+        y_repeat = y_repeat.reshape(-1)
 
-    #    X = torch.sparse_coo_tensor(self.AtA_row_sorted, x_repeat, 
-    #                                   #size=(self.num_added_derivative_constraints, self.num_vars), 
-    #                                   dtype=self.dtype, device=x.device)
+        X = torch.sparse_coo_tensor(self.AtA_row_sorted, x_repeat, 
+                                       #size=(self.num_added_derivative_constraints, self.num_vars), 
+                                       dtype=self.dtype, device=x.device)
 
-    #    Y = torch.sparse_coo_tensor(self.AtA_column_sorted, y_repeat, 
-    #                                   #size=(self.num_added_derivative_constraints, self.num_vars), 
-    #                                   dtype=self.dtype, device=x.device)
+        Y = torch.sparse_coo_tensor(self.AtA_column_sorted, y_repeat, 
+                                       #size=(self.num_added_derivative_constraints, self.num_vars), 
+                                       dtype=self.dtype, device=x.device)
 
-    #    #ipdb.set_trace()
+        #ipdb.set_trace()
 
-    #    dD = X*Y
+        dD = X*Y
 
-    #    return dD
+        return dD
 
     #def sparse_grad_derivative_constraint(self, _x, _y):
     #    """ sparse x y' for derivative constraint"""

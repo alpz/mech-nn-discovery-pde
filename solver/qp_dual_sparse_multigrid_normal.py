@@ -393,7 +393,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             mg_args = [AtA_list, D_list, L]
             dnu,_ = cg.gmres(mg.AtA_act, grad_list[0],x0=torch.zeros_like(grad_list[0]), 
-                           MG=mg, MG_args=mg_args, restart=20, maxiter=100)
+                           MG=mg, MG_args=mg_args, restart=30, maxiter=100)
 
             #dnu = dnu.reshape(1, 8*8,5).permute(0,2,1).reshape(1,5,8,8)
             #dnu = F.interpolate(dnu, (16,16), mode='bilinear')
