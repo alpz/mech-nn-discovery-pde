@@ -318,7 +318,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
         #def forward(ctx, coeffs, rhs, iv_rhs):
             #bs = coeffs.shape[0]
             #bs = AtA.shape[0]
-            print(AtA_act, AtA_act.shape)
+            #print(AtA_act, AtA_act.shape)
             n_coarse_grid = len(coarse_A_list)
             #ode.build_ode(coeffs, rhs, iv_rhs, derivative_A)
             #At, ub = ode.fill_block_constraints_torch(eq_A, rhs, iv_rhs, derivative_A)
@@ -363,6 +363,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             ctx.AtA_list = AtA_list
             ctx.AtA_act = AtA_act
             ctx.D_list = D_list
+            #ctx.rhs_list = rhs_list
             ctx.L = L
             ctx.save_for_backward(x, L)
             
@@ -379,6 +380,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             AtA_list = ctx.AtA_list
             AtA_act = ctx.AtA_act
             D_list = ctx.D_list
+            #rhs_list = ctx.rhs_list
             L = ctx.L
 
             #print(dl_dzhat)
@@ -391,12 +393,14 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #dnu = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L)
             #dnu = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
 
+            #dnu = mg.full_multigrid_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
+
             #AtA0 = mg.get_AtA_dense(AtA_list[0])
             #dnu = solve_direct(AtA0, grad_list[0])
 
             mg_args = [AtA_list, D_list, L]
             dnu,_ = cg.gmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
-                           MG=mg, MG_args=mg_args, restart=100, maxiter=100, back=True)
+                           MG=mg, MG_args=mg_args, restart=100, maxiter=200, back=True)
 
             #dnu = dnu.reshape(1, 8*8,5).permute(0,2,1).reshape(1,5,8,8)
             #dnu = F.interpolate(dnu, (16,16), mode='bilinear')
@@ -415,18 +419,19 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #dnu = -dnu
 
             dQ1 = pde.sparse_AtA_grad(dnu.clone(), _x.clone())
-            print('nnz1 ', dQ1._nnz(), AtA_act._nnz())
+            #print('nnz1 ', dQ1._nnz(), AtA_act._nnz())
             dQ2 = pde.sparse_AtA_grad(_x.clone(), dnu.clone())
-            print('nnz2 ', dQ2._nnz(), AtA_act._nnz())
+            #print('nnz2 ', dQ2._nnz(), AtA_act._nnz())
 
 
+            #adding sparse matrices directly doubles the nnz.
             dQ_values = (dQ1._values() + dQ2._values())/2
             #dQ = dQ.coalesce()
 
             dQ = torch.sparse_coo_tensor(AtA_act.indices(), dQ_values, 
                                        #size=(self.num_added_derivative_constraints, self.num_vars), 
                                        dtype=AtA_act.dtype, device=AtA_act.device)
-            print('nnz ', dQ._nnz(), AtA_act._nnz())
+            #print('nnz ', dQ._nnz(), AtA_act._nnz())
 
             #dQ = dnu.unsqueeze(1)*_x.unsqueeze(2)
             #dQ = dQ + dnu.unsqueeze(2)*_x.unsqueeze(1)

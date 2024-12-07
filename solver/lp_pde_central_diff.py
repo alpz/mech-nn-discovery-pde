@@ -1774,7 +1774,7 @@ class PDESYSLP(nn.Module):
                                        #size=(self.num_added_derivative_constraints, self.num_vars), 
                                        dtype=self.dtype, device=x.device)
 
-        print('outer', X.shape, Y.shape)
+        #print('outer', X.shape, Y.shape)
         #ipdb.set_trace()
 
         dD = X*Y

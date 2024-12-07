@@ -60,7 +60,7 @@ class SineDataModule(pl.LightningDataModule):
 class Method(pl.LightningModule):
     def __init__(self):
         super().__init__()
-        self.learning_rate = 0.0001
+        self.learning_rate = 0.001
         self.model = Sine(device=self.device)
         self.model = self.model.double()
         
@@ -81,6 +81,7 @@ class Method(pl.LightningModule):
 
         #y = y.reshape((32,32))
         y = y.reshape((32,32))
+        #y = y.reshape((64,64))
         #y = y.reshape((16,16))
         #y = y.reshape((6,6))
         #y = y.reshape((4*128,4*128))
@@ -138,6 +139,7 @@ class Sine(nn.Module):
         #self.coord_dims = (64,32)
         #self.coord_dims = (10,15)
         self.coord_dims = (32,32)
+        #self.coord_dims = (64,64)
         #self.coord_dims = (16,16)
         #self.coord_dims = (16,16)
         #self.coord_dims = (48,48)
@@ -228,12 +230,12 @@ class Sine(nn.Module):
         #self.steps0 = torch.logit(self.step_size*torch.ones(1,self.pde.step_grid_shape[0][0],1))
         self.steps0 = torch.logit(self.step_size*torch.ones(1,self.coord_dims[0]-1))
         #self.steps0 = torch.logit(self.step_size*torch.ones(1,1,1))
-        #self.steps0 = nn.Parameter(self.steps0)
+        self.steps0 = nn.Parameter(self.steps0)
 
         self.steps1 = torch.logit(self.step_size*torch.ones(1,self.coord_dims[1]-1))
         #self.steps1 = torch.logit(self.step_size*torch.ones(1,*self.pde.step_grid_shape[1]))
         #self.steps1 = torch.logit(self.step_size*torch.ones(1,1,1))
-        #self.steps1 = nn.Parameter(self.steps1)
+        self.steps1 = nn.Parameter(self.steps1)
 
         self._dfnn = nn.Sequential(
             #nn.ReLU(),

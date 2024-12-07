@@ -229,18 +229,18 @@ class MultigridSolver():
         #_P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*config.ds#*us
         #_P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')#/ds#/config.ds# +ds
 
-        _P_diag = torch.ones(num_ineq, dtype=A.dtype, device=A.device)*2#*ds #config.ds#*us
+        _P_diag = torch.ones(num_ineq, dtype=A.dtype, device=A.device)*2 #ds #config.ds#*us
         _P_ones = torch.ones(num_eq, dtype=A.dtype, device=A.device)#/ds#/config.ds# +ds
         P_diag = torch.cat([_P_ones, _P_diag])#.to(A.device)
         P_diag_inv = 1/P_diag
 
         #A = A.to_dense()#[:, :, :num_var]
         At = A.transpose(1,2)
-        if save:
-            At.register_hook(lambda grad: print("At grad"))
+        #if save:
+        #    At.register_hook(lambda grad: print("At grad"))
         PinvA = P_diag_inv.unsqueeze(1)*A
-        if save: 
-            PinvA.register_hook(lambda grad: print("Pinv grad"))
+        #if save: 
+        #    PinvA.register_hook(lambda grad: print("Pinv grad"))
         #PinvA = A
         #PinvA = A
 
@@ -257,8 +257,8 @@ class MultigridSolver():
                             values=PinvA.values(), size=PinvA.size()[1:])
 
         AtA_act = torch.sparse.mm(Atn, PinvAn)#.unsqueeze(0)
-        if save: 
-            AtA_act.register_hook(lambda grad: print("Ataact grad"))
+        #if save: 
+        #    AtA_act.register_hook(lambda grad: print("Ataact grad"))
 
         AtA = [A, P_diag]
 
@@ -675,7 +675,7 @@ class MultigridSolver():
         """Weighted Jacobi iteration"""
         Dinv = 1/D
         if back:
-            w=0.2 #config.jacobi_w
+            w=0.1 #config.jacobi_w
         else:
             w=0.4
         #A = As[0]
@@ -717,6 +717,7 @@ class MultigridSolver():
         r = b - self.mult_AtA(As, x) #torch.bmm(A, x.unsqueeze(2)).squeeze(2)
         d = b.pow(2).sum(dim=-1).sqrt()
 
+        print('normd', d)
         rnorm = r.pow(2).sum(dim=-1).sqrt()
         rrnorm = rnorm/d
 
@@ -895,12 +896,12 @@ class MultigridSolver():
         #x = x.to_dense()
         return x#.to_dense()
 
-    def full_multigrid_jacobi_start(self, A_list, b_list, D_list,L):
+    def full_multigrid_jacobi_start(self, A_list, b_list, D_list,L, back=False):
         u = self.solve_coarsest(L, b_list[-1])
         for idx in reversed(range(self.n_grid-1)):
             print('fmg idx', idx)
             u = self.prolong(idx+1, u)
-            u = self.v_cycle_jacobi(idx, A_list, b_list[idx], u, D_list,L)
+            u = self.v_cycle_jacobi(idx, A_list, b_list[idx], u, D_list,L, back=back)
 
             r,rr = self.get_residual_norm(A_list[idx], u, b_list[idx] )
             print(f'fmg step norm: ', r,rr)
