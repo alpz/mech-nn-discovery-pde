@@ -154,15 +154,15 @@ def apply_M(M, x):
     mx = mx.to(device)
     return mx
 
-def apply_MG(MG, MG_args, b):
+def apply_MG(MG, MG_args, b, back=False):
 
-    x = MG.v_cycle_jacobi_start(MG_args[0], [b], MG_args[1],MG_args[2], n_step=1, back=False)
+    x = MG.v_cycle_jacobi_start(MG_args[0], [b], MG_args[1],MG_args[2], n_step=1, back=back)
     #x = MG.full_multigrid_jacobi_start(MG_args[0], [b], MG_args[1],MG_args[2])
     return x
     
 @torch.no_grad()
 def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None, MG=None, MG_args=None,
-          callback=None, atol=1e-5, callback_type=None):
+          callback=None, atol=1e-5, callback_type=None, back=False):
     """Uses Generalized Minimal RESidual iteration to solve ``Ax = b``.
 
     Args:
@@ -259,7 +259,7 @@ def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None, MG=None, 
             #mx = M.solve(x[0].cpu().numpy())
             #mx = torch.tensor(mx).unsqueeze(0)
             #mx = mx.to(x.device)
-            mx = apply_MG(MG, MG_args, mx)
+            mx = apply_MG(MG, MG_args, mx, back=back)
         #r = b - matvec(mx)
         #r = b - torch.mm(A, mx.unsqueeze(1)).squeeze(1)
         #print(A, mx.shape)
@@ -287,8 +287,8 @@ def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None, MG=None, 
                 #z = torch.tensor(z).unsqueeze(0)
                 #z = z.to(x.device)
                 #z = apply_M(M, z)
-                z = apply_MG(MG, MG_args, z)
-                Z[:, :, j] = z.clone()
+                z = apply_MG(MG, MG_args, z, back=back)
+                #Z[:, :, j] = z.clone()
             #u = matvec(z)
             #u = torch.mm(A, z.unsqueeze(1)).squeeze(1)
             u = torch.bmm(A, z.unsqueeze(2)).squeeze(2)
