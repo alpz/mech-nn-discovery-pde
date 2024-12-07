@@ -39,8 +39,8 @@ cuda=True
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-coord_dims = (32,32,32)
-#coord_dims = (64,64,64)
+#coord_dims = (32,32,32)
+coord_dims = (64,64,64)
 def solve():
     bs = 1
     #coord_dims = (16,16,16)
@@ -67,7 +67,7 @@ def solve():
     #                    init_index_mi_list=iv_list,  n_iv_steps=1, double_ret=True, solver_dbl=True, device='gpu:0')
 
     pde = MultigridLayer(bs=bs, coord_dims=coord_dims, order=2, n_ind_dim=1, n_iv=1, 
-                        init_index_mi_list=iv_list, n_grid=3, 
+                        init_index_mi_list=iv_list, n_grid=4, 
                         n_iv_steps=1, double_ret=True, solver_dbl=True)
 
 

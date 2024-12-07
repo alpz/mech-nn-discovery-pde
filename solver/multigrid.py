@@ -262,7 +262,7 @@ class MultigridSolver():
         #AtPrhs = -torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)
         #Atrhs = torch.bmm(At, A_rhs.unsqueeze(2)).squeeze(2)
         #print('cuda al', At.shape, P_rhs.shape )
-        AtPrhs = -torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)
+        AtPrhs = -torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2).to_dense()
 
         #L,U = self.get_tril(AtA)
         L,U = None, None
@@ -344,6 +344,12 @@ class MultigridSolver():
         #print('ds coeffs ', coeffs.shape, new_shape)
         coeffs = F.interpolate(coeffs, size=new_shape, mode='bilinear', 
                                align_corners=self.align_corners)
+
+        #coeffs = F.interpolate(coeffs, size=new_shape, mode='bilinear', 
+        #                       align_corners=True)
+
+        #coeffs = F.interpolate(coeffs, size=new_shape, mode='nearest', 
+        #                       align_corners=None)
         m = old_shape[0]
         #print('ols s ', m)
         #coeffs = coeffs.reshape(self.bs*self.n_ind_dim,n_orders,m//2,2,m//2,2)
@@ -417,8 +423,8 @@ class MultigridSolver():
             pde = self.pde_list[k]
 
             n_orders = len(pde.var_set.mi_list)
-            #new_grad = self.downsample_coeffs(new_grad, self.coord_dims,  new_shape, n_orders)
-            new_grad = self.downsample_grads(new_grad, self.coord_dims,  new_shape, n_orders)
+            #new_grad = self.downsample_coeffs(new_grad, old_shape,  new_shape, n_orders)
+            new_grad = self.downsample_grads(gradient, self.coord_dims,  new_shape, n_orders)
             #new_grad = self.downsample_grads(new_grad.clone(), old_shape,  new_shape, n_orders)
             old_shape = new_shape
             new_grad = new_grad.reshape(bs,-1)
@@ -639,7 +645,7 @@ class MultigridSolver():
     def smooth_jacobi(self, As, b, x, D, nsteps=200, w=0.55):
         """Weighted Jacobi iteration"""
         Dinv = 1/D
-        w=0.3 #config.jacobi_w
+        w=0.5 #config.jacobi_w
         #A = As[0]
 
         #I = torch.sparse.spdiags(torch.ones(A.shape[2]), torch.tensor([0]), (A.shape[2], A.shape[2]), 
@@ -724,7 +730,7 @@ class MultigridSolver():
         #print('resid before smooth',idx, dr, drn)
         ##pre-smooth
         ##if back:
-        x = self.smooth_jacobi(As, b, x, D, nsteps=5)
+        x = self.smooth_jacobi(As, b, x, D, nsteps=10)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
         #dr, drn = self.get_residual_norm(As, x, b)
@@ -745,8 +751,8 @@ class MultigridSolver():
         #print(idx, self.n_grid, len(As_list))
         if idx ==self.n_grid-2:
             #deltaH = self.solve_coarsest(A_list[self.n_grid-1], rH)
-            deltaH = self.solve_coarsest(L, rH)
-            #deltaH = self.smooth_jacobi(As_list[idx+1], rH, torch.zeros_like(rH), D_list[idx+1], nsteps=10)
+            #deltaH = self.solve_coarsest(L, rH)
+            deltaH = self.smooth_jacobi(As_list[idx+1], rH, torch.zeros_like(rH), D_list[idx+1], nsteps=10)
             #dr, drn = self.get_residual_norm(As_list[self.n_grid-1], deltaH, rH)
             #print('coarsest resid ', dr, drn)
         else:
@@ -775,7 +781,7 @@ class MultigridSolver():
         #print('resid plus delta',idx, dr, drn)
 
         #smooth
-        x = self.smooth_jacobi(As, b, x, D, nsteps=5)
+        x = self.smooth_jacobi(As, b, x, D, nsteps=10)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
         #if back:
@@ -1004,9 +1010,9 @@ class MultigridLayer(nn.Module):
         #                 coarse_A_list, coarse_rhs_list)
 
         #x,lam = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints, 
-        #x = self.qpf(AtA, AtPrhs, D, None, None, coarse_A_list, coarse_rhs_list)
+        x = self.qpf(self.mg_solver.AtA_act, AtPrhs, AtA, D, None, None, coarse_A_list, coarse_rhs_list)
         #x = MGS.solve_mg(self.pde, self.mg_solver, AtA, AtPrhs, D, coarse_A_list, coarse_rhs_list)
-        x = MGS.solve_mg_gmres(self.pde, self.mg_solver, AtA, AtPrhs, D, coarse_A_list, coarse_rhs_list)
+        #x = MGS.solve_mg_gmres(self.pde, self.mg_solver, AtA, AtPrhs, D, coarse_A_list, coarse_rhs_list)
         #x = MGS.solve_mg_gs(self.pde, self.mg_solver, AtA, AtPrhs, D, A_L,A_U, coarse_A_list, coarse_rhs_list)
 
 

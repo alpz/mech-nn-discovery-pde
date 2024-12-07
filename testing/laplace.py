@@ -128,8 +128,8 @@ def solve():
     #print(u0.shape)
     u0 = u0.reshape(bs,*coord_dims)
 
-    #l = u0.sum()
-    #l.backward()
+    l = u0.mean()
+    l.backward()
 
     print('mem after',torch.cuda.mem_get_info(), (torch.cuda.mem_get_info()[1]-torch.cuda.mem_get_info()[0])/1e9)
     #u0 = u0.reshape(1,8,8)

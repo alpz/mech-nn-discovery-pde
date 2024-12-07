@@ -269,7 +269,6 @@ def solve_mg(pde, mg, AtA, At_rhs, D, coarse_A_list, coarse_rhs_list ):
 
     return x
 
-
 def solve_mg_gmres(pde, mg, AtA, At_rhs, D, coarse_A_list, coarse_rhs_list ):
     AtA_list, rhs_list, D_list,_,_ = mg.make_coarse_AtA_matrices(coarse_A_list, 
                                                                 coarse_rhs_list)
@@ -278,7 +277,7 @@ def solve_mg_gmres(pde, mg, AtA, At_rhs, D, coarse_A_list, coarse_rhs_list ):
     D_list = [D] + D_list
 
     #negate
-    rhs_list  = [rhs for rhs in rhs_list]
+    rhs_list  = [-rhs for rhs in rhs_list]
 
     #make coarsest dense. TODO: use torch.spsolve
     #AtA_list[-1]= AtA_list[-1].to_dense()
@@ -315,7 +314,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
         #perm = None
 
         @staticmethod
-        def forward(ctx, AtA, At_rhs, D, A_L, A_U, coarse_A_list, coarse_rhs_list ):
+        def forward(ctx, AtA_act, At_rhs, AtA, D, A_L, A_U, coarse_A_list, coarse_rhs_list ):
         #def forward(ctx, coeffs, rhs, iv_rhs):
             #bs = coeffs.shape[0]
             #bs = AtA.shape[0]
@@ -329,49 +328,43 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             AtA_list, rhs_list, D_list,L_list,U_list = mg.make_coarse_AtA_matrices(coarse_A_list, 
                                                                      coarse_rhs_list)
+
             AtA_list = [AtA] + AtA_list
             rhs_list = [At_rhs] + rhs_list
             D_list = [D] + D_list
-            L_list = [A_L] + L_list
-            U_list = [A_U] + U_list
 
             #negate
             rhs_list  = [-rhs for rhs in rhs_list]
 
-            #make coarsest dense. TODO: use torch.spsolve
-            #AtA_list[-1]= AtA_list[-1].to_dense()
-            AtA_coarsest = mg.get_AtA_dense(AtA_list[-1])
 
+            AtA_coarsest = mg.get_AtA_dense(AtA_list[-1])
+            #L= mg.factor_coarsest(AtA_list[-1])
             L= mg.factor_coarsest(AtA_coarsest)
 
+            #L= mg.factor_coarsest(AtA_list[-1])
+
             #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
-            x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
+            #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
 
-            nr, nrr = mg.get_residual_norm(AtA_list[0],x, rhs_list[0])
-            print('forward', nr, nrr)
+            #print('solving direct ata')
+            #x = solve_direct_AtA(AtA_list[0], rhs_list[0])
+            #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
+            mg_args = [AtA_list, D_list, L]
 
-            ##shape: batch, grid, order
-            #x = pde.get_solution_reshaped(x)
+            x,_ = cg.gmres(mg.AtA_act, rhs_list[0],x0=torch.zeros_like(rhs_list[0]), 
+                           MG=mg, MG_args=mg_args, restart=20, maxiter=100)
 
-            #x = x.reshape(self.bs, self.n_ind_dim, *u.shape[1:])
-            ##shape: batch, step, vars, order
-            ##u = u.permute(0,2,1,3)
+            r,rr = mg.get_residual_norm(AtA_list[0], x, rhs_list[0])
+            print(f'gmres step norm: ', r,rr)
+                                                                            
 
-            #u0 = u[:,:,:,0]
-
-            #x = pde.get_solution_reshaped(x)
-            #x = x.reshape(1,*x.shape[1:])
-            ##shape: batch, step, vars, order
-            ##u = u.permute(0,2,1,3)
-
-            #x[:,:,1:] = 0.
-            #x = x.reshape(1, -1)
 
             ctx.AtA_list = AtA_list
             ctx.D_list = D_list
             ctx.L = L
             ctx.save_for_backward(x, L)
             
+            print('qpf', x.shape)
             #if not double_ret:
             #    x = x.float()
             #print(lam)
@@ -385,37 +378,22 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             D_list = ctx.D_list
             L = ctx.L
 
-            print(dl_dzhat)
+            #print(dl_dzhat)
             ##shape: batch, grid, order
-            #dl_dzhat = pde.get_solution_reshaped(dl_dzhat)
-
-            #dl_dzhat = dl_dzhat.reshape(1,*dl_dzhat.shape[1:])
-            ##shape: batch, step, vars, order
-            #ipdb.set_trace()
-            ##u = u.permute(0,2,1,3)
-
-            #dl_dzhat[:,:,1:] = 0.
-            #dl_dzhat = dl_dzhat.reshape(1, -1)
-
-            #At = A.transpose(1,2)
-            #n = A.shape[1]
-            #m = A.shape[2]
-            #At = A.transpose(1,2)
-            
-            #bs = dl_dzhat.shape[0]
-            #m = pde.num_constraints
-
-            #z = torch.zeros(bs, m, device=dl_dzhat.device).type_as(_x)
-            #rhs = dl_dzhat #torch.cat([-dl_dzhat, z], dim=-1)
-            #dl_dzhat = -dl_dzhat
 
             coarse_grads = mg.downsample_grad(dl_dzhat.clone())
             grad_list = [dl_dzhat.clone()] + coarse_grads
             #grad_list =  [-g for g in grad_list]
             
             #dnu = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L)
-            dnu = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
-            #dnu = solve_direct(AtA_list[0], grad_list[0])
+            #dnu = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
+
+            #AtA0 = mg.get_AtA_dense(AtA_list[0])
+            #dnu = solve_direct(AtA0, grad_list[0])
+
+            mg_args = [AtA_list, D_list, L]
+            dnu,_ = cg.gmres(mg.AtA_act, grad_list[0],x0=torch.zeros_like(grad_list[0]), 
+                           MG=mg, MG_args=mg_args, restart=20, maxiter=100)
 
             #dnu = dnu.reshape(1, 8*8,5).permute(0,2,1).reshape(1,5,8,8)
             #dnu = F.interpolate(dnu, (16,16), mode='bilinear')
@@ -432,91 +410,18 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #_dx, _dnu = -dx,-dnu
 
             dnu = -dnu
-            dQ = pde.sparse_AtA_grad(dnu, _x)
-            dQ = dQ + pde.sparse_AtA_grad(_x, dnu)
+
+            #dQ = pde.sparse_AtA_grad(dnu, _x)
+            #dQ = dQ + pde.sparse_AtA_grad(_x, dnu)
+            #dQ = dQ/2
+
+            dQ = dnu.unsqueeze(1)*_x.unsqueeze(2)
+            dQ = dQ + dnu.unsqueeze(2)*_x.unsqueeze(1)
             dQ = dQ/2
 
-            dq = dnu
+            dq = dnu.to_dense()
 
-            #_dx, _dnu = dx,dnu
-
-            ##rhs = -dl_dzhat
-            #rhs = P_diag_inv*rhs
-            #rhs = torch.bmm(A, rhs.unsqueeze(2))
-            ##TODO rhs is zero upto here. remove the above
-            #rhs = rhs.squeeze(2) 
-
-            ##dnu, info = cg_matvec([A, P_diag_inv, At], rhs, maxiter=16000)
-
-            ##print('back', info[1], info[2], dnu.shape)
-            ####### dense
-            #dnu = torch.cholesky_solve(rhs.unsqueeze(2), L)
-            #dnu = dnu.squeeze(2)
-            #######
-
-            #dx = dnu.unsqueeze(2)
-            #dx = torch.bmm(At, dx)
-            #dx = P_diag_inv*(dx.squeeze(2)- dl_dzhat ) 
-
-
-            ####### check
-            #G = torch.diag(1/P_diag_inv[0]).type_as(A)
-            #Z = torch.zeros((A.shape[1], A.shape[1])).type_as(A)
-
-            #K = torch.cat ([G, At[0]], dim=1)
-            #K2 = torch.cat([A[0], Z], dim=1)
-            #K = torch.cat([K,K2], dim=0)
-            #sol = torch.cat([dx[0], dnu[0]], dim=0)
-            #msol = torch.mm(K, sol.unsqueeze(1)).squeeze()
-
-            #z = torch.zeros(A.shape[1]).type_as(A)
-            #t = torch.cat([dl_dzhat[0], z])
-
-            #diff = (msol - t).pow(2).sum()
-            #print('grad ', diff)
-            ###############
-            
-            #_dx = dx
-            #_dnu = dnu
-
-            #db = _dnu[:, :pde.num_added_equation_constraints] #torch.tensor(-dnu.squeeze())
-            #db = -db.squeeze(-1) #.reshape(bs,n_step*ode.n_equations)
-            ##div_rhs = torch.tensor(div_rhs)
-            
-            ##dA = dA.reshape(bs,n_step,t_vars, order+1)
-
-            #if pde.n_iv == 0:
-            #    div_rhs = None
-            #else:
-            #    #div_rhs = _dx[:, n_step*ode.n_equations:(n_step+n_iv)*ode.n_equations].squeeze(2)
-            #    #div_rhs = _dx[:, ode.num_added_equation_constraints:ode.num_added_equation_constraints + ode.num_added_initial_constraints]#.squeeze(2)
-            #    div_rhs = _dnu[:, pde.num_added_equation_constraints:pde.num_added_equation_constraints + pde.num_added_initial_constraints]#.squeeze(2)
-            #    div_rhs = -div_rhs#.reshape(bs,n_iv*ode.n_equations)
-            
-
-            ##ipdb.set_trace()
-            ## step gradient
-            ##dD = pde.sparse_grad_derivative_constraint(_dx,_y)
-            ##dD = dD + pde.sparse_grad_derivative_constraint(_x,_dnu)
-
-            #dD = pde.sparse_grad_derivative_constraint(_y, _dx)
-            #dD = dD + pde.sparse_grad_derivative_constraint(_dnu, _x)
-
-            ## eq grad
-            ##dA = pde.sparse_grad_eq_constraint(_dx,_y)
-            ##dA = dA + pde.sparse_grad_eq_constraint(_x,_dnu)
-
-            #dA = pde.sparse_grad_eq_constraint(_y, _dx)
-            #dA = dA + pde.sparse_grad_eq_constraint(_dnu, _x)
-
-            #if not double_ret:
-            #    dA = dA.float()
-            #    db =db.float()
-            #    div_rhs = div_rhs.float() if div_rhs is not None else None
-            #    dD = dD.float()
-            
-            #print(dA.abs().mean(), dA.abs().max())
-            #return dA, db,div_rhs, dD, None, None
-            return dQ, dq,None, None, None
+            #return dQ, dq,None, None, None,None,None
+            return dQ, dq,None,None, None, None,None,None
 
     return QPFunctionFn.apply

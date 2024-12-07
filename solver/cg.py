@@ -235,6 +235,7 @@ def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None, MG=None, 
 
     #V = torch.empty((n, restart), dtype=A.dtype, order='F')
     V = torch.empty((bs, n, restart), dtype=A.dtype, device=x.device)
+    Z = torch.empty((bs, n, restart), dtype=A.dtype, device=x.device)
     #H = torch.zeros((restart+1, restart), dtype=A.dtype, order='F')
     H = torch.zeros((bs, restart+1, restart), dtype=A.dtype, device=x.device)
     #e = np.zeros((restart+1,), dtype=A.dtype)
@@ -287,6 +288,7 @@ def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None, MG=None, 
                 #z = z.to(x.device)
                 #z = apply_M(M, z)
                 z = apply_MG(MG, MG_args, z)
+                Z[:, :, j] = z.clone()
             #u = matvec(z)
             #u = torch.mm(A, z.unsqueeze(1)).squeeze(1)
             u = torch.bmm(A, z.unsqueeze(2)).squeeze(2)
@@ -305,7 +307,9 @@ def gmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None, MG=None, 
         #y = cupy.array(ret[0])
         y = (ret[0].squeeze(2))
         #x += V @ y
+        #x = x + torch.bmm(V, y.unsqueeze(2)).squeeze(2)
         x = x + torch.bmm(V, y.unsqueeze(2)).squeeze(2)
+        #x = mx + torch.bmm(Z, y.unsqueeze(2)).squeeze(2)
         iters += restart
 
     #info = 0
