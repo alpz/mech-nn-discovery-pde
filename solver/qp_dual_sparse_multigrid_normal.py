@@ -352,7 +352,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             mg_args = [AtA_list, D_list, L]
 
             x,_ = cg.gmres(mg.AtA_act, rhs_list[0],x0=torch.zeros_like(rhs_list[0]), 
-                           MG=mg, MG_args=mg_args, restart=20, maxiter=100)
+                           MG=mg, MG_args=mg_args, restart=30, maxiter=100)
 
             r,rr = mg.get_residual_norm(AtA_list[0], x, rhs_list[0])
             print(f'gmres step norm: ', r,rr)

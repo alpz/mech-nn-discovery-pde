@@ -229,7 +229,7 @@ class MultigridSolver():
         #_P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*config.ds#*us
         #_P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')#/ds#/config.ds# +ds
 
-        _P_diag = torch.ones(num_ineq, dtype=A.dtype, device=A.device)*ds #config.ds#*us
+        _P_diag = torch.ones(num_ineq, dtype=A.dtype, device=A.device)*2#*ds #config.ds#*us
         _P_ones = torch.ones(num_eq, dtype=A.dtype, device=A.device)#/ds#/config.ds# +ds
         P_diag = torch.cat([_P_ones, _P_diag])#.to(A.device)
         P_diag_inv = 1/P_diag
@@ -645,7 +645,7 @@ class MultigridSolver():
     def smooth_jacobi(self, As, b, x, D, nsteps=200, w=0.55):
         """Weighted Jacobi iteration"""
         Dinv = 1/D
-        w=0.3 #config.jacobi_w
+        w=0.4 #config.jacobi_w
         #A = As[0]
 
         #I = torch.sparse.spdiags(torch.ones(A.shape[2]), torch.tensor([0]), (A.shape[2], A.shape[2]), 
@@ -751,8 +751,8 @@ class MultigridSolver():
         #print(idx, self.n_grid, len(As_list))
         if idx ==self.n_grid-2:
             #deltaH = self.solve_coarsest(A_list[self.n_grid-1], rH)
-            #deltaH = self.solve_coarsest(L, rH)
-            deltaH = self.smooth_jacobi(As_list[idx+1], rH, torch.zeros_like(rH), D_list[idx+1], nsteps=10)
+            deltaH = self.solve_coarsest(L, rH)
+            #deltaH = self.smooth_jacobi(As_list[idx+1], rH, torch.zeros_like(rH), D_list[idx+1], nsteps=10)
             #dr, drn = self.get_residual_norm(As_list[self.n_grid-1], deltaH, rH)
             #print('coarsest resid ', dr, drn)
         else:

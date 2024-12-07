@@ -60,7 +60,7 @@ class SineDataModule(pl.LightningDataModule):
 class Method(pl.LightningModule):
     def __init__(self):
         super().__init__()
-        self.learning_rate = 0.001
+        self.learning_rate = 0.0001
         self.model = Sine(device=self.device)
         self.model = self.model.double()
         
