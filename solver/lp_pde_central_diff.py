@@ -1116,8 +1116,9 @@ class PDESYSLP(nn.Module):
                                        #dtype=self.dtype, device=self.device)
                                        dtype=self.dtype)
 
-        full_A = torch.cat([eq_A, initial_A, derivative_A], dim=0)
-        full_AtA = torch.mm(full_A.transpose(0,1),full_A)
+        full_A = torch.cat([eq_A, initial_A, derivative_A], dim=0).coalesce()
+        full_AtA = torch.mm(full_A.transpose(0,1),full_A).coalesce()
+        print('fullatannz', full_AtA._nnz())
 
         print(f'Constraints Shape eq {eq_A.shape}, init {initial_A.shape}, deriv {derivative_A.shape}')
         #print('first ', eq_A.shape, initial_A.shape, derivative_A.shape)
@@ -1228,7 +1229,9 @@ class PDESYSLP(nn.Module):
 
         row_counts = np.bincount(row_sorted[0], minlength=num_constraints)
         total_vars = self.var_set.num_vars + self.var_set.num_added_eps_vars
+        #row_counts = np.bincount(row_sorted[0], minlength=total_vars)
         column_counts = np.bincount(column_sorted[1], minlength=total_vars)
+        #column_counts = np.bincount(column_sorted[1], minlength=num_constraints)
 
         row_count = row.shape[0]
         #add batch dimension
@@ -1257,6 +1260,7 @@ class PDESYSLP(nn.Module):
         row_sorted, column_sorted, row_counts, column_counts = self.get_row_col_sorted_indices(AtA_rows, 
                                             AtA_columns, 
                                             full_AtA.shape[0])
+        print('rc sum', row_counts.sum(), column_counts.sum())
 
         self.AtA_row_sorted = torch.tensor(row_sorted)
         self.AtA_column_sorted = torch.tensor(column_sorted)
@@ -1759,14 +1763,18 @@ class PDESYSLP(nn.Module):
         x_repeat = x_repeat.reshape(-1)
         y_repeat = y_repeat.reshape(-1)
 
+
         X = torch.sparse_coo_tensor(self.AtA_row_sorted, x_repeat, 
                                        #size=(self.num_added_derivative_constraints, self.num_vars), 
                                        dtype=self.dtype, device=x.device)
+
+
 
         Y = torch.sparse_coo_tensor(self.AtA_column_sorted, y_repeat, 
                                        #size=(self.num_added_derivative_constraints, self.num_vars), 
                                        dtype=self.dtype, device=x.device)
 
+        print('outer', X.shape, Y.shape)
         #ipdb.set_trace()
 
         dD = X*Y

@@ -175,7 +175,7 @@ class MultigridSolver():
         U_list = []
         #ds_list = [1e6]*self.n_grid
         for i in range(1,self.n_grid):
-            AtA,D,rhs,L,U = self.make_AtA(self.pde_list[i], A_list[i-1], A_rhs_list[i-1])
+            AtA,D,rhs,L,U,_ = self.make_AtA(self.pde_list[i], A_list[i-1], A_rhs_list[i-1])
             AtA_list.append(AtA)
             D_list.append(D)
             L_list.append(L)
@@ -236,13 +236,30 @@ class MultigridSolver():
 
         #A = A.to_dense()#[:, :, :num_var]
         At = A.transpose(1,2)
+        if save:
+            At.register_hook(lambda grad: print("At grad"))
         PinvA = P_diag_inv.unsqueeze(1)*A
+        if save: 
+            PinvA.register_hook(lambda grad: print("Pinv grad"))
         #PinvA = A
         #PinvA = A
 
         #TODO fix mm
+        #if save: 
+
+        
+        At = At.coalesce()
+        Atn = torch.sparse_coo_tensor(indices=At.indices()[1:3],
+                            values=At.values(), size=At.size()[1:])
+
+        PinvA = PinvA.coalesce()
+        PinvAn = torch.sparse_coo_tensor(indices=PinvA.indices()[1:3],
+                            values=PinvA.values(), size=PinvA.size()[1:])
+
+        AtA_act = torch.sparse.mm(Atn, PinvAn)#.unsqueeze(0)
         if save: 
-            self.AtA_act = torch.mm(At[0], PinvA[0]).unsqueeze(0)
+            AtA_act.register_hook(lambda grad: print("Ataact grad"))
+
         AtA = [A, P_diag]
 
         P_diag = P_diag.unsqueeze(0).repeat(self.bs,1).unsqueeze(2)
@@ -274,7 +291,7 @@ class MultigridSolver():
         
 
         #return AtA, D, P_diag_inv,A
-        return AtA, D, AtPrhs,L,U
+        return AtA, D, AtPrhs,L,U, AtA_act
 
     def get_AtA_dense(self, As):
         A = As[0]
@@ -987,7 +1004,7 @@ class MultigridLayer(nn.Module):
         #rdiff = (A_rhs - A_rhs0).pow(2).sum()
         #print('dif A r', Adiff, rdiff)
 
-        AtA,D, AtPrhs,A_L, A_U = self.mg_solver.make_AtA(self.pde, A, A_rhs, save=True)
+        AtA,D, AtPrhs,A_L, A_U,AtA_act = self.mg_solver.make_AtA(self.pde, A, A_rhs, save=True)
 
         check=False
         if check:
@@ -1025,7 +1042,7 @@ class MultigridLayer(nn.Module):
         #                 coarse_A_list, coarse_rhs_list)
 
         #x,lam = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints, 
-        x = self.qpf(self.mg_solver.AtA_act, AtPrhs, AtA, D, None, None, coarse_A_list, coarse_rhs_list)
+        x = self.qpf(AtA_act, AtPrhs, AtA, D, None, None, coarse_A_list, coarse_rhs_list)
         #x = MGS.solve_mg(self.pde, self.mg_solver, AtA, AtPrhs, D, coarse_A_list, coarse_rhs_list)
         #x = MGS.solve_mg_gmres(self.pde, self.mg_solver, AtA, AtPrhs, D, coarse_A_list, coarse_rhs_list)
         #x = MGS.solve_mg_gs(self.pde, self.mg_solver, AtA, AtPrhs, D, A_L,A_U, coarse_A_list, coarse_rhs_list)

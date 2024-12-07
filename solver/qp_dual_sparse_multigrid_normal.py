@@ -318,6 +318,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
         #def forward(ctx, coeffs, rhs, iv_rhs):
             #bs = coeffs.shape[0]
             #bs = AtA.shape[0]
+            print(AtA_act, AtA_act.shape)
             n_coarse_grid = len(coarse_A_list)
             #ode.build_ode(coeffs, rhs, iv_rhs, derivative_A)
             #At, ub = ode.fill_block_constraints_torch(eq_A, rhs, iv_rhs, derivative_A)
@@ -351,7 +352,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
             mg_args = [AtA_list, D_list, L]
 
-            x,_ = cg.gmres(mg.AtA_act, rhs_list[0],x0=torch.zeros_like(rhs_list[0]), 
+            x,_ = cg.gmres(AtA_act.unsqueeze(0), rhs_list[0],x0=torch.zeros_like(rhs_list[0]), 
                            MG=mg, MG_args=mg_args, restart=30, maxiter=100)
 
             r,rr = mg.get_residual_norm(AtA_list[0], x, rhs_list[0])
@@ -360,6 +361,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
 
             ctx.AtA_list = AtA_list
+            ctx.AtA_act = AtA_act
             ctx.D_list = D_list
             ctx.L = L
             ctx.save_for_backward(x, L)
@@ -375,6 +377,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
         def backward(ctx, dl_dzhat):
             _x = ctx.saved_tensors[0]
             AtA_list = ctx.AtA_list
+            AtA_act = ctx.AtA_act
             D_list = ctx.D_list
             L = ctx.L
 
@@ -392,7 +395,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #dnu = solve_direct(AtA0, grad_list[0])
 
             mg_args = [AtA_list, D_list, L]
-            dnu,_ = cg.gmres(mg.AtA_act, grad_list[0],x0=torch.zeros_like(grad_list[0]), 
+            dnu,_ = cg.gmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
                            MG=mg, MG_args=mg_args, restart=100, maxiter=100, back=True)
 
             #dnu = dnu.reshape(1, 8*8,5).permute(0,2,1).reshape(1,5,8,8)
@@ -411,15 +414,25 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             #dnu = -dnu
 
-            #dQ = pde.sparse_AtA_grad(dnu, _x)
-            #dQ = dQ + pde.sparse_AtA_grad(_x, dnu)
+            dQ1 = pde.sparse_AtA_grad(dnu.clone(), _x.clone())
+            print('nnz1 ', dQ1._nnz(), AtA_act._nnz())
+            dQ2 = pde.sparse_AtA_grad(_x.clone(), dnu.clone())
+            print('nnz2 ', dQ2._nnz(), AtA_act._nnz())
+
+
+            dQ_values = (dQ1._values() + dQ2._values())/2
+            #dQ = dQ.coalesce()
+
+            dQ = torch.sparse_coo_tensor(AtA_act.indices(), dQ_values, 
+                                       #size=(self.num_added_derivative_constraints, self.num_vars), 
+                                       dtype=AtA_act.dtype, device=AtA_act.device)
+            print('nnz ', dQ._nnz(), AtA_act._nnz())
+
+            #dQ = dnu.unsqueeze(1)*_x.unsqueeze(2)
+            #dQ = dQ + dnu.unsqueeze(2)*_x.unsqueeze(1)
             #dQ = dQ/2
 
-            dQ = dnu.unsqueeze(1)*_x.unsqueeze(2)
-            dQ = dQ + dnu.unsqueeze(2)*_x.unsqueeze(1)
-            dQ = dQ/2
-
-            dq = dnu.to_dense()
+            dq = dnu
 
             #return dQ, dq,None, None, None,None,None
             return dQ, dq,None,None, None, None,None,None
