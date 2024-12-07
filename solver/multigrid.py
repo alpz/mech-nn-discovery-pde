@@ -89,9 +89,9 @@ class MultigridSolver():
 
         #steps are incrementally downsampled by adding pairs. The rest are done directly
         new_steps_list = steps_list
-        new_coeffs = coeffs
-        new_rhs = rhs
-        new_iv_rhs = iv_rhs
+        #new_coeffs = coeffs
+        #new_rhs = rhs
+        #new_iv_rhs = iv_rhs
         for k in range(1, self.n_grid):
             pde = self.pde_list[k]
             new_shape = self.dim_list[k]
@@ -100,15 +100,15 @@ class MultigridSolver():
 
             n_orders = len(pde.var_set.mi_list)
 
-            #new_coeffs = self.downsample_coeffs(coeffs, self.coord_dims,  new_shape, n_orders)
-            #new_rhs = self.downsample_rhs(rhs, self.coord_dims,  new_shape)
-            #new_steps_list = self.downsample_steps(new_steps_list, old_shape)
-            #new_iv_rhs = self.downsample_iv(iv_rhs, self.coord_dims,  new_shape)
-
-            new_coeffs = self.downsample_coeffs(new_coeffs, old_shape,  new_shape, n_orders)
-            new_rhs = self.downsample_rhs(new_rhs, old_shape,  new_shape)
+            new_coeffs = self.downsample_coeffs(coeffs, self.coord_dims,  new_shape, n_orders)
+            new_rhs = self.downsample_rhs(rhs, self.coord_dims,  new_shape)
             new_steps_list = self.downsample_steps(new_steps_list, old_shape)
-            new_iv_rhs = self.downsample_iv(new_iv_rhs, old_shape,  new_shape)
+            new_iv_rhs = self.downsample_iv(iv_rhs, self.coord_dims,  new_shape)
+
+            #new_coeffs = self.downsample_coeffs(new_coeffs, old_shape,  new_shape, n_orders)
+            #new_rhs = self.downsample_rhs(new_rhs, old_shape,  new_shape)
+            #new_steps_list = self.downsample_steps(new_steps_list, old_shape)
+            #new_iv_rhs = self.downsample_iv(new_iv_rhs, old_shape,  new_shape)
 
             if self.solver_dbl:
                 new_coeffs = new_coeffs.double()
@@ -645,7 +645,7 @@ class MultigridSolver():
     def smooth_jacobi(self, As, b, x, D, nsteps=200, w=0.55):
         """Weighted Jacobi iteration"""
         Dinv = 1/D
-        w=0.5 #config.jacobi_w
+        w=0.3 #config.jacobi_w
         #A = As[0]
 
         #I = torch.sparse.spdiags(torch.ones(A.shape[2]), torch.tensor([0]), (A.shape[2], A.shape[2]), 
