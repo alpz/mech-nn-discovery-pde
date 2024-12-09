@@ -682,7 +682,7 @@ class MultigridSolver():
         """Weighted Jacobi iteration"""
         Dinv = 1/D
         if back:
-            w=0.3 #config.jacobi_w
+            w=0.4 #config.jacobi_w
         else:
             w=0.4
         #A = As[0]

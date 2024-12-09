@@ -408,7 +408,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             mg_args = [AtA_list, D_list, L]
             dz,_ = cg.fgmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
-                           MG=mg, MG_args=mg_args, restart=100, maxiter=100, back=True)
+                           MG=mg, MG_args=mg_args, restart=50, maxiter=300, back=True)
 
             #dz,_ = cg.cg_matvec(AtA_list[0], grad_list[0],maxiter=100,
             #                    MG=mg, MG_args=mg_args,back=True)
