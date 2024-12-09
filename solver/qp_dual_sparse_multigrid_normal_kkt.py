@@ -398,12 +398,12 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             #dnu = mg.full_multigrid_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
 
-            #AtA0 = mg.get_AtA_dense(AtA_list[0])
-            #dnu = solve_direct(AtA0, grad_list[0])
+            AtA0 = mg.get_AtA_dense(AtA_list[0])
+            dz = solve_direct(AtA0, grad_list[0])
 
-            mg_args = [AtA_list, D_list, L]
-            dz,_ = cg.gmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
-                           MG=mg, MG_args=mg_args, restart=40, maxiter=80, back=True)
+            #mg_args = [AtA_list, D_list, L]
+            #dz,_ = cg.gmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
+            #               MG=mg, MG_args=mg_args, restart=60, maxiter=120, back=True)
 
             #dnu = dnu.reshape(1, 8*8,5).permute(0,2,1).reshape(1,5,8,8)
             #dnu = F.interpolate(dnu, (16,16), mode='bilinear')
@@ -423,7 +423,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             #_dx, _dnu = -dx,-dnu
 
-            #dnu = -dnu
+            dnu = -dnu
 
             drhs = dnu[:, :pde.num_added_equation_constraints] #torch.tensor(-dnu.squeeze())
             div_rhs = dnu[:, pde.num_added_equation_constraints:pde.num_added_equation_constraints + pde.num_added_initial_constraints]#.squeeze(2)

@@ -682,9 +682,9 @@ class MultigridSolver():
         """Weighted Jacobi iteration"""
         Dinv = 1/D
         if back:
-            w=0.5 #config.jacobi_w
+            w=0.2 #config.jacobi_w
         else:
-            w=0.5
+            w=0.3
         #A = As[0]
 
         #I = torch.sparse.spdiags(torch.ones(A.shape[2]), torch.tensor([0]), (A.shape[2], A.shape[2]), 
@@ -769,7 +769,7 @@ class MultigridSolver():
         #dr, drn = self.get_residual_norm(As, x, b)
         #print('resid before smooth',idx, dr, drn)
         ##pre-smooth
-        nstep = 40 if back and idx == 0 else 10
+        nstep = 10 if back and idx == 0 else 5
         x = self.smooth_jacobi(As, b, x, D, nsteps=nstep, back=back)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
@@ -823,7 +823,7 @@ class MultigridSolver():
         #print('resid plus delta',idx, dr, drn)
 
         #smooth
-        x = self.smooth_jacobi(As, b, x, D, nsteps=10, back=back)
+        x = self.smooth_jacobi(As, b, x, D, nsteps=5, back=back)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
         #if back:
@@ -903,8 +903,8 @@ class MultigridSolver():
         n_step = 1
         for step in range(n_step):
             x = self.v_cycle_jacobi(0, A_list, b_list[0], x, D_list,L, back=back)
-            r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
-            print(f'vcycle end norm: ', r,rr)
+            #r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
+            #print(f'vcycle end norm: ', r,rr)
         #x = x.to_dense()
         return x#.to_dense()
 

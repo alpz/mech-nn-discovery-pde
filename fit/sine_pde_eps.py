@@ -230,12 +230,12 @@ class Sine(nn.Module):
         #self.steps0 = torch.logit(self.step_size*torch.ones(1,self.pde.step_grid_shape[0][0],1))
         self.steps0 = torch.logit(self.step_size*torch.ones(1,self.coord_dims[0]-1))
         #self.steps0 = torch.logit(self.step_size*torch.ones(1,1,1))
-        self.steps0 = nn.Parameter(self.steps0)
+        #self.steps0 = nn.Parameter(self.steps0)
 
         self.steps1 = torch.logit(self.step_size*torch.ones(1,self.coord_dims[1]-1))
         #self.steps1 = torch.logit(self.step_size*torch.ones(1,*self.pde.step_grid_shape[1]))
         #self.steps1 = torch.logit(self.step_size*torch.ones(1,1,1))
-        self.steps1 = nn.Parameter(self.steps1)
+        #self.steps1 = nn.Parameter(self.steps1)
 
         self._dfnn = nn.Sequential(
             #nn.ReLU(),
@@ -339,7 +339,7 @@ class Sine(nn.Module):
         #rhs = rhs.reshape(1,1).repeat(self.bs, self.pde.grid_size)
         #rhs = rhs.type_as(coeffs)
 
-        u0,u,eps = self.pde(coeffs, rhs, iv_rhs, steps_list)
+        u0,u,eps = self.pde(coeffs, rhs.detach(), iv_rhs, steps_list)
 
         #print(eps, eps.abs().min(), eps.abs().mean())
 
