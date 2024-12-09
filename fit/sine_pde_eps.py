@@ -91,7 +91,7 @@ class Method(pl.LightningModule):
         xn = y[:, -1].reshape(-1)
 
         #print(y.shape)
-        eps, u0, cf = self([t0,x0, tn, xn])
+        eps, u0, cf,u = self([t0,x0, tn, xn])
         
 
         loss = (u0.reshape(-1)-y.reshape(-1)).pow(2).mean()
@@ -344,7 +344,7 @@ class Sine(nn.Module):
         #print(eps, eps.abs().min(), eps.abs().mean())
 
 
-        return 0.001, u0,_coeffs#, u1,u2,steps
+        return 0.001, u0,_coeffs,u#, u1,u2,steps
 
 method = Method()
 dataset = SineDataset(end=method.model.end, coord_dims=method.model.coord_dims)

@@ -355,7 +355,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
             mg_args = [AtA_list, D_list, L]
 
-            x,_ = cg.gmres(AtA_act.unsqueeze(0), rhs_list[0],x0=torch.zeros_like(rhs_list[0]), 
+            x,_ = cg.fgmres(AtA_act.unsqueeze(0), rhs_list[0],x0=torch.zeros_like(rhs_list[0]), 
                            MG=mg, MG_args=mg_args, restart=40, maxiter=80)
 
             r,rr = mg.get_residual_norm(AtA_list[0], x, rhs_list[0])
@@ -394,21 +394,24 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #print(dl_dzhat.reshape(32,32,5)[:,:,0])
             ##shape: batch, grid, order
 
-            #coarse_grads = mg.downsample_grad(dl_dzhat.clone())
+            coarse_grads = mg.downsample_grad(dl_dzhat.clone())
             grad_list = [dl_dzhat] #+ coarse_grads
             #grad_list =  [g for g in grad_list]
             
             #dnu = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L)
             #dz = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
 
-            #dnu = mg.full_multigrid_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
+            #dz = mg.full_multigrid_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
 
             #AtA0 = mg.get_AtA_dense(AtA_list[0])
             #dz = solve_direct(AtA0, grad_list[0])
 
             mg_args = [AtA_list, D_list, L]
-            dz,_ = cg.gmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
-                           MG=mg, MG_args=mg_args, restart=60, maxiter=120, back=True)
+            dz,_ = cg.fgmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
+                           MG=mg, MG_args=mg_args, restart=100, maxiter=100, back=True)
+
+            #dz,_ = cg.cg_matvec(AtA_list[0], grad_list[0],maxiter=100,
+            #                    MG=mg, MG_args=mg_args,back=True)
 
             #dnu = dnu.reshape(1, 8*8,5).permute(0,2,1).reshape(1,5,8,8)
             #dnu = F.interpolate(dnu, (16,16), mode='bilinear')

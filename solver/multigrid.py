@@ -366,15 +366,15 @@ class MultigridSolver():
 
         #ipdb.set_trace()
         #print('ds coeffs ', coeffs.shape, new_shape)
-        coeffs = F.interpolate(coeffs, size=new_shape, mode='nearest', 
-                               #align_corners=self.align_corners)
-                               align_corners=None)
+        #coeffs = F.interpolate(coeffs, size=new_shape, mode='nearest', 
+        #                       align_corners=self.align_corners)
+        #                       align_corners=None)
         #coeffs = coeffs.reshape(1, n_orders, old_shape[0]//2, 2, old_shape[1]//2, 2)
         #coeffs = coeffs.sum(dim=-1).sum(dim=3)
                             
 
-        #coeffs = F.interpolate(coeffs, size=new_shape, mode='bilinear', 
-        #                       align_corners=True)
+        coeffs = F.interpolate(coeffs, size=new_shape, mode='bilinear', 
+                               align_corners=False)
 
         #coeffs = F.interpolate(coeffs, size=new_shape, mode='nearest', 
         #                       align_corners=None)
@@ -572,8 +572,8 @@ class MultigridSolver():
             x = x.reshape(1, -1, s//2,2,s//2,2)
             #x = torch.repeat_interleave(x, 2, dim=2)
             #x = torch.repeat_interleave(x, 2, dim=3)
-            x = x.sum(dim=-1).sum(dim=3)
-            #x = x[:,:,:,0,:,0]
+            #x = x.sum(dim=-1).sum(dim=3)
+            x = x[:,:,:,0,:,0]
         else:
             x = F.interpolate(x, size=self.dim_list[idx+1], 
                             mode=self.interp_mode, 
@@ -682,9 +682,9 @@ class MultigridSolver():
         """Weighted Jacobi iteration"""
         Dinv = 1/D
         if back:
-            w=0.2 #config.jacobi_w
+            w=0.3 #config.jacobi_w
         else:
-            w=0.3
+            w=0.4
         #A = As[0]
 
         #I = torch.sparse.spdiags(torch.ones(A.shape[2]), torch.tensor([0]), (A.shape[2], A.shape[2]), 
@@ -769,7 +769,7 @@ class MultigridSolver():
         #dr, drn = self.get_residual_norm(As, x, b)
         #print('resid before smooth',idx, dr, drn)
         ##pre-smooth
-        nstep = 30 if back and idx == 0 else 5
+        nstep = 20 if back and idx == 0 else 5
         x = self.smooth_jacobi(As, b, x, D, nsteps=nstep, back=back)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
@@ -794,7 +794,7 @@ class MultigridSolver():
             #if not back:
             deltaH = self.solve_coarsest(L, rH)
             #else:
-            #deltaH = self.smooth_jacobi(As_list[idx+1], rH, torch.zeros_like(rH), D_list[idx+1], nsteps=20)
+            #    deltaH = self.smooth_jacobi(As_list[idx+1], rH, torch.zeros_like(rH), D_list[idx+1], nsteps=20)
             #dr, drn = self.get_residual_norm(As_list[self.n_grid-1], deltaH, rH)
             #print('coarsest resid ', dr, drn)
         else:
@@ -823,7 +823,7 @@ class MultigridSolver():
         #print('resid plus delta',idx, dr, drn)
 
         #smooth
-        x = self.smooth_jacobi(As, b, x, D, nsteps=5, back=back)
+        x = self.smooth_jacobi(As, b, x, D, nsteps=nstep, back=back)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
         #if back:
@@ -900,7 +900,7 @@ class MultigridSolver():
         x = torch.zeros_like(b_list[0])
         #x = torch.randn_like(b_list[0])
         #x = torch.rand_like(b_list[0])
-        n_step = 1
+        n_step = 1 if back else 1
         for step in range(n_step):
             x = self.v_cycle_jacobi(0, A_list, b_list[0], x, D_list,L, back=back)
             #r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
@@ -913,7 +913,7 @@ class MultigridSolver():
         for idx in reversed(range(self.n_grid-1)):
             print('fmg idx', idx)
             u = self.prolong(idx+1, u)
-            for k in range(10):
+            for k in range(3):
                 u = self.v_cycle_jacobi(idx, A_list, b_list[idx], u, D_list,L, back=back)
 
                 r,rr = self.get_residual_norm(A_list[idx], u, b_list[idx] )
