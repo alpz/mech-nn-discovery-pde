@@ -39,8 +39,8 @@ cuda=True
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-#coord_dims = (32,32,32)
-coord_dims = (64,64,64)
+coord_dims = (32,32,32)
+#coord_dims = (64,64,64)
 def solve():
     bs = 1
     #coord_dims = (16,16,16)
@@ -67,7 +67,7 @@ def solve():
     #                    init_index_mi_list=iv_list,  n_iv_steps=1, double_ret=True, solver_dbl=True, device='gpu:0')
 
     pde = MultigridLayer(bs=bs, coord_dims=coord_dims, order=2, n_ind_dim=1, n_iv=1, 
-                        init_index_mi_list=iv_list, n_grid=4, 
+                        init_index_mi_list=iv_list, n_grid=3, 
                         n_iv_steps=1, double_ret=True, solver_dbl=True)
 
 
@@ -100,6 +100,9 @@ def solve():
     ##up = up.reshape(bs, *self.coord_dims)
 
     rhs = torch.zeros(bs, *coord_dims).cuda()
+
+    rhs = nn.Parameter(rhs)
+    coeffs = nn.Parameter(coeffs)
 
     #iv
     x_grid = torch.linspace(0, 2*np.pi, coord_dims[0]).cuda()
@@ -135,11 +138,16 @@ def solve():
     u0,_,eps = pde(coeffs, rhs, iv_rhs, steps_list)
     end = time.time()-start
     print('time', end)
+
     
     print('mem after',torch.cuda.mem_get_info(), (torch.cuda.mem_get_info()[1]-torch.cuda.mem_get_info()[0])/1e9)
     #print(eps.abs().max())
     print(u0.shape)
     u0 = u0.reshape(*coord_dims)
+
+    l = u0.pow(2).sum()
+    #l = u0.mean()
+    l.backward()
     return u0
 
 #%%

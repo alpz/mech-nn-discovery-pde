@@ -345,15 +345,15 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #L= mg.factor_coarsest(AtA_list[-1])
 
             #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
-            #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
+            x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
 
             #print('solving direct ata')
             #x = solve_direct_AtA(AtA_list[0], rhs_list[0])
             #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
             mg_args = [AtA_list, D_list, L]
 
-            x,_ = cg.gmres(AtA_act.unsqueeze(0), rhs_list[0],x0=torch.zeros_like(rhs_list[0]), 
-                           MG=mg, MG_args=mg_args, restart=30, maxiter=100)
+            #x,_ = cg.gmres(AtA_act.unsqueeze(0), rhs_list[0],x0=torch.zeros_like(rhs_list[0]), 
+            #               MG=mg, MG_args=mg_args, restart=40, maxiter=80)
 
             r,rr = mg.get_residual_norm(AtA_list[0], x, rhs_list[0])
             print(f'gmres step norm: ', r,rr)
@@ -368,6 +368,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             ctx.save_for_backward(x, L)
             
             print('qpf', x.shape)
+            #print('x', x.reshape(32,32,5)[:,:,0])
             #if not double_ret:
             #    x = x.float()
             #print(lam)
@@ -383,24 +384,24 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #rhs_list = ctx.rhs_list
             L = ctx.L
 
-            #print(dl_dzhat)
+            #print(dl_dzhat.reshape(32,32,5)[:,:,0])
             ##shape: batch, grid, order
 
-            coarse_grads = mg.downsample_grad(dl_dzhat.clone())
-            grad_list = [dl_dzhat.clone()] + coarse_grads
+            #coarse_grads = mg.downsample_grad(dl_dzhat.clone())
+            grad_list = [dl_dzhat] #+ coarse_grads
             grad_list =  [-g for g in grad_list]
             
             #dnu = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L)
-            #dnu = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
+            dnu = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
 
             #dnu = mg.full_multigrid_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
 
             #AtA0 = mg.get_AtA_dense(AtA_list[0])
             #dnu = solve_direct(AtA0, grad_list[0])
 
-            mg_args = [AtA_list, D_list, L]
-            dnu,_ = cg.gmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
-                           MG=mg, MG_args=mg_args, restart=100, maxiter=200, back=True)
+            #mg_args = [AtA_list, D_list, L]
+            #dnu,_ = cg.gmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
+            #               MG=mg, MG_args=mg_args, restart=40, maxiter=80, back=True)
 
             #dnu = dnu.reshape(1, 8*8,5).permute(0,2,1).reshape(1,5,8,8)
             #dnu = F.interpolate(dnu, (16,16), mode='bilinear')
@@ -418,9 +419,9 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             #dnu = -dnu
 
-            dQ1 = pde.sparse_AtA_grad(dnu.clone(), _x.clone())
+            dQ1 = pde.sparse_AtA_grad(dnu, _x)
             #print('nnz1 ', dQ1._nnz(), AtA_act._nnz())
-            dQ2 = pde.sparse_AtA_grad(_x.clone(), dnu.clone())
+            dQ2 = pde.sparse_AtA_grad(_x, dnu)
             #print('nnz2 ', dQ2._nnz(), AtA_act._nnz())
 
 
@@ -440,6 +441,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             dq = dnu
 
             #return dQ, dq,None, None, None,None,None
+            print(dQ, dq)
             return dQ, dq,None,None, None, None,None,None
 
     return QPFunctionFn.apply

@@ -22,6 +22,7 @@ import solver.cg as CG
 
 from torch.autograd import gradcheck
 # set of KKT matrices
+torch.autograd.detect_anomaly()
 
 #set of coarse grids
 class MultigridSolver():
@@ -49,8 +50,9 @@ class MultigridSolver():
 
         
         interp_modes={1:'linear', 2:'bilinear', 3:'trilinear'}
+        #print('nearest')
         #interp_modes={1:'nearest', 2:'nearest', 3:'nearest'}
-        self.align_corners = False
+        self.align_corners = True
         #self.align_corners = None
         self.interp_mode = interp_modes[self.n_coord]
 
@@ -256,9 +258,10 @@ class MultigridSolver():
         PinvAn = torch.sparse_coo_tensor(indices=PinvA.indices()[1:3],
                             values=PinvA.values(), size=PinvA.size()[1:])
 
-        AtA_act = torch.sparse.mm(Atn, PinvAn)#.unsqueeze(0)
+        with torch.no_grad():
+            AtA_act = torch.sparse.mm(Atn, PinvAn)#.unsqueeze(0)
         #if save: 
-        #    AtA_act.register_hook(lambda grad: print("Ataact grad"))
+        #AtA_act.register_hook(lambda grad: print("Ataact grad"))
 
         AtA = [A, P_diag]
 
@@ -266,6 +269,7 @@ class MultigridSolver():
         # diagonal of AtG-1A
         #D = (PinvA*A).sum(dim=1).to_dense()
         #D = (PinvA*A).sum(dim=1).to_dense()
+        #with torch.no_grad():
         D = torch.sparse.sum(PinvA*A, dim=1)
         D = D.to_dense()
         #D = ((A)).sum(dim=1).to_dense()
@@ -279,7 +283,8 @@ class MultigridSolver():
         #AtPrhs = -torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)
         #Atrhs = torch.bmm(At, A_rhs.unsqueeze(2)).squeeze(2)
         #print('cuda al', At.shape, P_rhs.shape )
-        AtPrhs = -torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2).to_dense()
+        AtPrhs = -torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)#.to_dense()
+        #AtPrhs.register_hook(lambda grad: print('aptrhs grad'))
 
         #L,U = self.get_tril(AtA)
         L,U = None, None
@@ -293,6 +298,7 @@ class MultigridSolver():
         #return AtA, D, P_diag_inv,A
         return AtA, D, AtPrhs,L,U, AtA_act
 
+    @torch.no_grad()
     def get_AtA_dense(self, As):
         A = As[0]
         P_diag = As[1]
@@ -360,8 +366,9 @@ class MultigridSolver():
 
         #ipdb.set_trace()
         #print('ds coeffs ', coeffs.shape, new_shape)
-        coeffs = F.interpolate(coeffs, size=new_shape, mode='bilinear', 
-                               align_corners=self.align_corners)
+        coeffs = F.interpolate(coeffs, size=new_shape, mode='nearest', 
+                               #align_corners=self.align_corners)
+                               align_corners=None)
         #coeffs = coeffs.reshape(1, n_orders, old_shape[0]//2, 2, old_shape[1]//2, 2)
         #coeffs = coeffs.sum(dim=-1).sum(dim=3)
                             
@@ -675,9 +682,9 @@ class MultigridSolver():
         """Weighted Jacobi iteration"""
         Dinv = 1/D
         if back:
-            w=0.1 #config.jacobi_w
+            w=0.5 #config.jacobi_w
         else:
-            w=0.4
+            w=0.5
         #A = As[0]
 
         #I = torch.sparse.spdiags(torch.ones(A.shape[2]), torch.tensor([0]), (A.shape[2], A.shape[2]), 
@@ -717,7 +724,6 @@ class MultigridSolver():
         r = b - self.mult_AtA(As, x) #torch.bmm(A, x.unsqueeze(2)).squeeze(2)
         d = b.pow(2).sum(dim=-1).sqrt()
 
-        print('normd', d)
         rnorm = r.pow(2).sum(dim=-1).sqrt()
         rrnorm = rnorm/d
 
@@ -752,6 +758,7 @@ class MultigridSolver():
     #    lam = lam.squeeze(2)
     #    return lam
 
+    @torch.no_grad()
     def v_cycle_jacobi(self, idx, As_list, b, x, D_list, L, back=False):
         As = As_list[idx]
         #b = b
@@ -762,8 +769,8 @@ class MultigridSolver():
         #dr, drn = self.get_residual_norm(As, x, b)
         #print('resid before smooth',idx, dr, drn)
         ##pre-smooth
-        ##if back:
-        x = self.smooth_jacobi(As, b, x, D, nsteps=10, back=back)
+        nstep = 40 if back and idx == 0 else 10
+        x = self.smooth_jacobi(As, b, x, D, nsteps=nstep, back=back)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
         #dr, drn = self.get_residual_norm(As, x, b)
@@ -784,8 +791,10 @@ class MultigridSolver():
         #print(idx, self.n_grid, len(As_list))
         if idx ==self.n_grid-2:
             #deltaH = self.solve_coarsest(A_list[self.n_grid-1], rH)
-            deltaH = self.solve_coarsest(L, rH)
-            #deltaH = self.smooth_jacobi(As_list[idx+1], rH, torch.zeros_like(rH), D_list[idx+1], nsteps=10)
+            #if not back:
+            #    deltaH = self.solve_coarsest(L, rH)
+            #else:
+            deltaH = self.smooth_jacobi(As_list[idx+1], rH, torch.zeros_like(rH), D_list[idx+1], nsteps=20)
             #dr, drn = self.get_residual_norm(As_list[self.n_grid-1], deltaH, rH)
             #print('coarsest resid ', dr, drn)
         else:
@@ -886,13 +895,16 @@ class MultigridSolver():
         print(f'gs vcycle end norm: ', r,rr)
         return x
 
+    @torch.no_grad()
     def v_cycle_jacobi_start(self, A_list, b_list, D_list,L, n_step=1, back=False):
         x = torch.zeros_like(b_list[0])
+        #x = torch.randn_like(b_list[0])
         #x = torch.rand_like(b_list[0])
+        n_step = 2
         for step in range(n_step):
             x = self.v_cycle_jacobi(0, A_list, b_list[0], x, D_list,L, back=back)
-            #r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
-            #print(f'vcycle end norm: ', r,rr)
+            r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
+            print(f'vcycle end norm: ', r,rr)
         #x = x.to_dense()
         return x#.to_dense()
 
@@ -901,10 +913,11 @@ class MultigridSolver():
         for idx in reversed(range(self.n_grid-1)):
             print('fmg idx', idx)
             u = self.prolong(idx+1, u)
-            u = self.v_cycle_jacobi(idx, A_list, b_list[idx], u, D_list,L, back=back)
+            for k in range(10):
+                u = self.v_cycle_jacobi(idx, A_list, b_list[idx], u, D_list,L, back=back)
 
-            r,rr = self.get_residual_norm(A_list[idx], u, b_list[idx] )
-            print(f'fmg step norm: ', r,rr)
+                r,rr = self.get_residual_norm(A_list[idx], u, b_list[idx] )
+                print(f'fmg step norm: ', r,rr)
 
         #print(self.AtA_act.shape, b_list[0].shape, u.shape)
         #u,_ = CG.gmres(self.AtA_act, b_list[0], u, restart=20, maxiter=800)
@@ -988,11 +1001,14 @@ class MultigridLayer(nn.Module):
         eq_constraints = self.pde.build_equation_tensor(coeffs)
 
         #build coarse grids
+        #with torch.no_grad():
         coarse_A_list, coarse_rhs_list = self.mg_solver.fill_coarse_grids(coeffs, 
                                                                 rhs, iv_rhs, steps_list)
 
         A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints.coalesce(), rhs, iv_rhs, 
                                                     derivative_constraints.coalesce())
+        A.register_hook(lambda grad: print('AA'))
+        A_rhs.register_hook(lambda grad: print('AArhs'))
 
         #A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints, rhs, iv_rhs, 
         #                                            derivative_constraints)
@@ -1005,7 +1021,11 @@ class MultigridLayer(nn.Module):
         #rdiff = (A_rhs - A_rhs0).pow(2).sum()
         #print('dif A r', Adiff, rdiff)
 
+        #with torch.no_grad():
         AtA,D, AtPrhs,A_L, A_U,AtA_act = self.mg_solver.make_AtA(self.pde, A, A_rhs, save=True)
+        #AtA_act.register_hook(lambda grad: print('ataact'))
+        ##AtA.register_hook(lambda grad: print('at', grad))
+        #AtPrhs.register_hook(lambda grad: print('atprhs'))
 
         check=False
         if check:
