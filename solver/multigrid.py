@@ -22,7 +22,7 @@ import solver.cg as CG
 
 from torch.autograd import gradcheck
 # set of KKT matrices
-torch.autograd.detect_anomaly()
+#torch.autograd.detect_anomaly()
 
 #set of coarse grids
 class MultigridSolver():
@@ -52,7 +52,7 @@ class MultigridSolver():
         interp_modes={1:'linear', 2:'bilinear', 3:'trilinear'}
         #print('nearest')
         #interp_modes={1:'nearest', 2:'nearest', 3:'nearest'}
-        self.align_corners = True
+        self.align_corners = False
         #self.align_corners = None
         self.interp_mode = interp_modes[self.n_coord]
 
@@ -682,7 +682,7 @@ class MultigridSolver():
         """Weighted Jacobi iteration"""
         Dinv = 1/D
         if back:
-            w=0.4 #config.jacobi_w
+            w=0.5 #config.jacobi_w
         else:
             w=0.5
         #A = As[0]
@@ -792,9 +792,9 @@ class MultigridSolver():
         if idx ==self.n_grid-2:
             #deltaH = self.solve_coarsest(A_list[self.n_grid-1], rH)
             #if not back:
-            #    deltaH = self.solve_coarsest(L, rH)
+            deltaH = self.solve_coarsest(L, rH)
             #else:
-            deltaH = self.smooth_jacobi(As_list[idx+1], rH, torch.zeros_like(rH), D_list[idx+1], nsteps=20)
+            #deltaH = self.smooth_jacobi(As_list[idx+1], rH, torch.zeros_like(rH), D_list[idx+1], nsteps=20)
             #dr, drn = self.get_residual_norm(As_list[self.n_grid-1], deltaH, rH)
             #print('coarsest resid ', dr, drn)
         else:
@@ -900,7 +900,7 @@ class MultigridSolver():
         x = torch.zeros_like(b_list[0])
         #x = torch.randn_like(b_list[0])
         #x = torch.rand_like(b_list[0])
-        n_step = 2
+        n_step = 1
         for step in range(n_step):
             x = self.v_cycle_jacobi(0, A_list, b_list[0], x, D_list,L, back=back)
             r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )

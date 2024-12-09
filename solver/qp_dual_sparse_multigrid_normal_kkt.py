@@ -345,15 +345,15 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #L= mg.factor_coarsest(AtA_list[-1])
 
             #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
-            x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
+            #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
 
             #print('solving direct ata')
             #x = solve_direct_AtA(AtA_list[0], rhs_list[0])
             #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
             mg_args = [AtA_list, D_list, L]
 
-            #x,_ = cg.gmres(AtA_act.unsqueeze(0), rhs_list[0],x0=torch.zeros_like(rhs_list[0]), 
-            #               MG=mg, MG_args=mg_args, restart=40, maxiter=80)
+            x,_ = cg.gmres(AtA_act.unsqueeze(0), rhs_list[0],x0=torch.zeros_like(rhs_list[0]), 
+                           MG=mg, MG_args=mg_args, restart=40, maxiter=80)
 
             r,rr = mg.get_residual_norm(AtA_list[0], x, rhs_list[0])
             print(f'gmres step norm: ', r,rr)
@@ -394,16 +394,16 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #grad_list =  [g for g in grad_list]
             
             #dnu = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L)
-            dz = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
+            #dz = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
 
             #dnu = mg.full_multigrid_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
 
             #AtA0 = mg.get_AtA_dense(AtA_list[0])
             #dnu = solve_direct(AtA0, grad_list[0])
 
-            #mg_args = [AtA_list, D_list, L]
-            #dnu,_ = cg.gmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
-            #               MG=mg, MG_args=mg_args, restart=40, maxiter=80, back=True)
+            mg_args = [AtA_list, D_list, L]
+            dz,_ = cg.gmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
+                           MG=mg, MG_args=mg_args, restart=40, maxiter=80, back=True)
 
             #dnu = dnu.reshape(1, 8*8,5).permute(0,2,1).reshape(1,5,8,8)
             #dnu = F.interpolate(dnu, (16,16), mode='bilinear')
