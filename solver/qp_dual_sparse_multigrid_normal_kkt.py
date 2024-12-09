@@ -314,24 +314,21 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
         #perm = None
 
         @staticmethod
-        def forward(ctx, AtA_act, At_rhs, AtA, D, A_L, A_U, coarse_A_list, coarse_rhs_list ):
-        #def forward(ctx, coeffs, rhs, iv_rhs):
-            #bs = coeffs.shape[0]
-            #bs = AtA.shape[0]
-            #print(AtA_act, AtA_act.shape)
-            n_coarse_grid = len(coarse_A_list)
-            #ode.build_ode(coeffs, rhs, iv_rhs, derivative_A)
-            #At, ub = ode.fill_block_constraints_torch(eq_A, rhs, iv_rhs, derivative_A)
-            #A, A_rhs = pde.fill_constraints_torch(eq_A, rhs, iv_rhs, derivative_A)
-            #At = A.transpose(1,2)
+        def forward(ctx, eq_constraints, rhs, iv_rhs, derivative_constraints, coeffs, steps_list):
+            coarse_A_list, coarse_rhs_list = mg.fill_coarse_grids(coeffs, rhs, iv_rhs, steps_list)
 
-
+            A, A_rhs = pde.fill_constraints_torch2(eq_constraints.coalesce(), rhs, iv_rhs, 
+                                                        derivative_constraints.coalesce())
+            AtA,D, AtPrhs,A_L, A_U,AtA_act,G = mg.make_AtA(pde, A, A_rhs, save=True)
+            #AtA_act.register_hook(lambda grad: print('ataact'))
+            ##AtA.register_hook(lambda grad: print('at', grad))
+            #AtPrhs.register_hook(lambda grad: print('atprhs'))
 
             AtA_list, rhs_list, D_list,L_list,U_list = mg.make_coarse_AtA_matrices(coarse_A_list, 
                                                                      coarse_rhs_list)
 
             AtA_list = [AtA] + AtA_list
-            rhs_list = [At_rhs] + rhs_list
+            rhs_list = [AtPrhs] + rhs_list
             D_list = [D] + D_list
 
             #negate
@@ -358,26 +355,28 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             r,rr = mg.get_residual_norm(AtA_list[0], x, rhs_list[0])
             print(f'gmres step norm: ', r,rr)
                                                                             
+            #G (-lam) = Ax -b
+            r = torch.bmm(A, x.unsqueeze(2)).squeeze(2) - A_rhs
+            lam = -(1/G)*r
 
 
+            ctx.A = A
+            ctx.G = G
             ctx.AtA_list = AtA_list
             ctx.AtA_act = AtA_act
             ctx.D_list = D_list
             #ctx.rhs_list = rhs_list
             ctx.L = L
-            ctx.save_for_backward(x, L)
+            ctx.save_for_backward(x, lam)
             
             print('qpf', x.shape)
-            #print('x', x.reshape(32,32,5)[:,:,0])
-            #if not double_ret:
-            #    x = x.float()
-            #print(lam)
-            #return x, lam
             return x
         
         @staticmethod
         def backward(ctx, dl_dzhat):
-            _x = ctx.saved_tensors[0]
+            _x,_lam = ctx.saved_tensors[0:2]
+            A = ctx.A
+            G = ctx.G
             AtA_list = ctx.AtA_list
             AtA_act = ctx.AtA_act
             D_list = ctx.D_list
@@ -389,10 +388,10 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             #coarse_grads = mg.downsample_grad(dl_dzhat.clone())
             grad_list = [dl_dzhat] #+ coarse_grads
-            grad_list =  [-g for g in grad_list]
+            grad_list =  [g for g in grad_list]
             
             #dnu = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L)
-            dnu = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
+            dz = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
 
             #dnu = mg.full_multigrid_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
 
@@ -407,8 +406,12 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #dnu = F.interpolate(dnu, (16,16), mode='bilinear')
             #dnu = dnu.reshape(1, 5, 16*16).permute(0,2,1).reshape(1, -1)
 
-            nr, nrr = mg.get_residual_norm(AtA_list[0],dnu, grad_list[0])
+            nr, nrr = mg.get_residual_norm(AtA_list[0],dz, grad_list[0])
             print('backward', nr, nrr)
+
+            #dnu + G^(-1)*Adnu = 0
+            dnu = torch.bmm(A, dz.unsqueeze(2)).squeeze(2)
+            dnu = -(1/G)*dnu
 
             #dnu = solve_direct(AtA_list[0], grad_list[0])
 
@@ -419,29 +422,40 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             #dnu = -dnu
 
-            dQ1 = pde.sparse_AtA_grad(dnu, _x)
-            #print('nnz1 ', dQ1._nnz(), AtA_act._nnz())
-            dQ2 = pde.sparse_AtA_grad(_x, dnu)
-            #print('nnz2 ', dQ2._nnz(), AtA_act._nnz())
+            drhs = dnu[:, :pde.num_added_equation_constraints] #torch.tensor(-dnu.squeeze())
+            div_rhs = dnu[:, pde.num_added_equation_constraints:pde.num_added_equation_constraints + pde.num_added_initial_constraints]#.squeeze(2)
+
+            # step gradient
+            dD = pde.sparse_grad_derivative_constraint(dz,_lam)
+            dD = dD + pde.sparse_grad_derivative_constraint(_x,dnu)
+
+            # eq grad
+            dA = pde.sparse_grad_eq_constraint(dz,_lam)
+            dA = dA + pde.sparse_grad_eq_constraint(_x,dnu)
+
+            #dQ1 = pde.sparse_AtA_grad(dnu, _x)
+            ##print('nnz1 ', dQ1._nnz(), AtA_act._nnz())
+            #dQ2 = pde.sparse_AtA_grad(_x, dnu)
+            ##print('nnz2 ', dQ2._nnz(), AtA_act._nnz())
 
 
-            #adding sparse matrices directly doubles the nnz.
-            dQ_values = (dQ1._values() + dQ2._values())/2
-            #dQ = dQ.coalesce()
+            ##adding sparse matrices directly doubles the nnz.
+            #dQ_values = (dQ1._values() + dQ2._values())/2
+            ##dQ = dQ.coalesce()
 
-            dQ = torch.sparse_coo_tensor(AtA_act.indices(), dQ_values, 
-                                       #size=(self.num_added_derivative_constraints, self.num_vars), 
-                                       dtype=AtA_act.dtype, device=AtA_act.device)
-            #print('nnz ', dQ._nnz(), AtA_act._nnz())
+            #dQ = torch.sparse_coo_tensor(AtA_act.indices(), dQ_values, 
+            #                           #size=(self.num_added_derivative_constraints, self.num_vars), 
+            #                           dtype=AtA_act.dtype, device=AtA_act.device)
+            ##print('nnz ', dQ._nnz(), AtA_act._nnz())
 
-            #dQ = dnu.unsqueeze(1)*_x.unsqueeze(2)
-            #dQ = dQ + dnu.unsqueeze(2)*_x.unsqueeze(1)
-            #dQ = dQ/2
+            ##dQ = dnu.unsqueeze(1)*_x.unsqueeze(2)
+            ##dQ = dQ + dnu.unsqueeze(2)*_x.unsqueeze(1)
+            ##dQ = dQ/2
 
-            dq = dnu
+            #dq = dnu
 
             #return dQ, dq,None, None, None,None,None
-            print(dQ, dq)
-            return dQ, dq,None,None, None, None,None,None
+            #print(dQ, dq)
+            return dA, drhs,div_rhs,dD, None, None
 
     return QPFunctionFn.apply
