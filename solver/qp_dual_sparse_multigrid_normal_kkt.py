@@ -315,11 +315,14 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
         @staticmethod
         def forward(ctx, eq_constraints, rhs, iv_rhs, derivative_constraints, coeffs, steps_list):
+            print('input nnz', eq_constraints._nnz(), derivative_constraints._nnz())
+            print('input shape', eq_constraints.shape, derivative_constraints.shape)
             coarse_A_list, coarse_rhs_list = mg.fill_coarse_grids(coeffs, rhs, iv_rhs, steps_list)
 
             A, A_rhs = pde.fill_constraints_torch2(eq_constraints.coalesce(), rhs, iv_rhs, 
                                                         derivative_constraints.coalesce())
             AtA,D, AtPrhs,A_L, A_U,AtA_act,G = mg.make_AtA(pde, A, A_rhs, save=True)
+            G = G.squeeze(2)
             #AtA_act.register_hook(lambda grad: print('ataact'))
             ##AtA.register_hook(lambda grad: print('at', grad))
             #AtPrhs.register_hook(lambda grad: print('atprhs'))
@@ -332,7 +335,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             D_list = [D] + D_list
 
             #negate
-            rhs_list  = [-rhs for rhs in rhs_list]
+            rhs_list  = [rhs for rhs in rhs_list]
 
 
             AtA_coarsest = mg.get_AtA_dense(AtA_list[-1])
@@ -388,7 +391,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             #coarse_grads = mg.downsample_grad(dl_dzhat.clone())
             grad_list = [dl_dzhat] #+ coarse_grads
-            grad_list =  [g for g in grad_list]
+            #grad_list =  [g for g in grad_list]
             
             #dnu = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L)
             dz = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
@@ -425,13 +428,29 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             drhs = dnu[:, :pde.num_added_equation_constraints] #torch.tensor(-dnu.squeeze())
             div_rhs = dnu[:, pde.num_added_equation_constraints:pde.num_added_equation_constraints + pde.num_added_initial_constraints]#.squeeze(2)
 
-            # step gradient
-            dD = pde.sparse_grad_derivative_constraint(dz,_lam)
-            dD = dD + pde.sparse_grad_derivative_constraint(_x,dnu)
 
             # eq grad
-            dA = pde.sparse_grad_eq_constraint(dz,_lam)
-            dA = dA + pde.sparse_grad_eq_constraint(_x,dnu)
+            dA1 = pde.sparse_grad_eq_constraint(dz,_lam)
+            dA2 = pde.sparse_grad_eq_constraint(_x,dnu)
+
+            # step gradient
+            dD1 = pde.sparse_grad_derivative_constraint(dz,_lam)
+            dD2 = pde.sparse_grad_derivative_constraint(_x,dnu)
+
+
+            #Workaround: adding sparse matrices directly doubles the nnz. 
+            dA_values = (dA1._values() + dA2._values())
+            dA = torch.sparse_coo_tensor(dA1._indices(), dA_values, 
+                                       dtype=dA1.dtype, device=dA1.device)
+
+            dD_values = (dD1._values() + dD2._values())
+            dD = torch.sparse_coo_tensor(dD1._indices(), dD_values, 
+                                       dtype=dD1.dtype, device=dD1.device)
+
+                                       
+
+            print('grad nnz', dA._nnz(), dD._nnz())
+            print('grad shape', dA.shape, dD.shape)
 
             #dQ1 = pde.sparse_AtA_grad(dnu, _x)
             ##print('nnz1 ', dQ1._nnz(), AtA_act._nnz())

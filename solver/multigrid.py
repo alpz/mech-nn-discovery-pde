@@ -14,7 +14,7 @@ from solver.lp_pde_central_diff import PDESYSLP as PDESYSLPEPS #as ODELP_sys
 #add multigrid
 #from solver.qp_dual_indirect_sparse_pde import QPFunction as QPFunctionSys
 #from solver.qp_dual_sparse_multigrid_normal import QPFunction as QPFunctionSys
-import solver.qp_dual_sparse_multigrid_normal as MGS #import QPFunction as QPFunctionSys
+import solver.qp_dual_sparse_multigrid_normal_kkt as MGS #import QPFunction as QPFunctionSys
 #import solver.qp_dual_sparse_multigrid_normal2 as MGS #import QPFunction as QPFunctionSys
 #import solver.qp_dual_sparse_multigrid_normal_dense as MGS #import QPFunction as QPFunctionSys
 from config import PDEConfig as config
@@ -177,7 +177,7 @@ class MultigridSolver():
         U_list = []
         #ds_list = [1e6]*self.n_grid
         for i in range(1,self.n_grid):
-            AtA,D,rhs,L,U,_ = self.make_AtA(self.pde_list[i], A_list[i-1], A_rhs_list[i-1])
+            AtA,D,rhs,L,U,_,_ = self.make_AtA(self.pde_list[i], A_list[i-1], A_rhs_list[i-1])
             AtA_list.append(AtA)
             D_list.append(D)
             L_list.append(L)
@@ -283,7 +283,7 @@ class MultigridSolver():
         #AtPrhs = -torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)
         #Atrhs = torch.bmm(At, A_rhs.unsqueeze(2)).squeeze(2)
         #print('cuda al', At.shape, P_rhs.shape )
-        AtPrhs = -torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)#.to_dense()
+        AtPrhs = torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)#.to_dense()
         #AtPrhs.register_hook(lambda grad: print('aptrhs grad'))
 
         #L,U = self.get_tril(AtA)
@@ -296,7 +296,7 @@ class MultigridSolver():
         
 
         #return AtA, D, P_diag_inv,A
-        return AtA, D, AtPrhs,L,U, AtA_act
+        return AtA, D, AtPrhs,L,U, AtA_act, P_diag
 
     @torch.no_grad()
     def get_AtA_dense(self, As):
@@ -682,7 +682,7 @@ class MultigridSolver():
         """Weighted Jacobi iteration"""
         Dinv = 1/D
         if back:
-            w=0.5 #config.jacobi_w
+            w=0.4 #config.jacobi_w
         else:
             w=0.5
         #A = As[0]
@@ -1005,8 +1005,8 @@ class MultigridLayer(nn.Module):
         coarse_A_list, coarse_rhs_list = self.mg_solver.fill_coarse_grids(coeffs, 
                                                                 rhs, iv_rhs, steps_list)
 
-        A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints.coalesce(), rhs, iv_rhs, 
-                                                    derivative_constraints.coalesce())
+        #A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints.coalesce(), rhs, iv_rhs, 
+        #                                            derivative_constraints.coalesce())
         #A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints, rhs, iv_rhs, 
         #                                            derivative_constraints)
 
@@ -1019,7 +1019,7 @@ class MultigridLayer(nn.Module):
         #print('dif A r', Adiff, rdiff)
 
         #with torch.no_grad():
-        AtA,D, AtPrhs,A_L, A_U,AtA_act = self.mg_solver.make_AtA(self.pde, A, A_rhs, save=True)
+        #AtA,D, AtPrhs,A_L, A_U,AtA_act,_ = self.mg_solver.make_AtA(self.pde, A, A_rhs, save=True)
         #AtA_act.register_hook(lambda grad: print('ataact'))
         ##AtA.register_hook(lambda grad: print('at', grad))
         #AtPrhs.register_hook(lambda grad: print('atprhs'))

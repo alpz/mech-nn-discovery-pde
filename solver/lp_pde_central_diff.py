@@ -1834,6 +1834,7 @@ class PDESYSLP(nn.Module):
         #dA = dx*nu.reshape(bs, 1,num_coeffs)
         #correct x, y shapes
 
+
         b = x.shape[0]
         #copy x across columns. copy y across rows
         y = y[:, 0:self.num_added_equation_constraints]

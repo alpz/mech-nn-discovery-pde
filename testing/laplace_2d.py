@@ -155,7 +155,7 @@ u0=solve()
 
 # %%
 print(u0.shape)
-u0 = u0.cpu().numpy()
+u0 = u0.detach().cpu().numpy()
 
 # %%
 
