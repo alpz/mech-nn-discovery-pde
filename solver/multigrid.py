@@ -250,16 +250,16 @@ class MultigridSolver():
         #if save: 
 
         
-        At = At.coalesce()
-        Atn = torch.sparse_coo_tensor(indices=At.indices()[1:3],
-                            values=At.values(), size=At.size()[1:])
+        #At = At.coalesce()
+        #Atn = torch.sparse_coo_tensor(indices=At.indices()[1:3],
+        #                    values=At.values(), size=At.size()[1:])
 
-        PinvA = PinvA.coalesce()
-        PinvAn = torch.sparse_coo_tensor(indices=PinvA.indices()[1:3],
-                            values=PinvA.values(), size=PinvA.size()[1:])
+        #PinvA = PinvA.coalesce()
+        #PinvAn = torch.sparse_coo_tensor(indices=PinvA.indices()[1:3],
+        #                    values=PinvA.values(), size=PinvA.size()[1:])
 
         with torch.no_grad():
-            AtA_act = torch.sparse.mm(Atn, PinvAn)#.unsqueeze(0)
+            AtA_act = torch.sparse.mm(At[0], PinvA[0])#.unsqueeze(0)
         #if save: 
         #AtA_act.register_hook(lambda grad: print("Ataact grad"))
 
@@ -283,7 +283,7 @@ class MultigridSolver():
         #AtPrhs = -torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)
         #Atrhs = torch.bmm(At, A_rhs.unsqueeze(2)).squeeze(2)
         #print('cuda al', At.shape, P_rhs.shape )
-        AtPrhs = torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)#.to_dense()
+        AtPrhs =torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)#.to_dense()
         #AtPrhs.register_hook(lambda grad: print('aptrhs grad'))
 
         #L,U = self.get_tril(AtA)
@@ -1002,8 +1002,8 @@ class MultigridLayer(nn.Module):
 
         #build coarse grids
         #with torch.no_grad():
-        coarse_A_list, coarse_rhs_list = self.mg_solver.fill_coarse_grids(coeffs, 
-                                                                rhs, iv_rhs, steps_list)
+        #coarse_A_list, coarse_rhs_list = self.mg_solver.fill_coarse_grids(coeffs, 
+        #                                                        rhs, iv_rhs, steps_list)
 
         #A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints.coalesce(), rhs, iv_rhs, 
         #                                            derivative_constraints.coalesce())
@@ -1017,12 +1017,22 @@ class MultigridLayer(nn.Module):
         #Adiff = Adiff.pow(2).sum()
         #rdiff = (A_rhs - A_rhs0).pow(2).sum()
         #print('dif A r', Adiff, rdiff)
+        rhs_in = rhs[:,:20]
 
         #with torch.no_grad():
         #AtA,D, AtPrhs,A_L, A_U,AtA_act,_ = self.mg_solver.make_AtA(self.pde, A, A_rhs, save=True)
         #AtA_act.register_hook(lambda grad: print('ataact'))
         ##AtA.register_hook(lambda grad: print('at', grad))
         #AtPrhs.register_hook(lambda grad: print('atprhs'))
+        #def run1(coeffs, rhs, iv_rhs):
+        def run1(rhs_in2):
+            rhs2 = torch.cat([rhs_in2, rhs[:,20:]], dim=-1)
+            #derivative_constraints = self.pde.build_derivative_tensor(steps_list)
+            #eq_constraints = self.pde.build_equation_tensor(coeffs)
+            x = self.qpf(eq_constraints, rhs2, iv_rhs, derivative_constraints, coeffs, steps_list)
+            x= x.reshape(16,16,5)[:,:,0]
+            return x
+
 
         check=False
         if check:
@@ -1032,7 +1042,11 @@ class MultigridLayer(nn.Module):
             try: 
                 torch.set_printoptions(precision=4, threshold=1000000, edgeitems=None, linewidth=None, profile=None, sci_mode=None)
 
-                test = gradcheck(self.qpf, (eq_constraints, rhs, iv_rhs, derivative_constraints, coarse_A_list, coarse_rhs_list), 
+                #test = gradcheck(self.qpf, (eq_constraints, rhs, iv_rhs, derivative_constraints, coeffs, steps_list ), 
+                #                eps=1e-10, atol=1e-4, rtol=0.001, fast_mode=False)
+
+                #test = gradcheck(run1, (coeffs, rhs, iv_rhs), 
+                test = gradcheck(run1, (rhs_in), 
                                 eps=1e-10, atol=1e-4, rtol=0.001, fast_mode=False)
             except Exception as e:
                 string = e.args[0].split('tensor')

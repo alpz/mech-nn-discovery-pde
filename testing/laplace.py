@@ -43,8 +43,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def solve():
     bs = 1
-    #coord_dims = (16,16)
-    coord_dims = (32,32)
+    coord_dims = (16,16)
+    #coord_dims = (32,32)
     #coord_dims = (128,128)
     n_ind_dim=1
     #iv_list = [(0,0, [0,0],[0,coord_dims[1]-2]), 
@@ -67,7 +67,7 @@ def solve():
 
     #pde = PDEINDLayerEPS(bs=bs, coord_dims=coord_dims, order=2, n_ind_dim=n_ind_dim, n_iv=1, 
     pde = MultigridLayer(bs=bs, coord_dims=coord_dims, order=2, n_ind_dim=n_ind_dim, n_iv=1, 
-                        n_grid=3,
+                        n_grid=2,
                         init_index_mi_list=iv_list,  n_iv_steps=1, double_ret=True, solver_dbl=True)
 
 

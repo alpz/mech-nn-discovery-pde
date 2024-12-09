@@ -319,8 +319,11 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             print('input shape', eq_constraints.shape, derivative_constraints.shape)
             coarse_A_list, coarse_rhs_list = mg.fill_coarse_grids(coeffs, rhs, iv_rhs, steps_list)
 
-            A, A_rhs = pde.fill_constraints_torch2(eq_constraints.coalesce(), rhs, iv_rhs, 
-                                                        derivative_constraints.coalesce())
+            #A, A_rhs = pde.fill_constraints_torch2(eq_constraints.coalesce(), rhs, iv_rhs, 
+            #                                            derivative_constraints.coalesce())
+
+            A, A_rhs = pde.fill_constraints_torch(eq_constraints, rhs, iv_rhs, 
+                                                        derivative_constraints)
             AtA,D, AtPrhs,A_L, A_U,AtA_act,G = mg.make_AtA(pde, A, A_rhs, save=True)
             G = G.squeeze(2)
             #AtA_act.register_hook(lambda grad: print('ataact'))
@@ -348,12 +351,12 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
 
             #print('solving direct ata')
-            #x = solve_direct_AtA(AtA_list[0], rhs_list[0])
+            x = solve_direct_AtA(AtA_list[0], rhs_list[0])
             #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
-            mg_args = [AtA_list, D_list, L]
+            #mg_args = [AtA_list, D_list, L]
 
-            x,_ = cg.gmres(AtA_act.unsqueeze(0), rhs_list[0],x0=torch.zeros_like(rhs_list[0]), 
-                           MG=mg, MG_args=mg_args, restart=40, maxiter=80)
+            #x,_ = cg.gmres(AtA_act.unsqueeze(0), rhs_list[0],x0=torch.zeros_like(rhs_list[0]), 
+            #               MG=mg, MG_args=mg_args, restart=40, maxiter=80)
 
             r,rr = mg.get_residual_norm(AtA_list[0], x, rhs_list[0])
             print(f'gmres step norm: ', r,rr)
@@ -362,6 +365,8 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             r = torch.bmm(A, x.unsqueeze(2)).squeeze(2) - A_rhs
             lam = -(1/G)*r
 
+            #x = -x
+            #lam = -lam
 
             ctx.A = A
             ctx.G = G
@@ -401,7 +406,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             AtA0 = mg.get_AtA_dense(AtA_list[0])
             dz = solve_direct(AtA0, grad_list[0])
 
-            #mg_args = [AtA_list, D_list, L]
+            mg_args = [AtA_list, D_list, L]
             #dz,_ = cg.gmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
             #               MG=mg, MG_args=mg_args, restart=60, maxiter=120, back=True)
 
@@ -423,10 +428,11 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             #_dx, _dnu = -dx,-dnu
 
-            dnu = -dnu
+            db = -dnu
+            #dz = dz
 
-            drhs = dnu[:, :pde.num_added_equation_constraints] #torch.tensor(-dnu.squeeze())
-            div_rhs = dnu[:, pde.num_added_equation_constraints:pde.num_added_equation_constraints + pde.num_added_initial_constraints]#.squeeze(2)
+            drhs = db[:, :pde.num_added_equation_constraints] #torch.tensor(-dnu.squeeze())
+            div_rhs = db[:, pde.num_added_equation_constraints:pde.num_added_equation_constraints + pde.num_added_initial_constraints]#.squeeze(2)
 
 
             # eq grad

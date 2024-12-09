@@ -339,7 +339,7 @@ class Sine(nn.Module):
         #rhs = rhs.reshape(1,1).repeat(self.bs, self.pde.grid_size)
         #rhs = rhs.type_as(coeffs)
 
-        u0,u,eps = self.pde(coeffs, rhs.detach(), iv_rhs, steps_list)
+        u0,u,eps = self.pde(coeffs, rhs, iv_rhs, steps_list)
 
         #print(eps, eps.abs().min(), eps.abs().mean())
 
