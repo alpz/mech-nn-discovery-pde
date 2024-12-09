@@ -1007,9 +1007,6 @@ class MultigridLayer(nn.Module):
 
         A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints.coalesce(), rhs, iv_rhs, 
                                                     derivative_constraints.coalesce())
-        A.register_hook(lambda grad: print('AA'))
-        A_rhs.register_hook(lambda grad: print('AArhs'))
-
         #A, A_rhs = self.pde.fill_constraints_torch2(eq_constraints, rhs, iv_rhs, 
         #                                            derivative_constraints)
 
