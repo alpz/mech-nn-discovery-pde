@@ -325,7 +325,11 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             A, A_rhs = pde.fill_constraints_torch(eq_constraints, rhs, iv_rhs, 
                                                         derivative_constraints)
             AtA,D, AtPrhs,A_L, A_U,AtA_act,G = mg.make_AtA(pde, A, A_rhs, save=True)
+
             G = G.squeeze(2)
+            #A_kkt = mg.make_kkt(G[0], A)
+            
+
             #AtA_act.register_hook(lambda grad: print('ataact'))
             ##AtA.register_hook(lambda grad: print('at', grad))
             #AtPrhs.register_hook(lambda grad: print('atprhs'))
@@ -369,6 +373,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #lam = -lam
 
             ctx.A = A
+            #ctx.A_kkt = A_kkt
             ctx.G = G
             ctx.AtA_list = AtA_list
             ctx.AtA_act = AtA_act
@@ -384,6 +389,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
         def backward(ctx, dl_dzhat):
             _x,_lam = ctx.saved_tensors[0:2]
             A = ctx.A
+            #A_kkt = ctx.A_kkt
             G = ctx.G
             AtA_list = ctx.AtA_list
             AtA_act = ctx.AtA_act
@@ -406,9 +412,28 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #AtA0 = mg.get_AtA_dense(AtA_list[0])
             #dz = solve_direct(AtA0, grad_list[0])
 
-            mg_args = [AtA_list, D_list, L]
-            dz,_ = cg.fgmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
-                           MG=mg, MG_args=mg_args, restart=50, maxiter=300, back=True)
+            mg_args = [AtA_list, D_list, L, (A.shape[1], A.shape[2])]
+
+            #zero_init = torch.zeros(A.shape[0], A.shape[1], device=A.device)
+            #zgrad = torch.cat([zero_init, dl_dzhat], dim=1)
+            
+
+            #_dz,_ = cg.fgmres_kkt(A_kkt, zgrad,x0=torch.zeros_like(zgrad), 
+            #               MG=mg, MG_args=mg_args, restart=50, maxiter=300, back=True)
+
+            #dz = _dz[:, A.shape[1]:] 
+            #dnu = _dz[:, :A.shape[1]] 
+
+            #dz,_ = cg.fgmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
+            #               MG=mg, MG_args=mg_args, restart=100, maxiter=50, back=True)
+
+            dz,_ = cg.gmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
+                           MG=mg, MG_args=mg_args, restart=100, maxiter=50, back=True)
+
+            
+            #dz,_,_ = cg.minres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
+            #               MG=mg, MG_args=mg_args, maxiter=600, back=True)
+
 
             #dz,_ = cg.cg_matvec(AtA_list[0], grad_list[0],maxiter=100,
             #                    MG=mg, MG_args=mg_args,back=True)
@@ -417,10 +442,14 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #dnu = F.interpolate(dnu, (16,16), mode='bilinear')
             #dnu = dnu.reshape(1, 5, 16*16).permute(0,2,1).reshape(1, -1)
 
+            #nr, nrr = mg.get_residual_norm(AtA_list[0],dz, grad_list[0])
+            #diff  = (zgrad - torch.bmm(A_kkt, _dz.unsqueeze(2)).squeeze(2)).pow(2).sum().sqrt()
+            #d = (zgrad).pow(2).sum().sqrt()
+            #print('diff', diff, diff/d)
             nr, nrr = mg.get_residual_norm(AtA_list[0],dz, grad_list[0])
             print('backward', nr, nrr)
 
-            #dnu + G^(-1)*Adnu = 0
+            ## dnu + G^(-1)*Adnu = 0
             dnu = torch.bmm(A, dz.unsqueeze(2)).squeeze(2)
             dnu = -(1/G)*dnu
 

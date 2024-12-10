@@ -323,33 +323,34 @@ class MultigridSolver():
     #    return KKT_list, KKT_diag_list
 
 
-    #def make_kkt(pde: PDESYSLPEPS, A, A_rhs, us=1e2, ds=1e-2):
-    #    #P_diag = torch.ones(num_eps).type_as(rhs)*1e3
-    #    #P_zeros = torch.zeros(num_var).type_as(rhs) +1e-5
-    #    num_eps = pde.var_set.num_added_eps_vars
-    #    num_var = pde.var_set.num_vars
+    #def make_kkt(pde: PDESYSLPEPS, P_diag, A, A_rhs, us=1e2, ds=1e-2):
+    def make_kkt(self, P_diag, A,  us=1e2, ds=1e-2):
+        ##P_diag = torch.ones(num_eps).type_as(rhs)*1e3
+        ##P_zeros = torch.zeros(num_var).type_as(rhs) +1e-5
+        #num_eps = pde.var_set.num_added_eps_vars
+        #num_var = pde.var_set.num_vars
 
-    #    _P_diag = torch.ones(num_eps, dtype=A_rhs.dtype, device='cpu')*us
-    #    _P_zeros = torch.zeros(num_var, dtype=A_rhs.dtype, device='cpu') +ds
-    #    P_diag = torch.cat([_P_zeros, _P_diag])
+        #_P_diag = torch.ones(num_eps, dtype=A_rhs.dtype, device='cpu')*us
+        #_P_zeros = torch.zeros(num_var, dtype=A_rhs.dtype, device='cpu') +ds
+        #P_diag = torch.cat([_P_zeros, _P_diag])
 
-    #    #torch bug: can't make diagonal tensor on gpu
-    #    G = torch.sparse.spdiags(P_diag, torch.tensor([0]), (P_diag.shape[0], P_diag.shape[0]), 
-    #                            layout=torch.sparse_coo)
+        #torch bug: can't make diagonal tensor on gpu
+        G = torch.sparse.spdiags(P_diag.cpu(), torch.tensor([0]), (P_diag.shape[0], P_diag.shape[0]), 
+                                layout=torch.sparse_coo)
 
-    #    G = G.to(A.device)
-    #    G = G.unsqueeze(0)
-    #    G = torch.cat([G]*A_rhs.shape[0], dim=0)
-    #    GA = torch.cat([G, A], dim=1)
+        G = G.to(A.device)
+        G = G.unsqueeze(0)
+        G = torch.cat([G]*A.shape[0], dim=0)
+        GA = torch.cat([G, A.transpose(1,2)], dim=1)
 
-    #    Z = torch.sparse_coo_tensor(torch.empty([2,0]), [], size=(A.shape[1], A.shape[1]), dtype=A.dtype, device=A_rhs.device)
-    #    Z = Z.unsqueeze(0)#.to(rhs.device)
-    #    Z = torch.cat([Z]*A_rhs.shape[0], dim=0)
+        Z = torch.sparse_coo_tensor(torch.empty([2,0]), [], size=(A.shape[2], A.shape[2]), dtype=A.dtype, device=A.device)
+        Z = Z.unsqueeze(0)#.to(rhs.device)
+        Z = torch.cat([Z]*A.shape[0], dim=0)
 
-    #    AtZ = torch.cat([A.transpose(1,2), Z], dim =1)
-    #    KKT = torch.cat([GA, AtZ], dim =2)
+        AtZ = torch.cat([A, Z], dim =1)
+        KKT = torch.cat([GA, AtZ], dim =2)
 
-    #    return KKT, P_diag
+        return KKT#, P_diag
 
     def downsample_grads(self, coeffs, old_shape,  new_shape, n_orders):
         grid_size = np.prod(np.array(old_shape))
@@ -769,7 +770,7 @@ class MultigridSolver():
         #dr, drn = self.get_residual_norm(As, x, b)
         #print('resid before smooth',idx, dr, drn)
         ##pre-smooth
-        nstep = 20 if back and idx == 0 else 5
+        nstep = 5 if back and idx == 0 else 5
         x = self.smooth_jacobi(As, b, x, D, nsteps=nstep, back=back)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
@@ -823,7 +824,7 @@ class MultigridSolver():
         #print('resid plus delta',idx, dr, drn)
 
         #smooth
-        x = self.smooth_jacobi(As, b, x, D, nsteps=nstep, back=back)
+        x = self.smooth_jacobi(As, b, x, D, nsteps=5, back=back)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
         #if back:
@@ -900,7 +901,7 @@ class MultigridSolver():
         x = torch.zeros_like(b_list[0])
         #x = torch.randn_like(b_list[0])
         #x = torch.rand_like(b_list[0])
-        n_step = 1 if back else 1
+        n_step = 4 if back else 1
         for step in range(n_step):
             x = self.v_cycle_jacobi(0, A_list, b_list[0], x, D_list,L, back=back)
             #r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
