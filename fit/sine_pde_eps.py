@@ -81,8 +81,8 @@ class Method(pl.LightningModule):
 
         #y = y.reshape((32,32))
         #y = y.reshape((32,32))
-        y = y.reshape((64,64))
-        #y = y.reshape((16,16))
+        #y = y.reshape((64,64))
+        y = y.reshape((16,16))
         #y = y.reshape((6,6))
         #y = y.reshape((4*128,4*128))
         t0 = y[0, 0:-1].reshape(-1)
@@ -125,7 +125,7 @@ class Sine(nn.Module):
     def __init__(self, bs=1, device=None):
         super().__init__()
 
-        self.step_size = 0.1
+        self.step_size = 0.05
         #self.end = 500* self.step_size
         self.end =1
         #kself.n_step = int(self.end /self.step_size)
@@ -139,8 +139,8 @@ class Sine(nn.Module):
         #self.coord_dims = (64,32)
         #self.coord_dims = (10,15)
         #self.coord_dims = (32,32)
-        self.coord_dims = (64,64)
-        #self.coord_dims = (16,16)
+        #self.coord_dims = (64,64)
+        self.coord_dims = (16,16)
         #self.coord_dims = (16,16)
         #self.coord_dims = (48,48)
         #self.coord_dims = (8,8)
@@ -179,7 +179,7 @@ class Sine(nn.Module):
         #                            n_iv_steps=1, gamma=0.5, alpha=0., double_ret=True, solver_dbl=True)
 
         self.pde = MultigridLayer(bs=bs, coord_dims=self.coord_dims, order=2, 
-                                n_ind_dim=self.n_dim, n_iv=1, n_grid=3,
+                                n_ind_dim=self.n_dim, n_iv=1, n_grid=2,
                                 init_index_mi_list=self.iv_list,  n_iv_steps=1, 
                                 double_ret=True, solver_dbl=True)
 
@@ -275,7 +275,7 @@ class Sine(nn.Module):
         #_coeffs = 3*self.cf_nn(self.coeffs)
         #_coeffs = 3*self.cf_nn(_res)
         _coeffs = self.coeffs2 #self.cf_nn(_res)
-        print(_coeffs)
+        #print(_coeffs)
         #_coeffs = self.cf_nn(_res)
         #_coeffs[..., -2] = 1.
         rhs = self.rhs_nn(_res)
