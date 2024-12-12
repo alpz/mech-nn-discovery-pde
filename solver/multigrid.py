@@ -231,7 +231,7 @@ class MultigridSolver():
         #_P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*config.ds#*us
         #_P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')#/ds#/config.ds# +ds
 
-        _P_diag = torch.ones(num_ineq, dtype=A.dtype, device=A.device)*2 #ds #config.ds#*us
+        _P_diag = torch.ones(num_ineq, dtype=A.dtype, device=A.device) #ds #config.ds#*us
         _P_ones = torch.ones(num_eq, dtype=A.dtype, device=A.device)#/ds#/config.ds# +ds
         P_diag = torch.cat([_P_ones, _P_diag])#.to(A.device)
         P_diag_inv = 1/P_diag
@@ -629,43 +629,6 @@ class MultigridSolver():
 
         return x
 
-    def smooth_gs(self, A, b, x, L,U, nsteps=20):
-        """GS iteration"""
-        #Dinv = 1/D
-        #w=0.2
-
-        #I = torch.sparse.spdiags(torch.ones(A.shape[1]), torch.tensor([0]), (A.shape[1], A.shape[2]), 
-        #                        layout=torch.sparse_coo)
-        #I = I.to(A.device).unsqueeze(0)
-        #I = I.to_dense()
-
-        #I = torch.eye(A.shape[1], device=A.device)
-
-        #print('diff',(I-I2).pow(2).sum())
-        #x =M-1( Nx + b)
-        x = x[0]
-        b = b[0]
-        L = L.to_dense()
-        #L = torch.tril(A.to_dense())[0]
-        #A = A.to_dense()[0]
-        #U = A-L
-        #print('ll',L.shape)
-        nsteps =200
-        for i in range(nsteps):
-            x = torch.mm(-U, x.unsqueeze(1)).squeeze(1) + b
-            #x = torch.sparse.spsolve(L, x)
-            x = torch.linalg.solve_triangular(L,x.unsqueeze(1),upper=False, 
-                                              left=True).squeeze(1)
-            #print('xx',_x.shape,x.shape)
-            #y = L@_x.unsqueeze(1)
-            #y  = y.squeeze(1)
-            #print('ysol ', y.shape)
-            #y = (x-y).pow(2).sum()
-            #print('y ', y)
-            #x = _x
-            #x = x.unsqueeze(0)
-        return x.unsqueeze(0)
-
     def mult_AtA(self, A_list, x):
         A = A_list[0]
         #x = x.to_dense()
@@ -832,68 +795,6 @@ class MultigridSolver():
         #print('resid smooth delta',idx, dr, drn)
 
 
-        return x
-
-    def v_cycle_gs(self, idx, A_list, b_list, x, AL_list, U_list, L, back=False):
-        A = A_list[idx]
-        b = b_list[idx]
-        AL = AL_list[idx]
-        U = U_list[idx]
-
-        #if idx !=0:
-        #    dr, drn = self.get_residual_norm(A, x, b)
-        #    print('before sm resid delta',idx, dr, drn)
-        #    x = self.smooth_gs(A, b, x, AL, U, nsteps=100)
-        r = b-torch.bmm(A, x.unsqueeze(2)).squeeze(2)
-        r.register_hook(lambda grad: print("r gr"))
-
-        #if idx !=0:
-        #dr, drn = self.get_residual_norm(A, x, b)
-        #print('er smooth delta',idx, dr, drn)
-
-        rH = self.restrict(idx, r, back=back)
-
-        if idx ==self.n_grid-2:
-            deltaH = self.solve_coarsest(L, rH)
-            #dr, drn = self.get_residual_norm(A_list[self.n_grid-1], deltaH, rH)
-            #print('coarsest resid ', dr, drn)
-        else:
-            xH0 = torch.zeros_like(b_list[idx+1])
-            deltaH = self.v_cycle_gs(idx+1, A_list, b_list,xH0, AL_list, 
-                                         U_list, L, back=back)
-            #deltaH = self.v_cycle_jacobi(idx+1, A_list, b_list,deltaH, D_list,L)
-
-        delta = self.prolong(idx+1, deltaH, back=back)
-        #if back:
-        #dr, drn = self.get_residual_norm(A, x, b)
-        #print('resid delta',idx, dr, drn)
-        #print('af idx', x.shape, delta.shape, idx)
-        #correct
-        #if back:
-        #    x = x+delta
-        #else:
-        x = x+delta
-        #if back:
-        #dr, drn = self.get_residual_norm(A, x, b)
-        #print('resid plus delta',idx, dr, drn)
-
-        #smooth
-        x = self.smooth_gs(A, b, x, AL, U, nsteps=10)
-
-        #if back:
-        #dr, drn = self.get_residual_norm(A, x, b)
-        #print('resid smooth delta',idx, dr, drn)
-
-
-        return x
-
-    def v_cycle_gs_start(self, A_list, b_list,L_list, U_list,L, n_step=1, back=False):
-        x = torch.zeros_like(b_list[0])
-        #x = torch.rand_like(b_list[0])
-        #for step in range(n_step):
-        x = self.v_cycle_gs(0, A_list, b_list, x, L_list,U_list, L, back=back)
-        r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
-        print(f'gs vcycle end norm: ', r,rr)
         return x
 
     @torch.no_grad()
