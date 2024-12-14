@@ -383,7 +383,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             ctx.save_for_backward(x, lam)
             
             print('qpf', x.shape)
-            return x,out
+            return x#,out
         
         @staticmethod
         def backward(ctx, dl_dzhat):
@@ -405,7 +405,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #grad_list =  [g for g in grad_list]
             
             #dnu = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L)
-            dz = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
+            dz,_ = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
 
             #dz = mg.full_multigrid_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
 

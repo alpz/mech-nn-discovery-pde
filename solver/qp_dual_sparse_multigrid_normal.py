@@ -346,7 +346,6 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
             x, out = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
-            ipdb.set_trace()
 
             #print('solving direct ata')
             #x = solve_direct_AtA(AtA_list[0], rhs_list[0])
