@@ -376,15 +376,15 @@ class MultigridSolver():
         #coeffs = coeffs.sum(dim=-1).sum(dim=3)
                             
 
-        coeffs = F.interpolate(coeffs, size=new_shape, mode='bilinear', 
-                               align_corners=False)
+        #coeffs = F.interpolate(coeffs, size=new_shape, mode='bilinear', 
+        #                       align_corners=False)
 
         #coeffs = F.interpolate(coeffs, size=new_shape, mode='nearest', 
         #                       align_corners=None)
         m = old_shape[0]
         #print('ols s ', m)
-        #coeffs = coeffs.reshape(self.bs*self.n_ind_dim,n_orders,m//2,2,m//2,2)
-        #coeffs = coeffs[:, :, :, 0, :, 0]
+        coeffs = coeffs.reshape(self.bs*self.n_ind_dim,n_orders,m//2,2,m//2,2)
+        coeffs = coeffs[:, :, :, 0, :, 0]
         #coeffs = coeffs.mean(dim=-1).mean(dim=3)
 
         #coeffs = F.interpolate(coeffs, size=new_shape, mode=mode, 
@@ -414,7 +414,11 @@ class MultigridSolver():
         #    raise ValueError('incorrect num coordinates')
 
         #print('ds coeffs ', coeffs.shape, new_shape)
-        coeffs = F.interpolate(coeffs, size=new_shape, mode=self.interp_mode, align_corners=self.align_corners)
+        #coeffs = F.interpolate(coeffs, size=new_shape, mode=self.interp_mode, align_corners=self.align_corners)
+        m = old_shape[0]
+
+        coeffs = coeffs.reshape(self.bs*self.n_ind_dim,n_orders,m//2,2,m//2,2)
+        coeffs = coeffs[:, :, :, 0, :, 0]
         #print('ds coeffs ', coeffs.shape)
 
         new_grid_size = np.prod(np.array(new_shape))
@@ -520,8 +524,8 @@ class MultigridSolver():
             #print(iv.shape, old_shape, tuple(iv_new_shape))
 
             iv = F.interpolate(_iv.unsqueeze(1), size=tuple(iv_new_shape), mode=self.interp_mode, 
-                               #align_corners=self.align_corners)
-                               align_corners=True)
+                               align_corners=self.align_corners)
+                               #align_corners=True)
             #print('interp iv ', iv.shape)
             iv = iv.reshape(self.bs*self.n_ind_dim, -1)
 
@@ -588,6 +592,162 @@ class MultigridSolver():
                             mode=self.interp_mode, 
                             align_corners=self.align_corners)
         x = x.reshape(*x.shape[0:2], self.size_list[idx+1])
+
+        x = x.permute(0,2,1).reshape(x.shape[0], -1)
+        #eq, f_list,b_list, init_list = pde.lambda_flat_to_grid_set(x)
+        #x_rst = pde.lambda_grids_to_flat(eq, f_list, b_list, init_list)
+        #return x_rst
+
+
+        return x
+
+    def restrict2(self, idx, x, back=False):
+        pde = self.pde_list[idx]
+        #pro_pde = self.pde_list[idx-1]
+
+        #bs, grid, num_mi
+        x = pde.get_solution_reshaped(x)
+        x = x.permute(0,2,1)
+
+        x = x.reshape(*x.shape[0:2], *self.dim_list[idx])
+
+        new_x_shape = [x.shape[0], x.shape[1]] + list(self.dim_list[idx+1])
+        new_x = -100*torch.ones(new_x_shape, device=x.device).type_as(x)
+
+        xint = x[:,:, 1:-1,1:-1].clone()
+        #xi00 = x[:,:, 0,:].clone()
+        #xi01 = x[:,:, -1,:].clone()
+        #xi10 = x[:,:,:, 0].clone()
+        #xi11 = x[:,:,:, -1].clone()
+
+        xi00 = x[:,:, 0,:-1]
+        xi01 = x[:,:, -1,1:-1]
+        xi10 = x[:,:,1:, 0]
+        xi11 = x[:,:,:, -1]
+        #os = list(np.array(self.dim_list[idx]-2))
+        ns = list(np.array(self.dim_list[idx+1])-2)
+
+        s = self.dim_list[idx][0]
+
+        xint = F.interpolate(xint, size=ns, 
+                            mode=self.interp_mode, 
+                            align_corners=self.align_corners)
+
+        xi00 = F.interpolate(xi00, size=s//2-1, 
+                            mode='linear', 
+                            #align_corners=self.align_corners)
+                            #mode=self.interp_mode, 
+                            align_corners=self.align_corners)
+
+        xi01 = F.interpolate(xi01, size=s//2-2, 
+                            mode='linear', 
+                            #align_corners=self.align_corners)
+                            #mode=self.interp_mode, 
+                            align_corners=self.align_corners)
+
+        xi10 = F.interpolate(xi10, size=s//2-1, 
+                            mode='linear', 
+                            #align_corners=self.align_corners)
+                            #mode=self.interp_mode, 
+                            align_corners=self.align_corners)
+
+        xi11 = F.interpolate(xi11, size=s//2, 
+                            mode='linear', 
+                            #align_corners=self.align_corners)
+                            #mode=self.interp_mode, 
+                            align_corners=self.align_corners)
+        #ipdb.set_trace()
+
+        new_x[:,:, 1:-1, 1:-1] = xint
+
+        new_x[:,:, 0,:-1] = xi00#[:,:, :-1]
+        new_x[:,:, -1,1:-1] = xi01#[:,:, 1:-1]
+        new_x[:,:,1:, 0] = xi10#[:,:,1:]
+        new_x[:,:,:, -1] = xi11
+
+
+        x = new_x.reshape(*x.shape[0:2], self.size_list[idx+1])
+
+
+        x = x.permute(0,2,1).reshape(x.shape[0], -1)
+        #eq, f_list,b_list, init_list = pde.lambda_flat_to_grid_set(x)
+        #x_rst = pde.lambda_grids_to_flat(eq, f_list, b_list, init_list)
+        #return x_rst
+
+
+        return x
+
+
+    def prolong2(self, idx, x, back=False):
+        pde = self.pde_list[idx]
+        #pro_pde = self.pde_list[idx-1]
+
+        #bs, grid, num_mi
+        x = pde.get_solution_reshaped(x)
+        x = x.permute(0,2,1)
+
+        x = x.reshape(*x.shape[0:2], *self.dim_list[idx])
+
+        new_x_shape = [x.shape[0], x.shape[1]] + list(self.dim_list[idx-1])
+        new_x = torch.zeros(new_x_shape, device=x.device).type_as(x)
+
+        xint = x[:,:, 1:-1,1:-1]
+        #xi00 = x[:,:, 0,:-1]
+        #xi01 = x[:,:, -1,1:-1]
+        #xi10 = x[:,:,1:, 0]
+        #xi11 = x[:,:,:, -1]
+
+        xi00 = x[:,:, 0,:-1]
+        xi01 = x[:,:, -1,1:-1]
+        xi10 = x[:,:,1:, 0]
+        xi11 = x[:,:,:, -1]
+        #os = list(np.array(self.dim_list[idx]-2))
+        ns = list(np.array(self.dim_list[idx-1])-2)
+
+
+        xint = F.interpolate(xint, size=ns, 
+                            mode=self.interp_mode, 
+                            align_corners=self.align_corners)
+
+        s = self.dim_list[idx][0]
+        xi00 = F.interpolate(xi00, size=s*2-1, 
+                            mode='linear', 
+                            #align_corners=self.align_corners)
+                            #mode=self.interp_mode, 
+                            align_corners=self.align_corners)
+
+        xi01 = F.interpolate(xi01, size=s*2-2, 
+                            mode='linear', 
+                            #align_corners=self.align_corners)
+                            #mode=self.interp_mode, 
+                            align_corners=self.align_corners)
+
+        xi10 = F.interpolate(xi10, size=s*2-1, 
+                            mode='linear', 
+                            #align_corners=self.align_corners)
+                            #mode=self.interp_mode, 
+                            align_corners=self.align_corners)
+
+        xi11 = F.interpolate(xi11, size=s*2, 
+                            mode='linear', 
+                            #align_corners=self.align_corners)
+                            #mode=self.interp_mode, 
+                            align_corners=self.align_corners)
+
+
+        new_x[:,:, 1:-1, 1:-1] = xint
+
+        #new_x[:,:, 0,:] = xi00
+        #new_x[:,:, -1,:] = xi01
+        #new_x[:,:,:, 0] = xi10
+        #new_x[:,:,:, -1] = xi11
+
+        new_x[:,:, 0,:-1] = xi00#[:,:, :-1]
+        new_x[:,:, -1,1:-1] = xi01#[:,:, 1:-1]
+        new_x[:,:,1:, 0] = xi10#[:,:,1:]
+        new_x[:,:,:, -1] = xi11
+
+        x = new_x.reshape(*x.shape[0:2], self.size_list[idx-1])
 
         x = x.permute(0,2,1).reshape(x.shape[0], -1)
         #eq, f_list,b_list, init_list = pde.lambda_flat_to_grid_set(x)
@@ -741,7 +901,7 @@ class MultigridSolver():
         #dr, drn = self.get_residual_norm(As, x, b)
         #print('resid before smooth',idx, dr, drn)
         ##pre-smooth
-        nstep =100 # 5 if back and idx == 0 else 5
+        nstep =10 # 5 if back and idx == 0 else 5
         x = self.smooth_jacobi(As, b, x, D, nsteps=nstep, back=back)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
@@ -764,25 +924,26 @@ class MultigridSolver():
             #deltaH = self.solve_coarsest(A_list[self.n_grid-1], rH)
             if not back:
                 #deltaH = self.smooth_jacobi(As_list[idx+1], rH, torch.zeros_like(rH), D_list[idx+1], nsteps=100)
-                #deltaH = self.solve_coarsest(L, rH)
+                deltaH = self.solve_coarsest(L, rH)
+
                 ata = self.get_AtA_dense(As_list[-1])
-
-
                 deltaH1 = torch.linalg.solve(ata, rH.unsqueeze(2)).squeeze(2)
 
                 ataup = self.get_AtA_dense(As_list[-2])
                 deltaup = torch.linalg.solve(ataup, r.unsqueeze(2)).squeeze(2)
 
-                #deltaH= deltaH.reshape(8,8,5)
+                
+
+                deltaH= deltaH.reshape(8,8,5)
                 deltaH1= deltaH1.reshape(8,8,5)
-                ##deltaHd[1:-1,1:-1,:] = -deltaHd[1:-1,1:-1,:]
-                ##deltaH = -deltaHd.reshape(1,-1)
-                ##deltaHd = deltaHd.reshape(8,8,5)
+                ###deltaHd[1:-1,1:-1,:] = -deltaHd[1:-1,1:-1,:]
+                ###deltaH = -deltaHd.reshape(1,-1)
+                ###deltaHd = deltaHd.reshape(8,8,5)
                 deltaup = deltaup.reshape(16,16,5)
 
 
                 #deltaH = deltaH1
-                ipdb.set_trace()
+                #ipdb.set_trace()
             else:
                 deltaH = self.smooth_jacobi(As_list[idx+1], rH, torch.zeros_like(rH), D_list[idx+1], nsteps=20)
                 #ataup = self.get_AtA_dense(As_list[-1])
@@ -807,8 +968,9 @@ class MultigridSolver():
 
         delta = self.prolong(idx+1, deltaH, back=back)
         #if back:
-        #dr, drn = self.get_residual_norm(As, x, b)
-        #print('resid delta',idx, dr, drn, delta.shape)
+        #ipdb.set_trace()
+        dr, drn = self.get_residual_norm(As, x, b)
+        print('resid delta',idx, dr, drn, delta.shape)
         #print('af idx', x.shape, delta.shape, idx)
         #correct
         #if back:
@@ -820,29 +982,32 @@ class MultigridSolver():
         #print('resid plus delta',idx, dr, drn)
 
         #smooth
-        x = self.smooth_jacobi(As, b, x, D, nsteps=100, back=back)
+        x = self.smooth_jacobi(As, b, x, D, nsteps=10, back=back)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
         #if back:
-        #dr, drn = self.get_residual_norm(As, x, b)
-        #print('resid smooth delta',idx, dr, drn)
+        dr, drn = self.get_residual_norm(As, x, b)
+        print('resid smooth delta',idx, dr, drn)
+
+        out = {'deltaH': deltaH, 'deltaup': deltaup, 'delta': delta.reshape(16,16,5)}
 
 
-        return x
+        return x, out
 
     @torch.no_grad()
     def v_cycle_jacobi_start(self, A_list, b_list, D_list,L, n_step=1, back=False):
         x = torch.zeros_like(b_list[0])
         #x = torch.randn_like(b_list[0])
         #x = torch.rand_like(b_list[0])
-        n_step = 4 if back else 4
+        n_step = 4 if back else 1
         for step in range(n_step):
-            x = self.v_cycle_jacobi(0, A_list, b_list[0], x, D_list,L, back=back)
+            x, out = self.v_cycle_jacobi(0, A_list, b_list[0], x, D_list,L, back=back)
             #if back:
             r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
-            print(f'vcycle end norm: ', r,rr)
+            print(f'vcycle end norm: ',step, r,rr,'\n')
         #x = x.to_dense()
-        return x#.to_dense()
+        return x, out#.to_dense()
+        #return x#, out#.to_dense()
 
     def full_multigrid_jacobi_start(self, A_list, b_list, D_list,L, back=False):
         u = self.solve_coarsest(L, b_list[-1])
@@ -1009,7 +1174,7 @@ class MultigridLayer(nn.Module):
         #x,lam = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints, 
         #                 coarse_A_list, coarse_rhs_list)
 
-        x = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints, coeffs, steps_list)
+        x,out = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints, coeffs, steps_list)
         #x = self.qpf(AtA_act, AtPrhs, AtA, D, None, None, coarse_A_list, coarse_rhs_list)
         #x = MGS.solve_mg(self.pde, self.mg_solver, AtA, AtPrhs, D, coarse_A_list, coarse_rhs_list)
         #x = MGS.solve_mg_gmres(self.pde, self.mg_solver, AtA, AtPrhs, D, coarse_A_list, coarse_rhs_list)
@@ -1036,7 +1201,7 @@ class MultigridLayer(nn.Module):
         #u2 = u[:,:,:,2]
         
         #return u0, u1, u2, eps#, steps
-        return u0, u, eps
+        return u0, u, eps,out
 
 #def solve_direct(A, b):
 #    #At = A.transpose(1,2)#.to_dense()

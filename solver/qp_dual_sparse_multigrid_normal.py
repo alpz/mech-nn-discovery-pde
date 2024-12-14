@@ -335,7 +335,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             D_list = [D] + D_list
 
             #negate
-            rhs_list  = [-rhs for rhs in rhs_list]
+            rhs_list  = [rhs for rhs in rhs_list]
 
 
             AtA_coarsest = mg.get_AtA_dense(AtA_list[-1])
@@ -345,7 +345,8 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #L= mg.factor_coarsest(AtA_list[-1])
 
             #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
-            x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
+            x, out = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
+            ipdb.set_trace()
 
             #print('solving direct ata')
             #x = solve_direct_AtA(AtA_list[0], rhs_list[0])
@@ -373,7 +374,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #    x = x.float()
             #print(lam)
             #return x, lam
-            return x
+            return x,out
         
         @staticmethod
         def backward(ctx, dl_dzhat):

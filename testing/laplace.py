@@ -74,8 +74,8 @@ def solve():
     #t_step_size = 0.1 
     #x_step_size = 0.1
 
-    t_step_size =  2*np.pi/coord_dims[0]
-    x_step_size = 2*np.pi/coord_dims[1]
+    t_step_size = 0.05 #  2*np.pi/coord_dims[0]
+    x_step_size = 0.05 #2*np.pi/coord_dims[1]
     #self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
     #self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
 
@@ -94,6 +94,9 @@ def solve():
     coeffs = torch.zeros((bs, n_ind_dim, pde.grid_size, pde.n_orders), device=device)
     #u, u_t, u_x, u_tt, u_xx
     #u_tt + u_xx = 0
+    coeffs[..., 0] = 0.
+    coeffs[..., 1] = 0.
+    coeffs[..., 2] = 0.
     coeffs[..., 3] = 1.
     #u_x
     coeffs[..., 4] = 1.
@@ -122,22 +125,22 @@ def solve():
     iv_rhs = torch.stack([iv_rhs]*bs,dim=0)
     #print('ivrhs', iv_rhs.shape)
 
-    u0,_,eps = pde(coeffs, rhs, iv_rhs, steps_list)
+    u0,_,eps,out = pde(coeffs, rhs, iv_rhs, steps_list)
     
     #print(eps.max())
     #print(u0.shape)
     u0 = u0.reshape(bs,*coord_dims)
 
-    l = u0.pow(2).sum()
+    #l = u0.pow(2).sum()
     #l = u0.mean()
-    l.backward()
+    #l.backward()
 
     print('mem after',torch.cuda.mem_get_info(), (torch.cuda.mem_get_info()[1]-torch.cuda.mem_get_info()[0])/1e9)
     #u0 = u0.reshape(1,8,8)
-    return u0
+    return u0,out
 
 #%%
-u0=solve()
+u0,out=solve()
 # %%
 
 u0 = u0.detach().cpu().numpy()
@@ -146,8 +149,24 @@ u0 = u0.detach().cpu().numpy()
 plot = plt.pcolormesh(u0[0], cmap='viridis', shading='gouraud')
 
 # %%
+deltaH = out['deltaH'].cpu().numpy()
+deltaup = out['deltaup'].cpu().numpy()
+delta = out['delta'].cpu().numpy()
+i=0
+
+# %%
+plot = plt.pcolormesh(deltaH[:,:,i], cmap='viridis', shading='gouraud')
+
+# %%
+plot = plt.pcolormesh(delta[:,:,i], cmap='viridis', shading='gouraud')
+# %%
+plot = plt.pcolormesh(deltaup[:,:,i], cmap='viridis', shading='gouraud')
+
+# %%
 plot = plt.pcolormesh(u0[1], cmap='viridis', shading='gouraud')
 
 # %%
 u0
+# %%
+out['deltaH'].shape
 # %%

@@ -351,7 +351,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             #L= mg.factor_coarsest(AtA_list[-1])
 
-            x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
+            x,out = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
             #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
 
             #print('solving direct ata')
@@ -383,7 +383,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             ctx.save_for_backward(x, lam)
             
             print('qpf', x.shape)
-            return x
+            return x,out
         
         @staticmethod
         def backward(ctx, dl_dzhat):
