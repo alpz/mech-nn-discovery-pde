@@ -4,6 +4,7 @@ import torch
 
 import cupy as cp
 import cupyx.scipy.sparse as CSP
+import cupyx.scipy.sparse.linalg as CSPLA
 
 def seed_everything(seed: int):
     import random, os
@@ -163,7 +164,7 @@ class MultigridSolver():
         return A_list, A_rhs_list#, deriv_weights_list
 
 
-    def make_coarse_AtA_matrices(self, A_list, A_rhs_list, derivative_weights_list):
+    def make_coarse_AtA_matrices(self, A_list, A_rhs_list):
         AtA_list = []
         D_list = []
         rhs_list = []
@@ -263,11 +264,16 @@ class MultigridSolver():
             #P_rhs = P_diag_inv*A_rhs
 
             #AtPrhs =torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)#.to_dense()
-            AtPrhs =torch.bmm(At, A_rhs.unsqueeze(2)).squeeze(2)#.to_dense()
+            #AtPrhs =torch.bmm(At, A_rhs.unsqueeze(1)).squeeze(1)#.to_dense()
+            AtPrhs =torch.mm(At, A_rhs.unsqueeze(1)).squeeze(1)#.to_dense()
             #AtPrhs.register_hook(lambda grad: print('aptrhs grad'))
 
 
-            cAtA = SP.coo_matrix((AtA._values(), (AtA._indices()[0], AtA._indices()[1])), shape=AtA.shape)
+            cval = cp.asarray(AtA._values())
+            crow = cp.asarray(AtA._indices()[0])
+            ccol = cp.asarray(AtA._indices()[1])
+
+            cAtA = CSP.coo_matrix((cval, (crow, ccol)), shape=AtA.shape)
             L = CSP.tril(cAtA, k=0, format='csr')
             U = CSP.triu(cAtA, k=1, format='csr')
         return AtA, D, AtPrhs,L,U#, AtA_act, P_diag
@@ -474,6 +480,9 @@ class MultigridSolver():
         pde = self.pde_list[idx]
         #pro_pde = self.pde_list[idx-1]
 
+        x = torch.tensor(x, device=self.device)
+        x = x.reshape(self.bs, -1)
+
         #bs, grid, num_mi
         x = pde.get_solution_reshaped(x)
         x = x.permute(0,2,1)
@@ -504,6 +513,9 @@ class MultigridSolver():
         #x_rst = pde.lambda_grids_to_flat(eq, f_list, b_list, init_list)
         #return x_rst
 
+        x = x.reshape(-1)
+        x = cp.asarray(x)
+
 
         return x
 
@@ -511,6 +523,9 @@ class MultigridSolver():
     def prolong(self, idx, x, back=False):
         pde = self.pde_list[idx]
         #pro_pde = self.pde_list[idx-1]
+
+        x = torch.as_tensor(x, device=self.device)
+        x = x.reshape(self.bs, -1)
 
         #bs, grid, num_mi
         x = pde.get_solution_reshaped(x)
@@ -553,11 +568,15 @@ class MultigridSolver():
         #x_rst = pde.lambda_grids_to_flat(eq, f_list, b_list, init_list)
         #return x_rst
 
+        x = x.reshape(-1)
+        x = cp.asarray(x)
 
         return x
 
     def mult_AtA(self, A, x):
-        x = torch.tensor(x)
+        #x = torch.tensor(x, device=A.device)
+        print(x.device)
+        x = torch.as_tensor(x, device=self.device)
         x = torch.mm(A, x.unsqueeze(1)).squeeze(1)
         x = cp.asarray(x)
         return x#.to_dense()
@@ -600,7 +619,8 @@ class MultigridSolver():
             #x = torch.sparse.spsolve(L, x)
             #x = torch.linalg.solve_triangular(L,x.unsqueeze(2),upper=False, 
             #                                  left=True).squeeze(2)
-            x = CSP.linalg.spsolve_triangular(L,x,upper=False)
+            #x = CSP.linalg.spsolve_triangular(L,x,upper=False)
+            x = CSPLA.spsolve_triangular(L,x,lower=True)
         return x
 
     def smooth_jacobi(self, As, b, x, D, nsteps=200, w=0.55, back=False):
@@ -638,6 +658,8 @@ class MultigridSolver():
         return x
 
     def get_residual_norm(self, A, x, b):
+        x = torch.as_tensor(x, device=self.device)
+        b = torch.as_tensor(b, device=self.device)
         #r = b - torch.bmm(A, x.unsqueeze(2)).squeeze(2)
         #r = b - self.mult_AtA(As, x) #torch.bmm(A, x.unsqueeze(2)).squeeze(2)
         r = b - torch.mm(A, x.unsqueeze(1)).squeeze(1) #torch.bmm(A, x.unsqueeze(2)).squeeze(2)
@@ -726,7 +748,7 @@ class MultigridSolver():
             xH0 = cp.zeros_like(rH)
             #print('els')
             #deltaH,_ = self.v_cycle_jacobi(idx+1, As_list, rH,xH0, D_list,L, back=back)
-            deltaH,_ = self.v_cycle_gs(idx+1, A_list, AL_list, AU_list, rH,xH0, L, back=back)
+            deltaH = self.v_cycle_gs(idx+1, A_list, AL_list, AU_list, rH,xH0, L, back=back)
             #print('one')
             #deltaH,_ = self.v_cycle_jacobi(idx+1, As_list, rH,deltaH, D_list,L, back=back)
             #deltaH = self.v_cycle_jacobi(idx+1, As_list, rH,deltaH, D_list,L, back=back)
@@ -780,11 +802,11 @@ class MultigridSolver():
         for step in range(n_step):
             x = self.v_cycle_gs(0, A_list, AL_list, AU_list, b, x, L, back=back)
             #if back:
-            #r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
-            #print(f'vcycle end norm: ',step, r,rr.item(),back,'\n')
+            r,rr = self.get_residual_norm(A_list[0], x, b)
+            print(f'vcycle end norm: ',step, r,rr.item(),back,'\n')
         #x = x.to_dense()
         #return x, out#.to_dense()
-        x= torch.tensor(x)
+        x= torch.as_tensor(x, device=self.device)
         return x#, out#.to_dense()
 
     @torch.no_grad()
@@ -873,6 +895,7 @@ class MultigridLayer(nn.Module):
     def forward(self, coeffs, rhs, iv_rhs, steps_list):
         #interpolate and fill grids: coeffs, rhs, iv_rhs, steps
         #
+        self.mg_solver.device = rhs.device
         
         #build finest grid data
         coeffs = coeffs.reshape(self.bs*self.n_ind_dim, self.grid_size, self.n_orders)
@@ -893,7 +916,7 @@ class MultigridLayer(nn.Module):
             iv_rhs = iv_rhs.double() if iv_rhs is not None else None
             steps_list = [steps.double() for steps in steps_list]
 
-        derivative_constraints, derivative_weights = self.pde.build_derivative_tensor(steps_list)
+        derivative_constraints = self.pde.build_derivative_tensor(steps_list)
         eq_constraints = self.pde.build_equation_tensor(coeffs)
 
         #build coarse grids
@@ -969,7 +992,7 @@ class MultigridLayer(nn.Module):
         #x,lam = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints, 
         #                 coarse_A_list, coarse_rhs_list)
 
-        x = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints, coeffs, steps_list, derivative_weights)
+        x = self.qpf(eq_constraints, rhs, iv_rhs, derivative_constraints, coeffs, steps_list)
         out={}
         #x = self.qpf(AtA_act, AtPrhs, AtA, D, None, None, coarse_A_list, coarse_rhs_list)
         #x = MGS.solve_mg(self.pde, self.mg_solver, AtA, AtPrhs, D, coarse_A_list, coarse_rhs_list)

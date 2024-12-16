@@ -314,7 +314,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
         #perm = None
 
         @staticmethod
-        def forward(ctx, eq_constraints, rhs, iv_rhs, derivative_constraints, coeffs, steps_list, derivative_weights):
+        def forward(ctx, eq_constraints, rhs, iv_rhs, derivative_constraints, coeffs, steps_list):
             print('input nnz', eq_constraints._nnz(), derivative_constraints._nnz())
             print('input shape', eq_constraints.shape, derivative_constraints.shape)
 
@@ -330,7 +330,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             A, A_rhs = pde.fill_block_constraints_torch(eq_constraints, rhs, iv_rhs, 
                                                         derivative_constraints)
             #AtA,D, AtPrhs,A_L, A_U,AtA_act,G = mg.make_AtA(pde, A, A_rhs, derivative_weights, save=True)
-            AtA,D, AtPrhs,A_L, A_U = mg.make_AtA(pde, A, A_rhs, save=True)
+            AtA,D, AtPrhs,A_L, A_U = mg.make_AtA(pde, A, A_rhs)
 
             #G=identity
             #G = G.squeeze(2)
@@ -346,7 +346,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             AtA_list = [AtA] + AtA_list
             rhs_list = [AtPrhs] + rhs_list
-            D_list = [D] + D_list
+            #D_list = [D] + D_list
             AL_list = [A_L] + L_list
             AU_list = [A_U] + U_list
 
@@ -368,12 +368,12 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #print('solving direct ata')
             #x = solve_direct_AtA(AtA_list[0], rhs_list[0])
             #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
-            mg_args = [AtA_list, AL_list, AU_list, L]
+            #mg_args = [AtA_list, AL_list, AU_list, L]
 
-            x,_ = cg.fgmres(AtA_list[0].unsqueeze(0), 
-                            rhs_list[0].unsqueeze(0),
-                            x0=torch.zeros_like(rhs_list[0]).unsqueeze(0), 
-                            MG=mg, MG_args=mg_args, restart=40, maxiter=80)
+            #x,_ = cg.fgmres(AtA_list[0].unsqueeze(0), 
+            #                rhs_list[0].unsqueeze(0),
+            #                x0=torch.zeros_like(rhs_list[0]).unsqueeze(0), 
+            #                MG=mg, MG_args=mg_args, restart=40, maxiter=80)
 
             x = x.squeeze(0)
             r,rr = mg.get_residual_norm(AtA_list[0], x, rhs_list[0])
