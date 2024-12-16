@@ -334,6 +334,7 @@ class PDESYSLP(nn.Module):
             self.step_grid_shape[i] = tuple(step_coords - one_hot)
             self.step_grid_expand_shape[i] = tuple(expand_shape)
             self.step_grid_unsqueeze_shape[i] = tuple(unsqueeze_shape)
+
             #self.step_grid_expand_shape[i] = tuple(expand_shape)
 
         self.forward_backward_shape = lambda coord, coord_dims: [d if i!=coord else d-1 for i,d in enumerate(coord_dims)]
@@ -838,7 +839,7 @@ class PDESYSLP(nn.Module):
 
             #TODO check order scale
             #diff between maximum number of taylor terms (order+1) and current terms
-            order_diff =1 # self.order+1- len(mi_index_list)
+            order_diff =0 # self.order+1- len(mi_index_list)
             for _j,ts_mi_index in enumerate(mi_index_list):
                 j = _j +order_diff
                 #h = self.step_size**(j)
@@ -1307,6 +1308,20 @@ class PDESYSLP(nn.Module):
         steps = steps.expand(expand_shape)
         return steps
 
+    def expand_steps_edge(self, coord, steps):
+        expand_shape_step = self.step_grid_expand_edge_shape[coord]
+        new_shape_step = self.step_grid_unsqueeze_shape[coord]
+
+        c_shape = steps.shape
+        new_shape = c_shape[:1] + new_shape_step + c_shape[2:]
+        #expand_shape = (-1,)*len(c_shape[:1]) + expand_shape_step + (-1,)*len(c_shape[2:])
+        expand_shape = c_shape[:1] + expand_shape_step + c_shape[2:]
+
+        steps = steps.reshape(new_shape)
+        #expand over grid
+        steps = steps.expand(expand_shape)
+        return steps
+
 
     def solve_5pt_stencil_edge(self, coord, steps, backward=False):
         #steps shape b,  n_step-1
@@ -1359,6 +1374,12 @@ class PDESYSLP(nn.Module):
 
         coeffs1 = torch.cat([ coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
         coeffs2 = torch.cat([ coeffs[...,1]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
+
+        #coeffs1 = torch.cat([ coeffs[...,0]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)
+        #coeffs2 = torch.cat([ coeffs[...,1]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)
+
+        #coeffs1 = torch.cat([ coeffs[...,0], -ones], dim=-1)
+        #coeffs2 = torch.cat([ coeffs[...,1], -ones], dim=-1)
 
 
         coeffs_list = []
@@ -1432,13 +1453,15 @@ class PDESYSLP(nn.Module):
         #coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)
         #coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
         coeffs1 = torch.cat([coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
-        #coeffs1 = torch.cat([-ones, coeffs[...,0], -ones], dim=-1)
-
-        #values_list.append(coeffs1)
-        #if self.n_order > 2:
-        #coeffs2 = torch.cat([-ones, coeffs[...,1]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)
-        #coeffs2 = torch.cat([-ones, coeffs[...,1]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
         coeffs2 = torch.cat([ coeffs[...,1]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
+
+        #coeffs1 = torch.cat([coeffs[...,0]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)
+        #coeffs2 = torch.cat([ coeffs[...,1]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)
+
+        #coeffs1 = torch.cat([coeffs[...,0], -ones], dim=-1)
+        #coeffs2 = torch.cat([ coeffs[...,1], -ones], dim=-1)
+
+
         #coeffs2 = torch.cat([-ones, coeffs[...,1], -ones], dim=-1)
             #coeffs2 = torch.cat([-ones, coeffs[...,1], -ones], dim=-1)
         #values_list.append(coeffs2)
@@ -1494,14 +1517,49 @@ class PDESYSLP(nn.Module):
         #coeffs = coeffs.reshape(steps.shape[0],-1)
         return coeffs#, coeffs1, coeffs2
 
+    def get_central_weights(self, steps, coord):
+        b = steps.shape[0]
+        #steps shape b, dimn-1
+
+        cstep = steps[:, 2:-1]
+        rstep = steps[:, -3:-1]
+        lstep = steps[:, 1:3]
+
+        steps = torch.cat([lstep, cstep, rstep], dim=-1)
+
+        n_order1 = self.var_set.order_count[coord].get(1,0)
+        n_order2 = self.var_set.order_count[coord].get(2,0)
+        n_mi = n_order1+n_order2
+
+        #expand b, dim1, dim2 .. dimcoord-1, dim...
+
+        expand_shape_step = self.step_grid_expand_shape[coord]
+        new_shape_step = self.step_grid_unsqueeze_shape[coord]
+
+        c_shape = steps.shape
+        new_shape = c_shape[:1] + new_shape_step + (1,)
+        expand_shape = c_shape[:1] + expand_shape_step + (n_mi,)
+        
+
+        steps = steps.reshape(new_shape)
+        steps = steps.expand(expand_shape)
+
+        steps = steps.reshape(b,-1)
+        weights = steps.pow(2)
+
+        return weights
+
     def build_central_values(self, steps_list):
 
         values_list = []
+        weights_list = []
         for coord in range(self.n_coord):
             #coeffs shape b, step_grid, num_indices, num_values
             coeffs = self.solve_5pt_central_stencil(coord, steps_list[coord])
             left_coeffs = self.solve_5pt_stencil_edge(coord, steps_list[coord], backward=False)
             right_coeffs = self.solve_5pt_stencil_edge(coord, steps_list[coord], backward=True)
+
+            weights_list.append(self.get_central_weights(steps_list[coord], coord))
 
             coeffs = torch.cat([left_coeffs, coeffs, right_coeffs], dim=1+coord)
             coeffs = coeffs.reshape(steps_list[coord].shape[0],-1)
@@ -1510,16 +1568,22 @@ class PDESYSLP(nn.Module):
         #stack along coord: b, num_coord, step_grid, num_indices, num_values 
         values = torch.cat(values_list, dim=1)
         #values = values.reshape(steps_list[0].shape[0], -1)
-        return values
+        #return values
+        weights = torch.cat(weights_list, dim=-1)
+        return values, weights
 
 
     def build_forward_values(self, steps_list):
 
         values_list = []
+        weights_list = []
         for coord, steps in enumerate(steps_list):
             b = steps.shape[0]
             #TODO expand steps
             steps = self.expand_steps(coord, steps)
+            weights_list.append(torch.ones_like(steps.reshape(b, -1)))
+            #weights_list.append((steps.reshape(b, -1)).pow(2))
+            #weights_list.append((steps.reshape(b, -1)))
 
             #steps shape b, step_grid
             repeats = (1,)*len(steps.shape)
@@ -1539,13 +1603,19 @@ class PDESYSLP(nn.Module):
             values_list.append(steps)
 
         values = torch.cat(values_list, dim=-1)
-        return values
+        weights = torch.cat(weights_list, dim=-1)
+        return values, weights
 
     def build_backward_values(self, steps_list):
         values_list = []
+        weights_list = []
         for coord, steps in enumerate(steps_list):
+            b = steps.shape[0]
             #TODO expand steps
             steps = self.expand_steps(coord, steps)
+            weights_list.append(torch.ones_like(steps.reshape(b, -1)))
+            #weights_list.append((steps.reshape(b, -1)).pow(2))
+            #weights_list.append((steps.reshape(b, -1)))
 
             steps = -steps
             b = steps.shape[0]
@@ -1567,21 +1637,23 @@ class PDESYSLP(nn.Module):
             values_list.append(steps)
 
         values = torch.cat(values_list, dim=-1)
-        return values
+        weights = torch.cat(weights_list, dim=-1)
+        return values, weights
 
 
     def build_derivative_values(self, steps_list):
         #list of n_coord tensors
         #tensor i has dimension i with length coord_dim[i] -1, otherwise coord_dim[i]
-        fv = self.build_forward_values(steps_list)
-        cv = self.build_central_values(steps_list)
-        bv = self.build_backward_values(steps_list)
+        fv,fw = self.build_forward_values(steps_list)
+        cv,cw = self.build_central_values(steps_list)
+        bv,bw = self.build_backward_values(steps_list)
 
         built_values = torch.cat([cv,fv,bv], dim=-1)
+        built_weights = torch.cat([cw,fw,bw], dim=-1)
         #built_values = torch.cat([cv], dim=-1)
         #built_values = torch.cat([cv,fv], dim=-1)
 
-        return built_values
+        return built_values, built_weights
 
 
     def build_equation_tensor(self, eq_values):
@@ -1597,13 +1669,14 @@ class PDESYSLP(nn.Module):
     
     def build_derivative_tensor(self, steps_list):
         self.derivative_A = self.derivative_A.to(steps_list[0].device)
-        derivative_values = self.build_derivative_values(steps_list).reshape(-1)
+        derivative_values, derivative_weights = self.build_derivative_values(steps_list)#.reshape(-1)
+        derivative_values = derivative_values.reshape(-1)
 
         #print('built', len(derivative_values))
         derivative_indices = self.derivative_A._indices()
         G = torch.sparse_coo_tensor(derivative_indices, derivative_values, size=self.derivative_A.shape, dtype=self.dtype)
 
-        return G
+        return G, derivative_weights
 
 
     def fill_block_constraints_torch(self, eq_A, eq_rhs, iv_rhs, derivative_A):

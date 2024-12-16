@@ -208,7 +208,7 @@ def solve_direct_AtA(As, b):
     A = A.to_dense()
     At= A.transpose(1,2)
 
-    AtA = torch.bmm(At, G.unsqueeze(1)*A)
+    AtA = torch.bmm(At, G.unsqueeze(2)*A)
     #TODO: move factorization outside loop
     L,info = torch.linalg.cholesky_ex(AtA,upper=False, check_errors=True)
     lam = torch.cholesky_solve(b.unsqueeze(2), L)
@@ -314,19 +314,19 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
         #perm = None
 
         @staticmethod
-        def forward(ctx, eq_constraints, rhs, iv_rhs, derivative_constraints, coeffs, steps_list):
+        def forward(ctx, eq_constraints, rhs, iv_rhs, derivative_constraints, coeffs, steps_list, derivative_weights):
             print('input nnz', eq_constraints._nnz(), derivative_constraints._nnz())
             print('input shape', eq_constraints.shape, derivative_constraints.shape)
-            coarse_A_list, coarse_rhs_list = mg.fill_coarse_grids(coeffs, rhs, iv_rhs, steps_list)
+            coarse_A_list, coarse_rhs_list, coarse_deriv_weight_list = mg.fill_coarse_grids(coeffs, rhs, iv_rhs, steps_list)
 
             #A, A_rhs = pde.fill_constraints_torch2(eq_constraints.coalesce(), rhs, iv_rhs, 
             #                                            derivative_constraints.coalesce())
 
             A, A_rhs = pde.fill_constraints_torch(eq_constraints, rhs, iv_rhs, 
                                                         derivative_constraints)
-            AtA,D, AtPrhs,A_L, A_U,AtA_act,G = mg.make_AtA(pde, A, A_rhs, save=True)
+            AtA,D, AtPrhs,A_L, A_U,AtA_act,G = mg.make_AtA(pde, A, A_rhs, derivative_weights, save=True)
 
-            G = G.squeeze(2)
+            #G = G.squeeze(2)
             #A_kkt = mg.make_kkt(G[0], A)
             
 
@@ -335,7 +335,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #AtPrhs.register_hook(lambda grad: print('atprhs'))
 
             AtA_list, rhs_list, D_list,L_list,U_list = mg.make_coarse_AtA_matrices(coarse_A_list, 
-                                                                     coarse_rhs_list)
+                                                                     coarse_rhs_list, coarse_deriv_weight_list)
 
             AtA_list = [AtA] + AtA_list
             rhs_list = [AtPrhs] + rhs_list
@@ -425,7 +425,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #dnu = _dz[:, :A.shape[1]] 
 
             #dz,_ = cg.fgmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
-            #               MG=mg, MG_args=mg_args, restart=100, maxiter=50, back=True)
+            #               MG=mg, MG_args=mg_args, restart=40, maxiter=80, back=True)
 
             #dz,_ = cg.gmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
             #               MG=mg, MG_args=mg_args, restart=100, maxiter=50, back=True)
@@ -513,6 +513,6 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             #return dQ, dq,None, None, None,None,None
             #print(dQ, dq)
-            return dA, drhs,div_rhs,dD, None, None
+            return dA, drhs,div_rhs,dD, None, None, None
 
     return QPFunctionFn.apply

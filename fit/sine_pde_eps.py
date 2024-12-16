@@ -80,9 +80,9 @@ class Method(pl.LightningModule):
         y = batch
 
         #y = y.reshape((32,32))
-        #y = y.reshape((32,32))
+        y = y.reshape((32,32))
         #y = y.reshape((64,64))
-        y = y.reshape((16,16))
+        #y = y.reshape((16,16))
         #y = y.reshape((6,6))
         #y = y.reshape((4*128,4*128))
         t0 = y[0, 0:-1].reshape(-1)
@@ -138,9 +138,9 @@ class Sine(nn.Module):
         dtype = torch.float64
         #self.coord_dims = (64,32)
         #self.coord_dims = (10,15)
-        #self.coord_dims = (32,32)
+        self.coord_dims = (32,32)
         #self.coord_dims = (64,64)
-        self.coord_dims = (16,16)
+        #self.coord_dims = (16,16)
         #self.coord_dims = (16,16)
         #self.coord_dims = (48,48)
         #self.coord_dims = (8,8)
@@ -179,7 +179,7 @@ class Sine(nn.Module):
         #                            n_iv_steps=1, gamma=0.5, alpha=0., double_ret=True, solver_dbl=True)
 
         self.pde = MultigridLayer(bs=bs, coord_dims=self.coord_dims, order=2, 
-                                n_ind_dim=self.n_dim, n_iv=1, n_grid=2,
+                                n_ind_dim=self.n_dim, n_iv=1, n_grid=3,
                                 init_index_mi_list=self.iv_list,  n_iv_steps=1, 
                                 double_ret=True, solver_dbl=True)
 

@@ -45,6 +45,7 @@ def solve():
     bs = 1
     coord_dims = (16,16)
     #coord_dims = (32,32)
+    #coord_dims = (64,64)
     #coord_dims = (128,128)
     n_ind_dim=1
     #iv_list = [(0,0, [0,0],[0,coord_dims[1]-2]), 
@@ -125,7 +126,8 @@ def solve():
     iv_rhs = torch.stack([iv_rhs]*bs,dim=0)
     #print('ivrhs', iv_rhs.shape)
 
-    u0,_,eps,out = pde(coeffs, rhs, iv_rhs, steps_list)
+    #u0,_,eps,out = pde(coeffs, rhs, iv_rhs, steps_list)
+    u0,_,eps = pde(coeffs, rhs, iv_rhs, steps_list)
     
     #print(eps.max())
     #print(u0.shape)
@@ -137,10 +139,10 @@ def solve():
 
     print('mem after',torch.cuda.mem_get_info(), (torch.cuda.mem_get_info()[1]-torch.cuda.mem_get_info()[0])/1e9)
     #u0 = u0.reshape(1,8,8)
-    return u0,out
+    return u0#,out
 
 #%%
-u0,out=solve()
+u0=solve()
 # %%
 
 u0 = u0.detach().cpu().numpy()
