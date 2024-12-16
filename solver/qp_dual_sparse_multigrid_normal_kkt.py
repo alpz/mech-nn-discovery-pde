@@ -351,7 +351,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             #L= mg.factor_coarsest(AtA_list[-1])
 
-            x,out = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
+            #x,out = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
             #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
 
             #print('solving direct ata')
@@ -359,8 +359,8 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
             mg_args = [AtA_list, D_list, L]
 
-            #x,_ = cg.fgmres(AtA_act.unsqueeze(0), rhs_list[0],x0=torch.zeros_like(rhs_list[0]), 
-            #               MG=mg, MG_args=mg_args, restart=40, maxiter=80)
+            x,_ = cg.fgmres(AtA_act.unsqueeze(0), rhs_list[0],x0=torch.zeros_like(rhs_list[0]), 
+                           MG=mg, MG_args=mg_args, restart=40, maxiter=80)
 
             r,rr = mg.get_residual_norm(AtA_list[0], x, rhs_list[0])
             print(f'gmres step norm: ', r,rr)
@@ -401,11 +401,11 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             ##shape: batch, grid, order
 
             coarse_grads = mg.downsample_grad(dl_dzhat.clone())
-            grad_list = [dl_dzhat] #+ coarse_grads
+            grad_list = [dl_dzhat] + coarse_grads
             #grad_list =  [g for g in grad_list]
             
             #dnu = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L)
-            dz,_ = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
+            #dz,_ = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
 
             #dz = mg.full_multigrid_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
 
@@ -424,8 +424,8 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #dz = _dz[:, A.shape[1]:] 
             #dnu = _dz[:, :A.shape[1]] 
 
-            #dz,_ = cg.fgmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
-            #               MG=mg, MG_args=mg_args, restart=40, maxiter=80, back=True)
+            dz,_ = cg.fgmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
+                           MG=mg, MG_args=mg_args, restart=40, maxiter=80, back=True)
 
             #dz,_ = cg.gmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
             #               MG=mg, MG_args=mg_args, restart=100, maxiter=50, back=True)

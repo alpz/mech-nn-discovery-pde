@@ -345,11 +345,11 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #L= mg.factor_coarsest(AtA_list[-1])
 
             #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
-            x, out = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
+            #x, out = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
 
             #print('solving direct ata')
             #x = solve_direct_AtA(AtA_list[0], rhs_list[0])
-            #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
+            x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
             mg_args = [AtA_list, D_list, L]
 
             #x,_ = cg.gmres(AtA_act.unsqueeze(0), rhs_list[0],x0=torch.zeros_like(rhs_list[0]), 

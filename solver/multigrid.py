@@ -952,6 +952,7 @@ class MultigridSolver():
 
         #smooth
         #x = self.smooth_jacobi(As, b, x, D, nsteps=nstep, back=back)
+        nstep=10
         x = self.smooth_gs(As, b, x, nsteps=nstep)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
@@ -970,24 +971,24 @@ class MultigridSolver():
         x = torch.zeros_like(b_list[0])
         #x = torch.randn_like(b_list[0])
         #x = torch.rand_like(b_list[0])
-        #n_step =2 # 200 if back else 200
+        n_step =2 # 200 if back else 200
         #n_step =1 if back else 1
-        n_step=1000
+        #n_step=1000
         for step in range(n_step):
             x, out = self.v_cycle_jacobi(0, A_list, b_list[0], x, D_list,L, back=back)
             #if back:
-            r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
-            print(f'vcycle end norm: ',step, r,rr.item(),back,'\n')
+            #r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
+            #print(f'vcycle end norm: ',step, r,rr.item(),back,'\n')
         #x = x.to_dense()
-        return x, out#.to_dense()
-        #return x#, out#.to_dense()
+        #return x, out#.to_dense()
+        return x#, out#.to_dense()
 
     def full_multigrid_jacobi_start(self, A_list, b_list, D_list,L, back=False):
         u = self.solve_coarsest(L, b_list[-1])
         for idx in reversed(range(self.n_grid-1)):
             print('fmg idx', idx)
             u = self.prolong(idx+1, u)
-            for k in range(5):
+            for k in range(1):
                 u,_ = self.v_cycle_jacobi(idx, A_list, b_list[idx], u, D_list,L, back=back)
 
                 r,rr = self.get_residual_norm(A_list[idx], u, b_list[idx] )
