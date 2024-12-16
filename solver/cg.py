@@ -178,6 +178,7 @@ def apply_MG_kkt(MG, MG_args, bin, back=False):
 
     return z
 
+
 def apply_MG(MG, MG_args, b, back=False):
 
     #x = MG.v_cycle_jacobi_start(MG_args[0], [b], MG_args[1],MG_args[2], n_step=1, back=back)
@@ -512,17 +513,58 @@ def lgmres(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None, MG=None,
     #    info = iters
     return mx, (iters, r_norm)
 
+
 @torch.no_grad()
-def fgmres_kkt(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None, MG=None, MG_args=None,
+def fgmres_matvec(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None, MG=None, MG_args=None,
           callback=None, atol=1e-5, callback_type=None, back=False):
+    """Uses Generalized Minimal RESidual iteration to solve ``Ax = b``.
+
+    Args:
+        A (ndarray, spmatrix or LinearOperator): The real or complex
+            matrix of the linear system with shape ``(n, n)``. ``A`` must be
+            :class:`cupy.ndarray`, :class:`cupyx.scipy.sparse.spmatrix` or
+            :class:`cupyx.scipy.sparse.linalg.LinearOperator`.
+        b (cupy.ndarray): Right hand side of the linear system with shape
+            ``(n,)`` or ``(n, 1)``.
+        x0 (cupy.ndarray): Starting guess for the solution.
+        tol (float): Tolerance for convergence.
+        restart (int): Number of iterations between restarts. Larger values
+            increase iteration cost, but may be necessary for convergence.
+        maxiter (int): Maximum number of iterations.
+        M (ndarray, spmatrix or LinearOperator): Preconditioner for ``A``.
+            The preconditioner should approximate the inverse of ``A``.
+            ``M`` must be :class:`cupy.ndarray`,
+            :class:`cupyx.scipy.sparse.spmatrix` or
+            :class:`cupyx.scipy.sparse.linalg.LinearOperator`.
+        callback (function): User-specified function to call on every restart.
+            It is called as ``callback(arg)``, where ``arg`` is selected by
+            ``callback_type``.
+        callback_type (str): 'x' or 'pr_norm'. If 'x', the current solution
+            vector is used as an argument of callback function. if 'pr_norm',
+            relative (preconditioned) residual norm is used as an argument.
+        atol (float): Tolerance for convergence.
+
+    Returns:
+        tuple:
+            It returns ``x`` (cupy.ndarray) and ``info`` (int) where ``x`` is
+            the converged solution and ``info`` provides convergence
+            information.
+
+    Reference:
+        M. Wang, H. Klie, M. Parashar and H. Sudan, "Solving Sparse Linear
+        Systems on NVIDIA Tesla GPUs", ICCS 2009 (2009).
+
+    .. seealso:: :func:`scipy.sparse.linalg.gmres`
+    """
     #A, M, x, b = _make_system(A, M, x0, b)
     #x0 = torch.zeros_like(b)
     A, M, x, b = A, M, x0, b
+    At = A.transpose(1,2)
     #matvec = A.matvec
     #psolve = M.matvec
 
     bs = A.shape[0]
-    n = A.shape[1]
+    n = A.shape[2]
     if n == 0:
         #return cupy.empty_like(b), 0
         return torch.empty_like(b), 0
@@ -576,7 +618,7 @@ def fgmres_kkt(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None, MG=N
         #r = b - matvec(mx)
         #r = b - torch.mm(A, mx.unsqueeze(1)).squeeze(1)
         #print(A, mx.shape)
-        r = b - torch.bmm(A, mx.unsqueeze(2)).squeeze(2)
+        r = b - torch.bmm(At, torch.bmm(A, mx.unsqueeze(2))).squeeze(2)
         #r_norm = cublas.nrm2(r)
         r_norm = torch.linalg.norm(r, dim=1)
         if callback_type == 'x':
@@ -600,11 +642,11 @@ def fgmres_kkt(A, b, x0=None, tol=1e-5, restart=None, maxiter=None, M=None, MG=N
                 #z = torch.tensor(z).unsqueeze(0)
                 #z = z.to(x.device)
                 #z = apply_M(M, z)
-                z = apply_MG_kkt(MG, MG_args, z, back=back)
-                Z[:, :, j] = z.clone()
+                z = apply_MG(MG, MG_args, z, back=back)
+                Z[:, :, j] = z#.clone()
             #u = matvec(z)
             #u = torch.mm(A, z.unsqueeze(1)).squeeze(1)
-            u = torch.bmm(A, z.unsqueeze(2)).squeeze(2)
+            u = torch.bmm(At,torch.bmm(A, z.unsqueeze(2))).squeeze(2)
             #H[:j+1, j], u = compute_hu(V, u, j)
             H[:, :j+1, j], u = compute_hu(V, u, j)
             #cublas.nrm2(u, out=H[j+1, j])

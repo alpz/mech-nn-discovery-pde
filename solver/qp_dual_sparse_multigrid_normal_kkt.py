@@ -324,7 +324,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #A, A_rhs = pde.fill_constraints_torch2(eq_constraints.coalesce(), rhs, iv_rhs, 
             #                                            derivative_constraints.coalesce())
 
-            Aub, Aub_rhs = pde.fill_constraints_torch(eq_constraints, rhs, iv_rhs, 
+            AUNB, Aub_rhs = pde.fill_constraints_torch(eq_constraints, rhs, iv_rhs, 
                                                         derivative_constraints)
 
             A, A_rhs = pde.fill_block_constraints_torch(eq_constraints, rhs, iv_rhs, 
@@ -364,19 +364,23 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             #x,out = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
             #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
-            x = mg.v_cycle_gs_start(AtA_list, rhs_list[0], AL_list, AU_list, L)
+            #x = mg.v_cycle_gs_start(AtA_list, rhs_list[0], AL_list, AU_list, L)
 
             #print('solving direct ata')
             #x = solve_direct_AtA(AtA_list[0], rhs_list[0])
             #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
-            #mg_args = [AtA_list, AL_list, AU_list, L]
+            mg_args = [AtA_list, AL_list, AU_list, L]
 
+            x,_ = cg.fgmres_matvec(AUNB, 
+                            rhs_list[0].reshape(bs, -1),
+                            x0=torch.zeros_like(rhs_list[0]).reshape(bs, -1),
+                            MG=mg, MG_args=mg_args, restart=40, maxiter=80)
             #x,_ = cg.fgmres(AtA_list[0].unsqueeze(0), 
             #                rhs_list[0].unsqueeze(0),
             #                x0=torch.zeros_like(rhs_list[0]).unsqueeze(0), 
             #                MG=mg, MG_args=mg_args, restart=40, maxiter=80)
 
-            x = x.squeeze(0)
+            x = x.reshape(-1)
             r,rr = mg.get_residual_norm(AtA_list[0], x, rhs_list[0])
             print(f'gmres step norm: ', r,rr)
                                                                             
@@ -390,6 +394,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #lam = -lam
 
             ctx.A = A
+            ctx.AUNB = AUNB
             #ctx.A_kkt = A_kkt
             #ctx.G = G
             ctx.AtA_list = AtA_list
@@ -409,6 +414,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
         def backward(ctx, dl_dzhat):
             _x,_lam = ctx.saved_tensors[0:2]
             A = ctx.A
+            AUNB = ctx.AUNB
             #A_kkt = ctx.A_kkt
             #G = ctx.G
             AtA_list = ctx.AtA_list
@@ -424,12 +430,12 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             ##shape: batch, grid, order
 
             #coarse_grads = mg.downsample_grad(dl_dzhat.clone())
-            grad_list = [dl_dzhat.reshape(-1)] #+ coarse_grads
+            grad_list = [dl_dzhat] #+ coarse_grads
             #grad_list =  [g.reshape(-1) for g in grad_list]
             
             #dnu = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L)
             #dz,_ = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
-            dz = mg.v_cycle_gs_start(AtA_list, grad_list[0], AL_list, AU_list, L, back=True)
+            #dz = mg.v_cycle_gs_start(AtA_list, grad_list[0], AL_list, AU_list, L, back=True)
 
             #dz = mg.full_multigrid_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
 
@@ -438,42 +444,17 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             #mg_args = [AtA_list, D_list, L, (A.shape[1], A.shape[2])]
             mg_args = [AtA_list, AL_list, AU_list, L]
-
-            #zero_init = torch.zeros(A.shape[0], A.shape[1], device=A.device)
-            #zgrad = torch.cat([zero_init, dl_dzhat], dim=1)
-            
-
-            #_dz,_ = cg.fgmres_kkt(A_kkt, zgrad,x0=torch.zeros_like(zgrad), 
-            #               MG=mg, MG_args=mg_args, restart=50, maxiter=300, back=True)
-
-            #dz = _dz[:, A.shape[1]:] 
-            #dnu = _dz[:, :A.shape[1]] 
+            dz,_ = cg.fgmres_matvec(AUNB, 
+                             grad_list[0],
+                             x0=torch.zeros_like(grad_list[0]),
+                           MG=mg, MG_args=mg_args, restart=40, maxiter=80, back=True)
 
             #dz,_ = cg.fgmres(AtA_list[0].unsqueeze(0), 
             #                 grad_list[0].unsqueeze(0),
             #                 x0=torch.zeros_like(grad_list[0]).unsqueeze(0), 
             #               MG=mg, MG_args=mg_args, restart=40, maxiter=80, back=True)
-            dz = dz.squeeze(0)
+            dz = dz.reshape(-1)
 
-            #dz,_ = cg.gmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
-            #               MG=mg, MG_args=mg_args, restart=100, maxiter=50, back=True)
-
-            
-            #dz,_,_ = cg.minres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
-            #               MG=mg, MG_args=mg_args, maxiter=600, back=True)
-
-
-            #dz,_ = cg.cg_matvec(AtA_list[0], grad_list[0],maxiter=100,
-            #                    MG=mg, MG_args=mg_args,back=True)
-
-            #dnu = dnu.reshape(1, 8*8,5).permute(0,2,1).reshape(1,5,8,8)
-            #dnu = F.interpolate(dnu, (16,16), mode='bilinear')
-            #dnu = dnu.reshape(1, 5, 16*16).permute(0,2,1).reshape(1, -1)
-
-            #nr, nrr = mg.get_residual_norm(AtA_list[0],dz, grad_list[0])
-            #diff  = (zgrad - torch.bmm(A_kkt, _dz.unsqueeze(2)).squeeze(2)).pow(2).sum().sqrt()
-            #d = (zgrad).pow(2).sum().sqrt()
-            #print('diff', diff, diff/d)
             nr, nrr = mg.get_residual_norm(AtA_list[0],dz, grad_list[0])
             print('backward', nr, nrr)
 

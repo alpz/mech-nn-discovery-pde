@@ -796,14 +796,14 @@ class MultigridSolver():
         #x = torch.zeros_like(b_list[0])
         #x = torch.randn_like(b_list[0])
         #x = torch.rand_like(b_list[0])
-        n_step =1000 if back else 200
-        #n_step =1 if back else 1
+        #n_step =1000 if back else 200
+        n_step =2 if back else 1
         #n_step=1000
         for step in range(n_step):
             x = self.v_cycle_gs(0, A_list, AL_list, AU_list, b, x, L, back=back)
             #if back:
-            r,rr = self.get_residual_norm(A_list[0], x, b)
-            print(f'vcycle end norm: ',step, r,rr.item(),back,'\n')
+            #r,rr = self.get_residual_norm(A_list[0], x, b)
+            #print(f'vcycle end norm: ',step, r,rr.item(),back,'\n')
         #x = x.to_dense()
         #return x, out#.to_dense()
         x= torch.as_tensor(x, device=self.device)
