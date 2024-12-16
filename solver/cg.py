@@ -180,7 +180,11 @@ def apply_MG_kkt(MG, MG_args, bin, back=False):
 
 def apply_MG(MG, MG_args, b, back=False):
 
-    x = MG.v_cycle_jacobi_start(MG_args[0], [b], MG_args[1],MG_args[2], n_step=1, back=back)
+    #x = MG.v_cycle_jacobi_start(MG_args[0], [b], MG_args[1],MG_args[2], n_step=1, back=back)
+    bs = b.shape[0]
+    b = b.reshape(-1)
+    x = MG.v_cycle_gs_start(MG_args[0], b, MG_args[1],MG_args[2], MG_args[3], n_step=1, back=back)
+    x = x.reshape(bs, -1)
     #x = MG.full_multigrid_jacobi_start(MG_args[0], [b], MG_args[1],MG_args[2])
     return x
     

@@ -1,6 +1,10 @@
 
 import numpy as np
 import torch
+
+import cupy as cp
+import cupyx.scipy.sparse as CSP
+
 def seed_everything(seed: int):
     import random, os
     import numpy as np
@@ -102,7 +106,7 @@ class MultigridSolver():
 
         A_list = []
         A_rhs_list = []
-        deriv_weights_list = []
+        #deriv_weights_list = []
 
 
         #steps are incrementally downsampled by adding pairs. The rest are done directly
@@ -111,6 +115,9 @@ class MultigridSolver():
         new_rhs = rhs
         new_iv_rhs = iv_rhs
         for k in range(1, self.n_grid):
+            coarsest = True if k==self.n_grid-1 else False
+
+
             pde = self.pde_list[k]
             new_shape = self.dim_list[k]
             old_shape = self.dim_list[k-1]
@@ -134,11 +141,14 @@ class MultigridSolver():
                 new_iv_rhs = new_iv_rhs.double() if iv_rhs is not None else None
                 new_steps_list = [steps.double() for steps in new_steps_list]
 
-            derivative_constraints, derivative_weights = pde.build_derivative_tensor(new_steps_list)
+            derivative_constraints = pde.build_derivative_tensor(new_steps_list)
             eq_constraints = pde.build_equation_tensor(new_coeffs)
 
             #A, A_rhs = pde.fill_constraints_torch2(eq_constraints.coalesce(), new_rhs, new_iv_rhs, derivative_constraints.coalesce())
-            A, A_rhs = pde.fill_constraints_torch(eq_constraints, new_rhs, new_iv_rhs, derivative_constraints)
+            if coarsest:
+                A, A_rhs = pde.fill_constraints_torch(eq_constraints, new_rhs, new_iv_rhs, derivative_constraints)
+            else:
+                A, A_rhs = pde.fill_block_constraints_torch(eq_constraints, new_rhs, new_iv_rhs, derivative_constraints)
             #A, A_rhs = pde.fill_constraints_torch_dense(eq_constraints.to_dense(), new_rhs, new_iv_rhs, derivative_constraints.to_dense())
 
             num_eps = pde.var_set.num_added_eps_vars
@@ -148,9 +158,9 @@ class MultigridSolver():
 
             A_list.append(A)
             A_rhs_list.append(A_rhs)
-            deriv_weights_list.append(derivative_weights)
+            #deriv_weights_list.append(derivative_weights)
 
-        return A_list, A_rhs_list, deriv_weights_list
+        return A_list, A_rhs_list#, deriv_weights_list
 
 
     def make_coarse_AtA_matrices(self, A_list, A_rhs_list, derivative_weights_list):
@@ -161,7 +171,8 @@ class MultigridSolver():
         U_list = []
         #ds_list = [1e6]*self.n_grid
         for i in range(1,self.n_grid):
-            AtA,D,rhs,L,U,_,_ = self.make_AtA(self.pde_list[i], A_list[i-1], A_rhs_list[i-1], derivative_weights_list[i-1])
+            coarsest = True if i==self.n_grid-1 else False
+            AtA,D,rhs,L,U = self.make_AtA(self.pde_list[i], A_list[i-1], A_rhs_list[i-1], coarsest=coarsest)
             AtA_list.append(AtA)
             D_list.append(D)
             L_list.append(L)
@@ -177,7 +188,7 @@ class MultigridSolver():
         
     def get_tril(self, M):
         """ TODO: get block diag M"""
-        M = M[0]
+        #M = M[0]
         indices = M._indices()
         values = M._values()
         rows = indices[0]
@@ -190,7 +201,7 @@ class MultigridSolver():
 
         L = torch.sparse_coo_tensor(new_indices, new_values,
                                        size=M.size(), dtype=M.dtype)
-        L = L.to_sparse_csr()
+        #L = L.to_sparse_csr()
 
         mask = (cols > rows)
         new_indices = indices[:, mask]
@@ -201,67 +212,80 @@ class MultigridSolver():
         #U = U.to_sparse_csr()
         return L,U
 
-    def make_AtA(self, pde: PDESYSLPEPS, A, A_rhs, deriv_weights, ds=1e2, save=False):
+    def make_AtA(self, pde: PDESYSLPEPS, A, A_rhs, coarsest=False, ds=1e2, save=False):
     #def make_AAt(self, pde: PDESYSLPEPS, A, us=1e1, ds=1e-2):
         #AGinvAt
         #P_diag = torch.ones(num_eps).type_as(rhs)*1e3
         #P_zeros = torch.zeros(num_var).type_as(rhs) +1e-5
         num_eq = pde.num_added_equation_constraints + pde.num_added_initial_constraints
         num_ineq = pde.num_added_derivative_constraints
+        bs = A_rhs.shape[0]
 
-        num_eps = pde.var_set.num_added_eps_vars
-        num_var = pde.var_set.num_vars
+        #num_eps = pde.var_set.num_added_eps_vars
+        #num_var = pde.var_set.num_vars
 
         #_P_diag = torch.ones(num_ineq, dtype=A.dtype, device='cpu')*config.ds#*us
         #_P_ones = torch.ones(num_eq, dtype=A.dtype, device='cpu')#/ds#/config.ds# +ds
         #ipdb.set_trace()
 
-        bs = deriv_weights.shape[0]
+        #bs = deriv_weights.shape[0]
         #print(deriv_weights.shape, num_ineq)
-        _P_diag = torch.ones(bs, num_ineq, dtype=A.dtype, device=A.device) #ds #config.ds#*us
-        #_P_diag = 1/deriv_weights
-        #_P_diag = deriv_weights
-        _P_ones = torch.ones(bs, num_eq, dtype=A.dtype, device=A.device)#*0.01#/ds#/config.ds# +ds
-        P_diag = torch.cat([_P_ones, _P_diag], dim=-1)#.to(A.device)
-        P_diag_inv = 1/P_diag
+        #_P_diag = torch.ones(bs, num_ineq, dtype=A.dtype, device=A.device) #ds #config.ds#*us
+        ##_P_diag = 1/deriv_weights
+        ##_P_diag = deriv_weights
+        #_P_ones = torch.ones(bs, num_eq, dtype=A.dtype, device=A.device)#*0.01#/ds#/config.ds# +ds
+        #P_diag = torch.cat([_P_ones, _P_diag], dim=-1)#.to(A.device)
+        #P_diag_inv = 1/P_diag
+        if coarsest:
+            A = A.to_dense()
+            At = A.transpose(1,2)
+            AtA = torch.bmm(At, A)#.unsqueeze(0)
+            D = None #torch.sum(A*A, dim=1)
+            AtPrhs =torch.bmm(At, A_rhs.unsqueeze(2)).squeeze(2)#.to_dense()
+            L,U=None,None 
+        else:
+            #A = A.to_dense()#[:, :, :num_var]
+            At = A.transpose(0,1)
+            #if save:
+            #    At.register_hook(lambda grad: print("At grad"))
+            #PinvA = P_diag_inv.unsqueeze(1)*A
+            #PinvA = P_diag_inv.unsqueeze(2)*A
 
-        #A = A.to_dense()#[:, :, :num_var]
-        At = A.transpose(1,2)
-        #if save:
-        #    At.register_hook(lambda grad: print("At grad"))
-        #PinvA = P_diag_inv.unsqueeze(1)*A
-        PinvA = P_diag_inv.unsqueeze(2)*A
+            #with torch.no_grad():
+            AtA = torch.sparse.mm(At, A)#.unsqueeze(0)
 
-        with torch.no_grad():
-            AtA_act = torch.sparse.mm(At[0], PinvA[0])#.unsqueeze(0)
+            #AtA = [A, P_diag]
 
-        AtA = [A, P_diag]
+            #D = torch.sparse.sum(PinvA*A, dim=1)
+            D = torch.sparse.sum(A*A, dim=1)
+            D = D.to_dense()
 
-        D = torch.sparse.sum(PinvA*A, dim=1)
-        D = D.to_dense()
+            #P_rhs = P_diag_inv*A_rhs
 
-        P_rhs = P_diag_inv*A_rhs
+            #AtPrhs =torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)#.to_dense()
+            AtPrhs =torch.bmm(At, A_rhs.unsqueeze(2)).squeeze(2)#.to_dense()
+            #AtPrhs.register_hook(lambda grad: print('aptrhs grad'))
 
-        AtPrhs =torch.bmm(At, P_rhs.unsqueeze(2)).squeeze(2)#.to_dense()
-        #AtPrhs.register_hook(lambda grad: print('aptrhs grad'))
 
-        L,U = None, None
-        return AtA, D, AtPrhs,L,U, AtA_act, P_diag
+            cAtA = SP.coo_matrix((AtA._values(), (AtA._indices()[0], AtA._indices()[1])), shape=AtA.shape)
+            L = CSP.tril(cAtA, k=0, format='csr')
+            U = CSP.triu(cAtA, k=1, format='csr')
+        return AtA, D, AtPrhs,L,U#, AtA_act, P_diag
 
-    @torch.no_grad()
-    def get_AtA_dense(self, As):
-        A = As[0]
-        P_diag = As[1]
-        P_diag_inv = 1/P_diag
-        A = A.to_dense()
-        At = A.transpose(1,2)
-        PinvA = P_diag_inv.unsqueeze(2)*A
-        #PinvA = A
+    #@torch.no_grad()
+    #def get_AtA_dense(self, As):
+    #    A = As[0]
+    #    P_diag = As[1]
+    #    P_diag_inv = 1/P_diag
+    #    A = A.to_dense()
+    #    At = A.transpose(1,2)
+    #    PinvA = P_diag_inv.unsqueeze(2)*A
+    #    #PinvA = A
 
-        #TODO fix mm
-        AtA = torch.bmm(At, PinvA)#.unsqueeze(0)
+    #    #TODO fix mm
+    #    AtA = torch.bmm(At, PinvA)#.unsqueeze(0)
 
-        return AtA
+    #    return AtA
 
 
     def downsample_grads(self, coeffs, old_shape,  new_shape, n_orders):
@@ -483,176 +507,6 @@ class MultigridSolver():
 
         return x
 
-    def restrict2(self, idx, x, back=False):
-        pde = self.pde_list[idx]
-        #pro_pde = self.pde_list[idx-1]
-
-        #bs, grid, num_mi
-        x = pde.get_solution_reshaped(x)
-        x = x.permute(0,2,1)
-
-        x = x.reshape(*x.shape[0:2], *self.dim_list[idx])
-
-        new_x_shape = [x.shape[0], x.shape[1]] + list(self.dim_list[idx+1])
-        new_x = -100*torch.ones(new_x_shape, device=x.device).type_as(x)
-
-        xint = x[:,:, 1:-1,1:-1].clone()
-        #xi00 = x[:,:, 0,:].clone()
-        #xi01 = x[:,:, -1,:].clone()
-        #xi10 = x[:,:,:, 0].clone()
-        #xi11 = x[:,:,:, -1].clone()
-
-        xi00 = x[:,:, 0,:-1]
-        xi01 = x[:,:, -1,1:-1]
-        xi10 = x[:,:,1:, 0]
-        xi11 = x[:,:,:, -1]
-        #os = list(np.array(self.dim_list[idx]-2))
-        ns = list(np.array(self.dim_list[idx+1])-2)
-
-        s = self.dim_list[idx][0]
-
-        xint = F.interpolate(xint, size=ns, 
-                            mode=self.interp_mode, 
-                            align_corners=self.align_corners)
-
-        xi00 = F.interpolate(xi00, size=s//2-1, 
-                            mode='linear', 
-                            #align_corners=self.align_corners)
-                            #mode=self.interp_mode, 
-                            align_corners=self.align_corners)
-
-        xi01 = F.interpolate(xi01, size=s//2-2, 
-                            mode='linear', 
-                            #align_corners=self.align_corners)
-                            #mode=self.interp_mode, 
-                            align_corners=self.align_corners)
-
-        xi10 = F.interpolate(xi10, size=s//2-1, 
-                            mode='linear', 
-                            #align_corners=self.align_corners)
-                            #mode=self.interp_mode, 
-                            align_corners=self.align_corners)
-
-        xi11 = F.interpolate(xi11, size=s//2, 
-                            mode='linear', 
-                            #align_corners=self.align_corners)
-                            #mode=self.interp_mode, 
-                            align_corners=self.align_corners)
-        #ipdb.set_trace()
-
-        new_x[:,:, 1:-1, 1:-1] = xint
-
-        new_x[:,:, 0,:-1] = xi00#[:,:, :-1]
-        new_x[:,:, -1,1:-1] = xi01#[:,:, 1:-1]
-        new_x[:,:,1:, 0] = xi10#[:,:,1:]
-        new_x[:,:,:, -1] = xi11
-
-
-        x = new_x.reshape(*x.shape[0:2], self.size_list[idx+1])
-
-
-        x = x.permute(0,2,1).reshape(x.shape[0], -1)
-        #eq, f_list,b_list, init_list = pde.lambda_flat_to_grid_set(x)
-        #x_rst = pde.lambda_grids_to_flat(eq, f_list, b_list, init_list)
-        #return x_rst
-
-
-        return x
-
-
-    def prolong2(self, idx, x, back=False):
-        pde = self.pde_list[idx]
-        #pro_pde = self.pde_list[idx-1]
-
-        #bs, grid, num_mi
-        x = pde.get_solution_reshaped(x)
-        x = x.permute(0,2,1)
-
-        x = x.reshape(*x.shape[0:2], *self.dim_list[idx])
-
-        new_x_shape = [x.shape[0], x.shape[1]] + list(self.dim_list[idx-1])
-        new_x = torch.zeros(new_x_shape, device=x.device).type_as(x)
-
-        xint = x[:,:, 1:-1,1:-1]
-        #xi00 = x[:,:, 0,:-1]
-        #xi01 = x[:,:, -1,1:-1]
-        #xi10 = x[:,:,1:, 0]
-        #xi11 = x[:,:,:, -1]
-
-        xi00 = x[:,:, 0,:-1]
-        xi01 = x[:,:, -1,1:-1]
-        xi10 = x[:,:,1:, 0]
-        xi11 = x[:,:,:, -1]
-        #os = list(np.array(self.dim_list[idx]-2))
-        ns = list(np.array(self.dim_list[idx-1])-2)
-
-
-        xint = F.interpolate(xint, size=ns, 
-                            mode=self.interp_mode, 
-                            align_corners=self.align_corners)
-
-        s = self.dim_list[idx][0]
-        xi00 = F.interpolate(xi00, size=s*2-1, 
-                            mode='linear', 
-                            #align_corners=self.align_corners)
-                            #mode=self.interp_mode, 
-                            align_corners=self.align_corners)
-
-        xi01 = F.interpolate(xi01, size=s*2-2, 
-                            mode='linear', 
-                            #align_corners=self.align_corners)
-                            #mode=self.interp_mode, 
-                            align_corners=self.align_corners)
-
-        xi10 = F.interpolate(xi10, size=s*2-1, 
-                            mode='linear', 
-                            #align_corners=self.align_corners)
-                            #mode=self.interp_mode, 
-                            align_corners=self.align_corners)
-
-        xi11 = F.interpolate(xi11, size=s*2, 
-                            mode='linear', 
-                            #align_corners=self.align_corners)
-                            #mode=self.interp_mode, 
-                            align_corners=self.align_corners)
-
-
-        new_x[:,:, 1:-1, 1:-1] = xint
-
-        #new_x[:,:, 0,:] = xi00
-        #new_x[:,:, -1,:] = xi01
-        #new_x[:,:,:, 0] = xi10
-        #new_x[:,:,:, -1] = xi11
-
-        new_x[:,:, 0,:-1] = xi00#[:,:, :-1]
-        new_x[:,:, -1,1:-1] = xi01#[:,:, 1:-1]
-        new_x[:,:,1:, 0] = xi10#[:,:,1:]
-        new_x[:,:,:, -1] = xi11
-
-        x = new_x.reshape(*x.shape[0:2], self.size_list[idx-1])
-
-        x = x.permute(0,2,1).reshape(x.shape[0], -1)
-        #eq, f_list,b_list, init_list = pde.lambda_flat_to_grid_set(x)
-        #x_rst = pde.lambda_grids_to_flat(eq, f_list, b_list, init_list)
-        #return x_rst
-
-
-        return x
-
-    def interp1(self, x):
-        bs = x.shape[0]
-        #1 ..
-        z = x[..., :-2] + 2*x[..., 1:-1] + x[..., 2:]
-        z = z/2
-
-        first = (x[...,0] + z[...,1])/2
-        last = (x[...,-1] + z[...,-2])/2
-        last = last.unsqueeze(-1)
-        first = first.unsqueeze(-1)
-        z = torch.cat([first,z, last], dim=-1)
-
-        z = torch.stack([x,z], dim=-1)
-        return z
 
     def prolong(self, idx, x, back=False):
         pde = self.pde_list[idx]
@@ -702,46 +556,25 @@ class MultigridSolver():
 
         return x
 
-    def mult_AtA(self, A_list, x):
-        A = A_list[0]
-        #x = x.to_dense()
-        #A = A.to_dense()
-        Ginv = 1/A_list[1]
-        At = A.transpose(1,2)
-
-        x = torch.bmm(A, x.unsqueeze(2)).squeeze(2)
-        Ginvx = Ginv*x#.to_dense()
-        x = torch.bmm(At, Ginvx.unsqueeze(2)).squeeze(2)
-
+    def mult_AtA(self, A, x):
+        x = torch.tensor(x)
+        x = torch.mm(A, x.unsqueeze(1)).squeeze(1)
+        x = cp.asarray(x)
         return x#.to_dense()
 
-    #def smooth_gs(self, A, b, x, L,U, nsteps=20):
-    def smooth_gs(self, A, b, x, nsteps=20):
+    def smooth_gs(self, L, U,  b, x, nsteps=20):
+    #def smooth_gs(self, A, b, x, nsteps=20):
         """GS iteration"""
-        #Dinv = 1/D
-        #w=0.2
 
-        #I = torch.sparse.spdiags(torch.ones(A.shape[1]), torch.tensor([0]), (A.shape[1], A.shape[2]), 
-        #                        layout=torch.sparse_coo)
-        #I = I.to(A.device).unsqueeze(0)
-        #I = I.to_dense()
+        #A = A[0]
+        #At = A.transpose(1,2)
+        #AtA_act = torch.sparse.mm(At[0], A[0])#.unsqueeze(0)
+        #ALU = AtA_act.unsqueeze(0).to_dense()
+        #L = torch.tril(ALU, diagonal=0)
+        #U = torch.triu(ALU, diagonal=1)
 
-        #I = torch.eye(A.shape[1], device=A.device)
-
-        #print('diff',(I-I2).pow(2).sum())
-        #x =M-1( Nx + b)
-        #x = x[0]
-        #b = b[0]
-
-        A = A[0]
-        At = A.transpose(1,2)
-        AtA_act = torch.sparse.mm(At[0], A[0])#.unsqueeze(0)
-        ALU = AtA_act.unsqueeze(0).to_dense()
-        L = torch.tril(ALU, diagonal=0)
-        U = torch.triu(ALU, diagonal=1)
-
-        L = L.to_dense()
-        U = U.to_dense()
+        #L = L.to_dense()
+        #U = U.to_dense()
 
         #Ld = torch.tril(L, diagonal=-1)
         #D = L-Ld
@@ -761,18 +594,13 @@ class MultigridSolver():
         
         
         for i in range(nsteps):
-            x = -torch.bmm(U, x.unsqueeze(2)).squeeze(2) + b
+            #x = -torch.bmm(U, x.unsqueeze(2)).squeeze(2) + b
+            #x = -torch.mm(U, x.unsqueeze(1)).squeeze(1) + b
+            x = -U@x + b
             #x = torch.sparse.spsolve(L, x)
-            x = torch.linalg.solve_triangular(L,x.unsqueeze(2),upper=False, 
-                                              left=True).squeeze(2)
-            #print('xx',_x.shape,x.shape)
-            #y = L@_x.unsqueeze(1)
-            #y  = y.squeeze(1)
-            #print('ysol ', y.shape)
-            #y = (x-y).pow(2).sum()
-            #print('y ', y)
-            #x = _x
-            #x = x.unsqueeze(0)
+            #x = torch.linalg.solve_triangular(L,x.unsqueeze(2),upper=False, 
+            #                                  left=True).squeeze(2)
+            x = CSP.linalg.spsolve_triangular(L,x,upper=False)
         return x
 
     def smooth_jacobi(self, As, b, x, D, nsteps=200, w=0.55, back=False):
@@ -809,16 +637,13 @@ class MultigridSolver():
 
         return x
 
-    def smooth_minres(self, A, b,   nsteps):
-        pass
-
-    def smooth_uzawa(self, A, b,   nsteps):
-        pass
-
-    def get_residual_norm(self, As, x, b):
+    def get_residual_norm(self, A, x, b):
         #r = b - torch.bmm(A, x.unsqueeze(2)).squeeze(2)
-        A = As[0]
-        r = b - self.mult_AtA(As, x) #torch.bmm(A, x.unsqueeze(2)).squeeze(2)
+        #r = b - self.mult_AtA(As, x) #torch.bmm(A, x.unsqueeze(2)).squeeze(2)
+        r = b - torch.mm(A, x.unsqueeze(1)).squeeze(1) #torch.bmm(A, x.unsqueeze(2)).squeeze(2)
+        r = r.reshape(self.bs, -1)
+        b = b.reshape(self.bs, -1)
+
         d = b.pow(2).sum(dim=-1).sqrt()
 
         rnorm = r.pow(2).sum(dim=-1).sqrt()
@@ -834,14 +659,13 @@ class MultigridSolver():
         return L
 
     def solve_coarsest(self, L, b):
-        #At = A.transpose(1,2)#.to_dense()
-        #PAt = P_diag_inv.unsqueeze(2)*At
-        #APAt = torch.bmm(A, PAt)
-        #A = A.to_dense()
-        #TODO: move factorization outside loop
         #L,info = torch.linalg.cholesky_ex(A,upper=False, check_errors=True)
+        b = torch.tensor(b, device=L.device)
+        b = b.reshape(self.bs, -1)
         lam = torch.cholesky_solve(b.unsqueeze(2), L)
         lam = lam.squeeze(2)
+        lam = lam.reshape(-1)
+        lam = cp.asarray(lam)
         return lam
 
     #def solve_direct(self, A, b):
@@ -856,10 +680,13 @@ class MultigridSolver():
     #    return lam
 
     @torch.no_grad()
-    def v_cycle_jacobi(self, idx, As_list, b, x, D_list, L, back=False):
-        As = As_list[idx]
+    def v_cycle_gs(self, idx, A_list, AL_list, AU_list, b, x, L, back=False):
+        #A,L are torch tensors. Rest are cupy arrays
+        A = A_list[idx]
+        AL = AL_list[idx]
+        AU = AU_list[idx]
         #b = b
-        D = D_list[idx]
+        #D = D_list[idx]
 
         #print(As[0].shape, b.shape)
         ##if back:
@@ -869,7 +696,7 @@ class MultigridSolver():
         nstep =10 # 5 if back and idx == 0 else 5
         #nstep =50 if back and idx == 0 else 10
         #x = self.smooth_jacobi(As, b, x, D, nsteps=nstep, back=back)
-        x = self.smooth_gs(As, b, x, nsteps=nstep)
+        x = self.smooth_gs(AL, AU, b, x, nsteps=nstep)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
         #dr, drn = self.get_residual_norm(As, x, b)
@@ -878,7 +705,7 @@ class MultigridSolver():
         #ipdb.set_trace()
         #print(A.shape, x.shape, b.shape, D.shape)
         #r = b-torch.bmm(A, x.unsqueeze(2)).squeeze(2)
-        r = b-self.mult_AtA(As, x) #torch.bmm(A, x.unsqueeze(2)).squeeze(2)
+        r = b-self.mult_AtA(A, x) #torch.bmm(A, x.unsqueeze(2)).squeeze(2)
 
         #if back:
         #dr, drn = self.get_residual_norm(As, x, b)
@@ -892,41 +719,14 @@ class MultigridSolver():
             if not back:
                 #deltaH = self.smooth_jacobi(As_list[idx+1], rH, torch.zeros_like(rH), D_list[idx+1], nsteps=100)
                 deltaH = self.solve_coarsest(L, rH)
-
-                #ata = self.get_AtA_dense(As_list[-1])
-                #deltaH1 = torch.linalg.solve(ata, rH.unsqueeze(2)).squeeze(2)
-
-                #ataup = self.get_AtA_dense(As_list[-2])
-                #deltaup = torch.linalg.solve(ataup, r.unsqueeze(2)).squeeze(2)
-
-                
-
-                #deltaH= deltaH.reshape(8,8,5)
-                #deltaH1= deltaH1.reshape(8,8,5)
-                ####deltaHd[1:-1,1:-1,:] = -deltaHd[1:-1,1:-1,:]
-                ####deltaH = -deltaHd.reshape(1,-1)
-                ####deltaHd = deltaHd.reshape(8,8,5)
-                #deltaup = deltaup.reshape(16,16,5)
-
-
-                #deltaH = deltaH1
-                #ipdb.set_trace()
             else:
-                #deltaH = self.smooth_jacobi(As_list[idx+1], rH, torch.zeros_like(rH), D_list[idx+1], nsteps=20)
-                #ataup = self.get_AtA_dense(As_list[-1])
-                #deltaH = torch.linalg.solve(ataup, rH.unsqueeze(2)).squeeze(2)
                 deltaH = self.solve_coarsest(L, rH)
-                #deltaup=deltaH
-                #ataup = self.get_AtA_dense(As_list[0])
-                #deltaup = torch.linalg.solve(ataup, r.unsqueeze(2)).squeeze(2)
-                #deltaH = -deltaH/100
-                #ipdb.set_trace()
-            #dr, drn = self.get_residual_norm(As_list[self.n_grid-1], deltaH, rH)
-            #print('coarsest resid ', dr, drn)
         else:
-            xH0 = torch.zeros_like(rH)
+            #xH0 = torch.zeros_like(rH)
+            xH0 = cp.zeros_like(rH)
             #print('els')
-            deltaH,_ = self.v_cycle_jacobi(idx+1, As_list, rH,xH0, D_list,L, back=back)
+            #deltaH,_ = self.v_cycle_jacobi(idx+1, As_list, rH,xH0, D_list,L, back=back)
+            deltaH,_ = self.v_cycle_gs(idx+1, A_list, AL_list, AU_list, rH,xH0, L, back=back)
             #print('one')
             #deltaH,_ = self.v_cycle_jacobi(idx+1, As_list, rH,deltaH, D_list,L, back=back)
             #deltaH = self.v_cycle_jacobi(idx+1, As_list, rH,deltaH, D_list,L, back=back)
@@ -953,7 +753,7 @@ class MultigridSolver():
         #smooth
         #x = self.smooth_jacobi(As, b, x, D, nsteps=nstep, back=back)
         nstep=10
-        x = self.smooth_gs(As, b, x, nsteps=nstep)
+        x = self.smooth_gs(AL, AU, b, x, nsteps=nstep)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 
         #if back:
@@ -964,7 +764,28 @@ class MultigridSolver():
         out = None
 
 
-        return x, out
+        return x
+
+    @torch.no_grad()
+    def v_cycle_gs_start(self, A_list, b, AL_list, AU_list,L, n_step=1, back=False):
+
+        b=cp.asarray(b)
+        x = cp.zeros_like(b)
+        #x = torch.zeros_like(b_list[0])
+        #x = torch.randn_like(b_list[0])
+        #x = torch.rand_like(b_list[0])
+        n_step =2 # 200 if back else 200
+        #n_step =1 if back else 1
+        #n_step=1000
+        for step in range(n_step):
+            x = self.v_cycle_gs(0, A_list, AL_list, AU_list, b, x, L, back=back)
+            #if back:
+            #r,rr = self.get_residual_norm(A_list[0], x, b_list[0] )
+            #print(f'vcycle end norm: ',step, r,rr.item(),back,'\n')
+        #x = x.to_dense()
+        #return x, out#.to_dense()
+        x= torch.tensor(x)
+        return x#, out#.to_dense()
 
     @torch.no_grad()
     def v_cycle_jacobi_start(self, A_list, b_list, D_list,L, n_step=1, back=False):

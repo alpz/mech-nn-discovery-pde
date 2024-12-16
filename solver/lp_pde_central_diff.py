@@ -644,82 +644,6 @@ class PDESYSLP(nn.Module):
         return
         #fb_grids = z[:, :len1].reshape(bs, self.num_grids_forward_backward, *self.coord_dims)
         
-    #def store_equation_constraint_indices(self, initial_index):
-    #    #store index of last constraint as the constraint index on grid
-    #    self.initial_constraint_indices[initial_index].append(self.num_added_constraints-1)
-
-    #def store_equation_constraint_indices(self):
-    #    #store index of last constraint as the constraint index on grid
-    #    self.equation_constraint_indices.append(self.num_added_constraints-1)
-
-    #def store_central_smoothness_constraint_indices_on_grid(self, coord, mi_index, grid_num):
-    #    #store index of last constraint as the constraint index on grid per coord per mi_index
-    #    self.smoothness_constraint_indices[coord][mi_index][grid_num] = self.num_added_constraints-1
-
-    #def store_zeroth_smoothness_constraint_indices(self, coord, forward):
-    #    #store index of last constraint as the constraint index on grid per coord per mi_index
-    #    direction = 'forward' if forward else 'backward'
-    #    self.zeroth_smoothness_constraint_indices[coord][direction].append(self.num_added_constraints-1)
-
-
-    #def make_interpolation_grid_permutation(self):
-
-    #    constraint_indices = []
-
-    #    #equation
-    #    total_size = 0
-    #    index = 0
-
-    #    size = self.constraint_grid_sizes[index]
-    #    constraint_indices.append(np.arange(size))
-    #    total_size += size
-    #    index += 1
-
-    #    #forward
-    #    offset = total_size
-    #    size = self.constraint_grid_sizes[index]
-    #    constraint_indices.append(np.arange(offset, offset+size))
-    #    total_size += size
-    #    index += 1
-
-    #    #central
-    #    for coord in range(self.n_coord):
-    #        for mi in self.var_set.sorted_central_mi_indices[coord]:
-    #            mi_index = self.var_set.mi_to_index[mi]
-    #            indices = self.smoothness_constraint_indices[coord][mi_index]
-    #            constraint_indices.append(np.array(indices))
-
-    #            total_size += self.var_set.grid_size
-    #            index += 1
-
-    #    #backward
-    #    offset = total_size
-    #    size = self.constraint_grid_sizes[index]
-    #    constraint_indices.append(np.arange(offset, offset+size))
-    #    total_size += size
-    #    index += 1
-
-    #def make_interpolation_grids(self):
-    #    #equation_indices, central_indices, zeroth_indices, initial_indices
-    #    #grid_shapes 
-    #    self.equation_constraint_grid = np.array(self.equation_constraint_indices).reshape(self.coord_dims)
-
-    #    #central smoothness indices are already in a grid
-    #    self.central_smoothness_constraint_grid = self.smoothness_constraint_indices
-
-    #    for coord in range(self.n_coords):
-    #        for direction in ['forward', 'backward']:
-    #            coord_dims = list(self.coord_dims)
-    #            coord_dims[coord] -= 1
-
-    #            #grid_size = np.prod(self.coord_dims)
-    #            self.zeroth_smoothness_constraint_indices[coord][direction].reshape(coord_dims)
-
-    #    for initial_index,pair in enumerate(self.init_index_mi_list):
-    #        range_begin = np.array(pair[2])
-    #        range_end = np.array(pair[3])
-    #        coord_dims = range_end+1 - range_begin
-    #        self.initial_constraint_indices[initial_index] = np.array(self.initial_constraint_indices[initial_index]).reshape(coord_dims)
 
     #build constraint string representations for check
     def repr_eq(self, rows=None, cols=None, rhs=None, values=None, type=ConstraintType.Equation):
@@ -839,7 +763,7 @@ class PDESYSLP(nn.Module):
 
             #TODO check order scale
             #diff between maximum number of taylor terms (order+1) and current terms
-            order_diff =0 # self.order+1- len(mi_index_list)
+            order_diff =0 # self.order+2- len(mi_index_list)
             for _j,ts_mi_index in enumerate(mi_index_list):
                 j = _j +order_diff
                 #h = self.step_size**(j)
@@ -1118,13 +1042,13 @@ class PDESYSLP(nn.Module):
                                        dtype=self.dtype)
 
         full_A = torch.cat([eq_A, initial_A, derivative_A], dim=0).coalesce()
-        full_AtA = torch.mm(full_A.transpose(0,1),full_A).coalesce()
-        print('fullatannz', full_AtA._nnz())
+        #full_AtA = torch.mm(full_A.transpose(0,1),full_A).coalesce()
+        #print('fullatannz', full_AtA._nnz())
 
         print(f'Constraints Shape eq {eq_A.shape}, init {initial_A.shape}, deriv {derivative_A.shape}')
         #print('first ', eq_A.shape, initial_A.shape, derivative_A.shape)
         self.num_constraints = full_A.shape[0]
-        #self.build_block_diag(full_A)
+        self.build_block_diag(full_A)
 
         derivative_rhs = self.rhs_dict[ConstraintType.Derivative]
         #derivative_rhs = torch.tensor(derivative_rhs, dtype=self.dtype, device=self.device)
@@ -1552,14 +1476,14 @@ class PDESYSLP(nn.Module):
     def build_central_values(self, steps_list):
 
         values_list = []
-        weights_list = []
+        #weights_list = []
         for coord in range(self.n_coord):
             #coeffs shape b, step_grid, num_indices, num_values
             coeffs = self.solve_5pt_central_stencil(coord, steps_list[coord])
             left_coeffs = self.solve_5pt_stencil_edge(coord, steps_list[coord], backward=False)
             right_coeffs = self.solve_5pt_stencil_edge(coord, steps_list[coord], backward=True)
 
-            weights_list.append(self.get_central_weights(steps_list[coord], coord))
+            #weights_list.append(self.get_central_weights(steps_list[coord], coord))
 
             coeffs = torch.cat([left_coeffs, coeffs, right_coeffs], dim=1+coord)
             coeffs = coeffs.reshape(steps_list[coord].shape[0],-1)
@@ -1569,19 +1493,19 @@ class PDESYSLP(nn.Module):
         values = torch.cat(values_list, dim=1)
         #values = values.reshape(steps_list[0].shape[0], -1)
         #return values
-        weights = torch.cat(weights_list, dim=-1)
-        return values, weights
+        #weights = torch.cat(weights_list, dim=-1)
+        return values
 
 
     def build_forward_values(self, steps_list):
 
         values_list = []
-        weights_list = []
+        #weights_list = []
         for coord, steps in enumerate(steps_list):
             b = steps.shape[0]
             #TODO expand steps
             steps = self.expand_steps(coord, steps)
-            weights_list.append(torch.ones_like(steps.reshape(b, -1)))
+            #weights_list.append(torch.ones_like(steps.reshape(b, -1)))
             #weights_list.append((steps.reshape(b, -1)).pow(2))
             #weights_list.append((steps.reshape(b, -1)))
 
@@ -1603,17 +1527,17 @@ class PDESYSLP(nn.Module):
             values_list.append(steps)
 
         values = torch.cat(values_list, dim=-1)
-        weights = torch.cat(weights_list, dim=-1)
-        return values, weights
+        #weights = torch.cat(weights_list, dim=-1)
+        return values
 
     def build_backward_values(self, steps_list):
         values_list = []
-        weights_list = []
+        #weights_list = []
         for coord, steps in enumerate(steps_list):
             b = steps.shape[0]
             #TODO expand steps
             steps = self.expand_steps(coord, steps)
-            weights_list.append(torch.ones_like(steps.reshape(b, -1)))
+            #eights_list.append(torch.ones_like(steps.reshape(b, -1)))
             #weights_list.append((steps.reshape(b, -1)).pow(2))
             #weights_list.append((steps.reshape(b, -1)))
 
@@ -1637,23 +1561,23 @@ class PDESYSLP(nn.Module):
             values_list.append(steps)
 
         values = torch.cat(values_list, dim=-1)
-        weights = torch.cat(weights_list, dim=-1)
-        return values, weights
+        #eights = torch.cat(weights_list, dim=-1)
+        return values
 
 
     def build_derivative_values(self, steps_list):
         #list of n_coord tensors
         #tensor i has dimension i with length coord_dim[i] -1, otherwise coord_dim[i]
-        fv,fw = self.build_forward_values(steps_list)
-        cv,cw = self.build_central_values(steps_list)
-        bv,bw = self.build_backward_values(steps_list)
+        fv = self.build_forward_values(steps_list)
+        cv = self.build_central_values(steps_list)
+        bv = self.build_backward_values(steps_list)
 
         built_values = torch.cat([cv,fv,bv], dim=-1)
-        built_weights = torch.cat([cw,fw,bw], dim=-1)
+        #built_weights = torch.cat([cw,fw,bw], dim=-1)
         #built_values = torch.cat([cv], dim=-1)
         #built_values = torch.cat([cv,fv], dim=-1)
 
-        return built_values, built_weights
+        return built_values
 
 
     def build_equation_tensor(self, eq_values):
@@ -1669,14 +1593,14 @@ class PDESYSLP(nn.Module):
     
     def build_derivative_tensor(self, steps_list):
         self.derivative_A = self.derivative_A.to(steps_list[0].device)
-        derivative_values, derivative_weights = self.build_derivative_values(steps_list)#.reshape(-1)
+        derivative_values = self.build_derivative_values(steps_list)#.reshape(-1)
         derivative_values = derivative_values.reshape(-1)
 
         #print('built', len(derivative_values))
         derivative_indices = self.derivative_A._indices()
         G = torch.sparse_coo_tensor(derivative_indices, derivative_values, size=self.derivative_A.shape, dtype=self.dtype)
 
-        return G, derivative_weights
+        return G
 
 
     def fill_block_constraints_torch(self, eq_A, eq_rhs, iv_rhs, derivative_A):
@@ -1696,7 +1620,8 @@ class PDESYSLP(nn.Module):
 
         self.derivative_rhs = self.derivative_rhs.type_as(eq_rhs)
         rhs = torch.cat([eq_rhs, iv_rhs, self.derivative_rhs], axis=1)
-        #rhs = rhs.reshape(-1)
+        rhs = rhs.reshape(-1)
+
         return A_block, rhs
 
 

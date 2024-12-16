@@ -317,15 +317,22 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
         def forward(ctx, eq_constraints, rhs, iv_rhs, derivative_constraints, coeffs, steps_list, derivative_weights):
             print('input nnz', eq_constraints._nnz(), derivative_constraints._nnz())
             print('input shape', eq_constraints.shape, derivative_constraints.shape)
-            coarse_A_list, coarse_rhs_list, coarse_deriv_weight_list = mg.fill_coarse_grids(coeffs, rhs, iv_rhs, steps_list)
+
+            bs = pde.bs
+            coarse_A_list, coarse_rhs_list = mg.fill_coarse_grids(coeffs, rhs, iv_rhs, steps_list)
 
             #A, A_rhs = pde.fill_constraints_torch2(eq_constraints.coalesce(), rhs, iv_rhs, 
             #                                            derivative_constraints.coalesce())
 
-            A, A_rhs = pde.fill_constraints_torch(eq_constraints, rhs, iv_rhs, 
-                                                        derivative_constraints)
-            AtA,D, AtPrhs,A_L, A_U,AtA_act,G = mg.make_AtA(pde, A, A_rhs, derivative_weights, save=True)
+            #Aub, Aub_rhs = pde.fill_constraints_torch(eq_constraints, rhs, iv_rhs, 
+            #                                            derivative_constraints)
 
+            A, A_rhs = pde.fill_block_constraints_torch(eq_constraints, rhs, iv_rhs, 
+                                                        derivative_constraints)
+            #AtA,D, AtPrhs,A_L, A_U,AtA_act,G = mg.make_AtA(pde, A, A_rhs, derivative_weights, save=True)
+            AtA,D, AtPrhs,A_L, A_U = mg.make_AtA(pde, A, A_rhs, save=True)
+
+            #G=identity
             #G = G.squeeze(2)
             #A_kkt = mg.make_kkt(G[0], A)
             
@@ -335,17 +342,20 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #AtPrhs.register_hook(lambda grad: print('atprhs'))
 
             AtA_list, rhs_list, D_list,L_list,U_list = mg.make_coarse_AtA_matrices(coarse_A_list, 
-                                                                     coarse_rhs_list, coarse_deriv_weight_list)
+                                                                     coarse_rhs_list)
 
             AtA_list = [AtA] + AtA_list
             rhs_list = [AtPrhs] + rhs_list
             D_list = [D] + D_list
+            AL_list = [A_L] + L_list
+            AU_list = [A_U] + U_list
 
             #negate
-            rhs_list  = [rhs for rhs in rhs_list]
+            #rhs_list  = [rhs for rhs in rhs_list]
 
 
-            AtA_coarsest = mg.get_AtA_dense(AtA_list[-1])
+            #AtA_coarsest = mg.get_AtA_dense(AtA_list[-1])
+            AtA_coarsest = AtA_list[-1].to_dense()
             #L= mg.factor_coarsest(AtA_list[-1])
             L= mg.factor_coarsest(AtA_coarsest)
 
@@ -353,35 +363,44 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             #x,out = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
             #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
+            x = mg.v_cycle_gs_start(AtA_list, rhs_list[0], AL_list, AU_list, L)
 
             #print('solving direct ata')
             #x = solve_direct_AtA(AtA_list[0], rhs_list[0])
             #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
-            mg_args = [AtA_list, D_list, L]
+            mg_args = [AtA_list, AL_list, AU_list, L]
 
-            x,_ = cg.fgmres(AtA_act.unsqueeze(0), rhs_list[0],x0=torch.zeros_like(rhs_list[0]), 
-                           MG=mg, MG_args=mg_args, restart=40, maxiter=80)
+            x,_ = cg.fgmres(AtA_list[0].unsqueeze(0), 
+                            rhs_list[0].unsqueeze(0),
+                            x0=torch.zeros_like(rhs_list[0]).unsqueeze(0), 
+                            MG=mg, MG_args=mg_args, restart=40, maxiter=80)
 
+            x = x.squeeze(0)
             r,rr = mg.get_residual_norm(AtA_list[0], x, rhs_list[0])
             print(f'gmres step norm: ', r,rr)
                                                                             
             #G (-lam) = Ax -b
-            r = torch.bmm(A, x.unsqueeze(2)).squeeze(2) - A_rhs
-            lam = -(1/G)*r
+            #r = torch.bmm(A, x.unsqueeze(2)).squeeze(2) - A_rhs
+            r = torch.mm(A, x.unsqueeze(1)).squeeze(1) - A_rhs
+            #lam = -(1/G)*r
+            lam = -r
 
             #x = -x
             #lam = -lam
 
             ctx.A = A
             #ctx.A_kkt = A_kkt
-            ctx.G = G
+            #ctx.G = G
             ctx.AtA_list = AtA_list
-            ctx.AtA_act = AtA_act
-            ctx.D_list = D_list
+            ctx.AL_list = AL_list
+            ctx.AU_list = AU_list
+            #ctx.AtA_act = AtA_act
+            #ctx.D_list = D_list
             #ctx.rhs_list = rhs_list
             ctx.L = L
             ctx.save_for_backward(x, lam)
             
+            x =x.reshape(bs, -1)
             print('qpf', x.shape)
             return x#,out
         
@@ -390,19 +409,22 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             _x,_lam = ctx.saved_tensors[0:2]
             A = ctx.A
             #A_kkt = ctx.A_kkt
-            G = ctx.G
+            #G = ctx.G
             AtA_list = ctx.AtA_list
-            AtA_act = ctx.AtA_act
-            D_list = ctx.D_list
+            #AtA_act = ctx.AtA_act
+            #D_list = ctx.D_list
             #rhs_list = ctx.rhs_list
             L = ctx.L
+
+            AL_list = ctx.AL_list
+            AU_list = ctx.AU_list
 
             #print(dl_dzhat.reshape(32,32,5)[:,:,0])
             ##shape: batch, grid, order
 
-            coarse_grads = mg.downsample_grad(dl_dzhat.clone())
-            grad_list = [dl_dzhat] + coarse_grads
-            #grad_list =  [g for g in grad_list]
+            #coarse_grads = mg.downsample_grad(dl_dzhat.clone())
+            grad_list = [dl_dzhat.reshape(-1)] #+ coarse_grads
+            #grad_list =  [g.reshape(-1) for g in grad_list]
             
             #dnu = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L)
             #dz,_ = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
@@ -412,7 +434,8 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #AtA0 = mg.get_AtA_dense(AtA_list[0])
             #dz = solve_direct(AtA0, grad_list[0])
 
-            mg_args = [AtA_list, D_list, L, (A.shape[1], A.shape[2])]
+            #mg_args = [AtA_list, D_list, L, (A.shape[1], A.shape[2])]
+            mg_args = [AtA_list, AL_list, AU_list, L]
 
             #zero_init = torch.zeros(A.shape[0], A.shape[1], device=A.device)
             #zgrad = torch.cat([zero_init, dl_dzhat], dim=1)
@@ -424,8 +447,11 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #dz = _dz[:, A.shape[1]:] 
             #dnu = _dz[:, :A.shape[1]] 
 
-            dz,_ = cg.fgmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
+            dz,_ = cg.fgmres(AtA_list[0].unsqueeze(0), 
+                             grad_list[0].unsqueeze(0),
+                             x0=torch.zeros_like(grad_list[0]).unsqueeze(0), 
                            MG=mg, MG_args=mg_args, restart=40, maxiter=80, back=True)
+            dz = dz.squeeze(0)
 
             #dz,_ = cg.gmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
             #               MG=mg, MG_args=mg_args, restart=100, maxiter=50, back=True)
@@ -450,8 +476,10 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             print('backward', nr, nrr)
 
             ## dnu + G^(-1)*Adnu = 0
-            dnu = torch.bmm(A, dz.unsqueeze(2)).squeeze(2)
-            dnu = -(1/G)*dnu
+            #dnu = torch.bmm(A, dz.unsqueeze(2)).squeeze(2)
+            dnu = torch.bmm(A, dz.unsqueeze(1)).squeeze(1)
+            #dnu = -(1/G)*dnu
+            dnu = -(1)*dnu
 
             #dnu = solve_direct(AtA_list[0], grad_list[0])
 
@@ -459,6 +487,8 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #dx = P_diag_inv*(dx)
 
             #_dx, _dnu = -dx,-dnu
+            dz = dz.reshape(pde.bs, -1)
+            dnu = dnu.reshape(pde.bs, -1)
 
             db = -dnu
             #dz = dz
