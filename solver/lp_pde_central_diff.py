@@ -1041,7 +1041,7 @@ class PDESYSLP(nn.Module):
                                        #dtype=self.dtype, device=self.device)
                                        dtype=self.dtype)
 
-        full_A = torch.cat([eq_A, initial_A, derivative_A], dim=0).coalesce()
+        full_A = torch.cat([eq_A, initial_A, derivative_A], dim=0)#.coalesce()
         #full_AtA = torch.mm(full_A.transpose(0,1),full_A).coalesce()
         #print('fullatannz', full_AtA._nnz())
 

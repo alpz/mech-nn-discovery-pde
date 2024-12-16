@@ -324,11 +324,12 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #A, A_rhs = pde.fill_constraints_torch2(eq_constraints.coalesce(), rhs, iv_rhs, 
             #                                            derivative_constraints.coalesce())
 
-            #Aub, Aub_rhs = pde.fill_constraints_torch(eq_constraints, rhs, iv_rhs, 
-            #                                            derivative_constraints)
+            Aub, Aub_rhs = pde.fill_constraints_torch(eq_constraints, rhs, iv_rhs, 
+                                                        derivative_constraints)
 
             A, A_rhs = pde.fill_block_constraints_torch(eq_constraints, rhs, iv_rhs, 
                                                         derivative_constraints)
+            #ipdb.set_trace()
             #AtA,D, AtPrhs,A_L, A_U,AtA_act,G = mg.make_AtA(pde, A, A_rhs, derivative_weights, save=True)
             AtA,D, AtPrhs,A_L, A_U = mg.make_AtA(pde, A, A_rhs)
 
@@ -428,6 +429,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             
             #dnu = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L)
             #dz,_ = mg.v_cycle_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
+            dz = mg.v_cycle_gs_start(AtA_list, grad_list[0], AL_list, AU_list, L, back=True)
 
             #dz = mg.full_multigrid_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
 
@@ -447,10 +449,10 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #dz = _dz[:, A.shape[1]:] 
             #dnu = _dz[:, :A.shape[1]] 
 
-            dz,_ = cg.fgmres(AtA_list[0].unsqueeze(0), 
-                             grad_list[0].unsqueeze(0),
-                             x0=torch.zeros_like(grad_list[0]).unsqueeze(0), 
-                           MG=mg, MG_args=mg_args, restart=40, maxiter=80, back=True)
+            #dz,_ = cg.fgmres(AtA_list[0].unsqueeze(0), 
+            #                 grad_list[0].unsqueeze(0),
+            #                 x0=torch.zeros_like(grad_list[0]).unsqueeze(0), 
+            #               MG=mg, MG_args=mg_args, restart=40, maxiter=80, back=True)
             dz = dz.squeeze(0)
 
             #dz,_ = cg.gmres(AtA_act.unsqueeze(0), grad_list[0],x0=torch.zeros_like(grad_list[0]), 
@@ -477,7 +479,8 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             ## dnu + G^(-1)*Adnu = 0
             #dnu = torch.bmm(A, dz.unsqueeze(2)).squeeze(2)
-            dnu = torch.bmm(A, dz.unsqueeze(1)).squeeze(1)
+            #dnu = torch.bmm(A, dz.unsqueeze(1)).squeeze(1)
+            dnu = torch.mm(A, dz.unsqueeze(1)).squeeze(1)
             #dnu = -(1/G)*dnu
             dnu = -(1)*dnu
 
@@ -489,6 +492,8 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #_dx, _dnu = -dx,-dnu
             dz = dz.reshape(pde.bs, -1)
             dnu = dnu.reshape(pde.bs, -1)
+            _x = _x.reshape(pde.bs, -1)
+            _lam = _lam.reshape(pde.bs, -1)
 
             db = -dnu
             #dz = dz
