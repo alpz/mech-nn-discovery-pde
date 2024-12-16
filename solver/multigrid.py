@@ -928,7 +928,7 @@ class MultigridSolver():
             #print('els')
             deltaH,_ = self.v_cycle_jacobi(idx+1, As_list, rH,xH0, D_list,L, back=back)
             #print('one')
-            deltaH,_ = self.v_cycle_jacobi(idx+1, As_list, rH,deltaH, D_list,L, back=back)
+            #deltaH,_ = self.v_cycle_jacobi(idx+1, As_list, rH,deltaH, D_list,L, back=back)
             #deltaH = self.v_cycle_jacobi(idx+1, As_list, rH,deltaH, D_list,L, back=back)
             #print('two')
             #deltaH = self.v_cycle_jacobi(idx+1, As_list, rH,deltaH, D_list,L, back=back)
