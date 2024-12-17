@@ -42,7 +42,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def solve():
-    bs = 1
+    bs = 2
     #coord_dims = (16,16)
     coord_dims = (32,32)
     #coord_dims = (64,64)

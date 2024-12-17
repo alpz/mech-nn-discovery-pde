@@ -455,7 +455,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #               MG=mg, MG_args=mg_args, restart=40, maxiter=80, back=True)
             dz = dz.reshape(-1)
 
-            nr, nrr = mg.get_residual_norm(AtA_list[0],dz, grad_list[0])
+            nr, nrr = mg.get_residual_norm(AtA_list[0],dz, grad_list[0].reshape(-1))
             print('backward', nr, nrr)
 
             ## dnu + G^(-1)*Adnu = 0

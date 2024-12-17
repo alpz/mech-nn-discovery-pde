@@ -489,7 +489,7 @@ class MultigridSolver():
 
         x = x.reshape(*x.shape[0:2], *self.dim_list[idx])
 
-        back=True
+        back=False
         if back:
             #x = F.interpolate(x, size=self.dim_list[idx+1], 
             #              mode='bilinear',
@@ -718,8 +718,11 @@ class MultigridSolver():
         nstep =10 # 5 if back and idx == 0 else 5
         #nstep =50 if back and idx == 0 else 10
         #x = self.smooth_jacobi(As, b, x, D, nsteps=nstep, back=back)
+
+
         x = self.smooth_gs(AL, AU, b, x, nsteps=nstep)
         #x = self.smooth_cg(As, b, x, nsteps=200)
+
 
         #dr, drn = self.get_residual_norm(As, x, b)
         #print('resid after smooth',idx, dr, drn)
@@ -729,11 +732,23 @@ class MultigridSolver():
         #r = b-torch.bmm(A, x.unsqueeze(2)).squeeze(2)
         r = b-self.mult_AtA(A, x) #torch.bmm(A, x.unsqueeze(2)).squeeze(2)
 
+        cx = r.reshape(2, -1)
+        dd = cx[0] - cx[1]
+        #dd = dd.pow(2).sum()
+        dd = (dd**2).sum()
+        #print(dd, 'resid')
         #if back:
         #dr, drn = self.get_residual_norm(As, x, b)
         #print('resid init',idx, dr, drn)
 
+
         rH = self.restrict(idx, r, back=back)
+
+        cx = rH.reshape(2, -1)
+        dd = cx[0] - cx[1]
+        #dd = dd.pow(2).sum()
+        dd = (dd**2).sum()
+        #print(dd, 'restrict')
 
         #print(idx, self.n_grid, len(As_list))
         if idx ==self.n_grid-2:
@@ -777,6 +792,7 @@ class MultigridSolver():
         nstep=10
         x = self.smooth_gs(AL, AU, b, x, nsteps=nstep)
         #x = self.smooth_cg(As, b, x, nsteps=200)
+
 
         #if back:
         #dr, drn = self.get_residual_norm(As, x, b)
