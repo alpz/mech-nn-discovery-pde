@@ -16,6 +16,7 @@ import torch
 
 import torch.optim as optim
 
+from solver.multigrid import MultigridLayer
 
 from torch.utils.data import Dataset, DataLoader
 from scipy.integrate import odeint
@@ -51,7 +52,8 @@ cuda=True
 solver_dim=(32,32)
 #solver_dim=(50,64)
 #solver_dim=(32,48)
-batch_size= 1
+n_grid=3
+batch_size= 2
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
 
@@ -192,13 +194,13 @@ class Model(nn.Module):
         self.param_in = nn.Parameter(torch.randn(1,64))
 
         self.coord_dims = solver_dim
-        self.iv_list = [(0,0, [0,0],[0,self.coord_dims[1]-2]), 
-                        (1,0, [1,0], [self.coord_dims[0]-1, 0]), 
+        self.iv_list = [lambda nx, ny: (0,0, [0,0],[0,ny-2]), 
+                        lambda nx,ny: (1,0, [1,0], [nx-1, 0]), 
                         #(0,1, [0,0],[0,self.coord_dims[1]-1]), 
                         #(0,0, [self.coord_dims[0]-1,1],[self.coord_dims[0]-1,self.coord_dims[1]-2]), 
                         #(1,2, [0,0], [self.coord_dims[0]-1, 0]),
                         #(1,3, [0,0], [self.coord_dims[0]-1, 0])
-                        (1,0, [0,self.coord_dims[1]-1], [self.coord_dims[0]-1, self.coord_dims[1]-1])
+                        lambda nx,ny: (1,0, [0,ny-1], [nx-1, ny-1])
                         ]
 
         #self.iv_len = self.coord_dims[1]-1 + self.coord_dims[0]-1 + self.coord_dims[1]-2 + self.coord_dims[0]
@@ -210,9 +212,10 @@ class Model(nn.Module):
         self.n_patches = 1 #self.n_patches_t*self.n_patches_x
         print('num patches ', self.n_patches)
 
-        self.pde = PDEINDLayerEPS(bs=bs*self.n_patches, coord_dims=self.coord_dims, order=self.order, n_ind_dim=self.n_dim, 
-                                  n_iv=self.n_iv, init_index_mi_list=self.iv_list,  
-                                  n_iv_steps=1, double_ret=True, solver_dbl=True)
+
+        self.pde = MultigridLayer(bs=bs, coord_dims=self.coord_dims, order=2, n_ind_dim=self.n_ind_dim, n_iv=1, 
+                        n_grid=n_grid,
+                        init_index_mi_list=self.iv_list,  n_iv_steps=1, double_ret=True, solver_dbl=True)
 
         # u, u_t, u_tt, u_x, u_xx
         self.num_multiindex = self.pde.n_orders
@@ -468,8 +471,8 @@ class Model(nn.Module):
         u0_list = []
         eps_list = []
 
-        steps0 = self.steps0.type_as(params).expand(-1, self.n_patches, self.coord_dims[0]-1)
-        steps1 = self.steps1.type_as(params).expand(-1, self.n_patches, self.coord_dims[1]-1)
+        steps0 = self.steps0.type_as(params).expand(self.bs, self.n_patches, self.coord_dims[0]-1)
+        steps1 = self.steps1.type_as(params).expand(self.bs, self.n_patches, self.coord_dims[1]-1)
         steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.5)
         steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.5)
         steps_list = [steps0, steps1]

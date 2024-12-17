@@ -333,6 +333,8 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #AtA,D, AtPrhs,A_L, A_U,AtA_act,G = mg.make_AtA(pde, A, A_rhs, derivative_weights, save=True)
             AtA,D, AtPrhs,A_L, A_U = mg.make_AtA(pde, A, A_rhs)
 
+            #ipdb.set_trace()
+
             #G=identity
             #G = G.squeeze(2)
             #A_kkt = mg.make_kkt(G[0], A)
@@ -371,9 +373,9 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
             mg_args = [AtA_list, AL_list, AU_list, L]
 
-            x,_ = cg.fgmres_matvec(AUNB, 
-                            rhs_list[0].reshape(bs, -1),
-                            x0=torch.zeros_like(rhs_list[0]).reshape(bs, -1),
+            x,_ = cg.fgmres_matvec(AtA, 
+                            rhs_list[0].reshape(-1),
+                            x0=torch.zeros_like(rhs_list[0]).reshape(-1),
                             MG=mg, MG_args=mg_args, restart=40, maxiter=80)
             #x,_ = cg.fgmres(AtA_list[0].unsqueeze(0), 
             #                rhs_list[0].unsqueeze(0),
@@ -444,9 +446,9 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             #mg_args = [AtA_list, D_list, L, (A.shape[1], A.shape[2])]
             mg_args = [AtA_list, AL_list, AU_list, L]
-            dz,_ = cg.fgmres_matvec(AUNB, 
-                             grad_list[0],
-                             x0=torch.zeros_like(grad_list[0]),
+            dz,_ = cg.fgmres_matvec(AtA_list[0], 
+                             grad_list[0].reshape(-1),
+                             x0=torch.zeros_like(grad_list[0]).reshape(-1),
                            MG=mg, MG_args=mg_args, restart=40, maxiter=80, back=True)
 
             #dz,_ = cg.fgmres(AtA_list[0].unsqueeze(0), 

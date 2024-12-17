@@ -1296,8 +1296,8 @@ class PDESYSLP(nn.Module):
         #coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
         #coeffs2 = torch.cat([-ones, coeffs[...,1]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
 
-        coeffs1 = torch.cat([ coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
-        coeffs2 = torch.cat([ coeffs[...,1]*stepn1.unsqueeze(-1)**3, -ones*stepn1.unsqueeze(-1)**3], dim=-1)
+        coeffs1 = torch.cat([ coeffs[...,0]*stepn1.unsqueeze(-1)**1, -ones*stepn1.unsqueeze(-1)**1], dim=-1)
+        coeffs2 = torch.cat([ coeffs[...,1]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
 
         #coeffs1 = torch.cat([ coeffs[...,0]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)
         #coeffs2 = torch.cat([ coeffs[...,1]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)
@@ -1376,8 +1376,8 @@ class PDESYSLP(nn.Module):
         #coeffs1 = torch.cat([-ones, coeffs[...,0], -ones], dim=-1)
         #coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)
         #coeffs1 = torch.cat([-ones, coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
-        coeffs1 = torch.cat([coeffs[...,0]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
-        coeffs2 = torch.cat([ coeffs[...,1]*stepn1.unsqueeze(-1)**3, -ones*stepn1.unsqueeze(-1)**3], dim=-1)
+        coeffs1 = torch.cat([coeffs[...,0]*stepn1.unsqueeze(-1)**1, -ones*stepn1.unsqueeze(-1)**1], dim=-1)
+        coeffs2 = torch.cat([ coeffs[...,1]*stepn1.unsqueeze(-1)**2, -ones*stepn1.unsqueeze(-1)**2], dim=-1)
 
         #coeffs1 = torch.cat([coeffs[...,0]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)
         #coeffs2 = torch.cat([ coeffs[...,1]*stepn1.unsqueeze(-1), -ones*stepn1.unsqueeze(-1)], dim=-1)

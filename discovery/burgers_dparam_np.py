@@ -49,9 +49,10 @@ cuda=True
 #n_step_per_batch = T
 #solver_dim=(10,256)
 solver_dim=(32,32)
-#solver_dim=(50,64)
+#solver_dim=(64,64)
 #solver_dim=(32,48)
-batch_size= 1
+n_grid=3
+batch_size=12 
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
 
@@ -87,8 +88,8 @@ class BurgersDataset(Dataset):
         #self.t_subsample = 10
         #self.x_subsample = 1
 
-        #self.t_subsample = 32 #10
-        #self.x_subsample = 32 #256
+        self.t_subsample = solver_dim[0]
+        self.x_subsample = solver_dim[1]
 
 
         #L.info(f'subsample {self.t_subsample}, {self.x_subsample} ')
@@ -118,16 +119,21 @@ class BurgersDataset(Dataset):
         num_x_idx = self.data_dim[1] #- self.solver_dim[1] + 1
 
 
-        self.num_t_idx = num_t_idx//solver_dim[0]  #+ 1
-        self.num_x_idx = num_x_idx//solver_dim[1]  #+ 1
+        #self.num_t_idx = num_t_idx//solver_dim[0]  #+ 1
+        #self.num_x_idx = num_x_idx//solver_dim[1]  #+ 1
 
-        #if self.t_subsample < self.solver_dim[0]:
-        #    self.num_t_idx = self.num_t_idx - self.solver_dim[0]//self.t_subsample
-        #if self.x_subsample < self.solver_dim[1]:
-        #    self.num_t_idx = self.num_t_idx - self.solver_dim[1]//self.x_subsample
+        self.num_t_idx = num_t_idx//self.t_subsample
+        self.num_x_idx = num_x_idx//self.x_subsample
+
+        if self.t_subsample < self.solver_dim[0]:
+            self.num_t_idx = self.num_t_idx - self.solver_dim[0]//self.t_subsample
+        if self.x_subsample < self.solver_dim[1]:
+            self.num_x_idx = self.num_x_idx - self.solver_dim[1]//self.x_subsample
 
         #self.length = self.num_t_idx*self.num_x_idx
         self.length = self.num_t_idx*self.num_x_idx
+
+        #ipdb.set_trace()
 
 
     def __len__(self):
@@ -139,8 +145,11 @@ class BurgersDataset(Dataset):
         ##x_idx = idx - t_idx*self.num_x_idx
         (t_idx, x_idx) = np.unravel_index(idx, (self.num_t_idx, self.num_x_idx))
 
-        t_idx = t_idx*solver_dim[0]
-        x_idx = x_idx*solver_dim[1]
+        #t_idx = t_idx*solver_dim[0]
+        #x_idx = x_idx*solver_dim[1]
+
+        t_idx = t_idx*self.t_subsample
+        x_idx = x_idx*self.x_subsample
 
 
         t_step = solver_dim[0]
@@ -215,7 +224,7 @@ class Model(nn.Module):
         #                          n_iv_steps=1, double_ret=True, solver_dbl=True)
 
         self.pde = MultigridLayer(bs=bs, coord_dims=self.coord_dims, order=2, n_ind_dim=self.n_ind_dim, n_iv=1, 
-                        n_grid=3,
+                        n_grid=n_grid,
                         init_index_mi_list=self.iv_list,  n_iv_steps=1, double_ret=True, solver_dbl=True)
 
         # u, u_t, u_tt, u_x, u_xx
@@ -315,8 +324,8 @@ class Model(nn.Module):
         u0_list = []
         eps_list = []
 
-        steps0 = self.steps0.type_as(params).expand(-1, self.n_patches, self.coord_dims[0]-1)
-        steps1 = self.steps1.type_as(params).expand(-1, self.n_patches, self.coord_dims[1]-1)
+        steps0 = self.steps0.type_as(params).expand(self.bs, self.n_patches, self.coord_dims[0]-1)
+        steps1 = self.steps1.type_as(params).expand(self.bs, self.n_patches, self.coord_dims[1]-1)
         steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.5)
         steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.5)
         steps_list = [steps0, steps1]
@@ -562,7 +571,7 @@ def optimize(nepoch=5000):
 
         mean_loss = torch.tensor(losses).mean()
 
-        meps = eps.max().item()
+        meps = 1 #eps.max().item()
             #print(f'\nalpha, beta {xi}')
         params=print_eq()
         L.info(f'parameters\n{params}')
