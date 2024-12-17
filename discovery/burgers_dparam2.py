@@ -53,7 +53,7 @@ solver_dim=(32,32)
 #solver_dim=(50,64)
 #solver_dim=(32,48)
 n_grid=3
-batch_size= 6
+batch_size= 24
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
 
@@ -664,9 +664,9 @@ def optimize(nepoch=5000):
             t_end = x0.shape[1]
             x_end = x0.shape[2]
 
-            batch_in = batch_in.reshape(*data_shape)[-1, :t_end, :x_end]
-            var = var.reshape(*data_shape)[-1, :t_end, :x_end]
-            var2 = var2.reshape(*data_shape)[-1, :t_end, :x_end]
+            batch_in = batch_in.reshape(*data_shape)[:, :t_end, :x_end]
+            var = var.reshape(*data_shape)[:, :t_end, :x_end]
+            var2 = var2.reshape(*data_shape)[:, :t_end, :x_end]
 
 
             #x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
