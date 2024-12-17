@@ -718,7 +718,7 @@ def optimize(nepoch=5000):
 
         mean_loss = torch.tensor(losses).mean()
 
-        meps = eps.max().item()
+        meps = 1 #eps.max().item()
             #print(f'\nalpha, beta {xi}')
         params=print_eq()
         L.info(f'parameters\n{params}')
