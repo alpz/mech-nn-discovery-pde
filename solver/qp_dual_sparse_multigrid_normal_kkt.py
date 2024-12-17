@@ -324,8 +324,8 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #A, A_rhs = pde.fill_constraints_torch2(eq_constraints.coalesce(), rhs, iv_rhs, 
             #                                            derivative_constraints.coalesce())
 
-            AUNB, Aub_rhs = pde.fill_constraints_torch(eq_constraints, rhs, iv_rhs, 
-                                                        derivative_constraints)
+            #AUNB, Aub_rhs = pde.fill_constraints_torch(eq_constraints, rhs, iv_rhs, 
+            #                                            derivative_constraints)
 
             A, A_rhs = pde.fill_block_constraints_torch(eq_constraints, rhs, iv_rhs, 
                                                         derivative_constraints)
@@ -396,7 +396,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #lam = -lam
 
             ctx.A = A
-            ctx.AUNB = AUNB
+            #ctx.AUNB = AUNB
             #ctx.A_kkt = A_kkt
             #ctx.G = G
             ctx.AtA_list = AtA_list
@@ -416,7 +416,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
         def backward(ctx, dl_dzhat):
             _x,_lam = ctx.saved_tensors[0:2]
             A = ctx.A
-            AUNB = ctx.AUNB
+            #AUNB = ctx.AUNB
             #A_kkt = ctx.A_kkt
             #G = ctx.G
             AtA_list = ctx.AtA_list

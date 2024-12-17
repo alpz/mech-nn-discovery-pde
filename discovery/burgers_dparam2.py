@@ -53,7 +53,7 @@ solver_dim=(32,32)
 #solver_dim=(50,64)
 #solver_dim=(32,48)
 n_grid=3
-batch_size= 2
+batch_size= 6
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
 
