@@ -433,8 +433,8 @@ class Model(nn.Module):
         self.steps0 = torch.logit(self.t_step_size*torch.ones(1,1,1))
         self.steps1 = torch.logit(self.x_step_size*torch.ones(1,1,1))
 
-        #self.steps0 = nn.Parameter(self.steps0)
-        #self.steps1 = nn.Parameter(self.steps1)
+        self.steps0 = nn.Parameter(self.steps0)
+        self.steps1 = nn.Parameter(self.steps1)
 
 
         #up_coeffs = torch.randn((1, 1, self.num_multiindex), dtype=dtype)
@@ -675,7 +675,7 @@ def optimize(nepoch=5000):
             var =var.reshape(bs, -1)
             #x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
             #x_loss = (x0- batch_in).abs().mean(dim=-1)/batch_in.abs().mean(dim=-1)#.mean()
-            x_loss = (x0- batch_in).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
+            x_loss = (x0- batch_in).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             #x_loss = (x0- batch_in).pow(2).mean()
             #var_loss = (var- batch_in).abs()#.pow(2)#.mean()
             #var2_loss = (var2- batch_in).abs()#.pow(2)#.mean()
@@ -683,7 +683,7 @@ def optimize(nepoch=5000):
             #var_loss = (var- batch_in).abs().mean(dim=-1)/batch_in.abs().mean(dim=-1)
             #var2_loss = (var2- batch_in).pow(2).mean()/batch_in.pow(2).mean()
             #var_loss = (var- batch_in).pow(2)#.mean()
-            var_loss = (var- batch_in).abs().mean(dim=-1) + (var**2- batch_in**2).abs().mean(dim=-1)
+            var_loss = (var- batch_in).pow(2).mean(dim=-1) + (var**2- batch_in**2).pow(2).mean(dim=-1)
             #var_loss = (var- batch_in).pow(2)#.mean()
             #time_loss = (time- var_time).pow(2).mean()
             #time_loss = (time- var_time).abs().mean()
@@ -693,7 +693,7 @@ def optimize(nepoch=5000):
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.001*param_loss.mean()
-            loss = x_loss.mean() + var_loss.mean()  +  0.001*param_loss.mean()
+            loss = x_loss.mean() + var_loss.mean()  +  0.0001*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + 0.001*param_loss.mean()
             #loss = x_loss.mean() #+ 0.01*param_loss.mean()
             #loss = var_loss.mean()
