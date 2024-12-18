@@ -294,22 +294,22 @@ class MultigridSolver():
     #    return AtA
 
 
-    def downsample_grads(self, coeffs, old_shape,  new_shape, n_orders):
-        grid_size = np.prod(np.array(old_shape))
-        coeffs = coeffs.reshape(self.bs*self.n_ind_dim, grid_size, n_orders)
-        coeffs = coeffs.permute(0,2,1)
-        coeffs = coeffs.reshape(self.bs*self.n_ind_dim, n_orders, *old_shape)
+    #def downsample_grads(self, coeffs, old_shape,  new_shape, n_orders):
+    #    grid_size = np.prod(np.array(old_shape))
+    #    coeffs = coeffs.reshape(self.bs*self.n_ind_dim, grid_size, n_orders)
+    #    coeffs = coeffs.permute(0,2,1)
+    #    coeffs = coeffs.reshape(self.bs*self.n_ind_dim, n_orders, *old_shape)
 
-        m = old_shape[0]
-        #print('ols s ', m)
-        coeffs = coeffs.reshape(self.bs*self.n_ind_dim,n_orders,m//2,2,m//2,2)
-        coeffs = coeffs[:, :, :, 0, :, 0]
+    #    m = old_shape[0]
+    #    #print('ols s ', m)
+    #    coeffs = coeffs.reshape(self.bs*self.n_ind_dim,n_orders,m//2,2,m//2,2)
+    #    coeffs = coeffs[:, :, :, 0, :, 0]
 
-        new_grid_size = np.prod(np.array(new_shape))
-        coeffs = coeffs.reshape(self.bs*self.n_ind_dim, n_orders, new_grid_size)
-        coeffs = coeffs.permute(0,2,1)
+    #    new_grid_size = np.prod(np.array(new_shape))
+    #    coeffs = coeffs.reshape(self.bs*self.n_ind_dim, n_orders, new_grid_size)
+    #    coeffs = coeffs.permute(0,2,1)
 
-        return coeffs
+    #    return coeffs
 
     def downsample_coeffs(self, coeffs, old_shape,  new_shape, n_orders):
         grid_size = np.prod(np.array(old_shape))
@@ -360,26 +360,26 @@ class MultigridSolver():
 
         return rhs
 
-    ##@torch.no_grad()
-    def downsample_grad(self, gradient):
-        bs = gradient.shape[0]
-        grad_list = []
-        new_grad = gradient
-        old_shape = self.coord_dims
-        for k in range(1, self.n_grid):
-            #pde = self.pde_list[k]
-            new_shape = self.dim_list[k]
-            pde = self.pde_list[k]
+    ###@torch.no_grad()
+    #def downsample_grad(self, gradient):
+    #    bs = gradient.shape[0]
+    #    grad_list = []
+    #    new_grad = gradient
+    #    old_shape = self.coord_dims
+    #    for k in range(1, self.n_grid):
+    #        #pde = self.pde_list[k]
+    #        new_shape = self.dim_list[k]
+    #        pde = self.pde_list[k]
 
-            n_orders = len(pde.var_set.mi_list)
-            #new_grad = self.downsample_coeffs(new_grad, old_shape,  new_shape, n_orders)
-            #new_grad = self.downsample_grads(gradient, self.coord_dims,  new_shape, n_orders)
-            new_grad = self.downsample_grads(new_grad.clone(), old_shape,  new_shape, n_orders)
-            old_shape = new_shape
-            new_grad = new_grad.reshape(bs,-1)
-            grad_list.append(new_grad.clone())
+    #        n_orders = len(pde.var_set.mi_list)
+    #        #new_grad = self.downsample_coeffs(new_grad, old_shape,  new_shape, n_orders)
+    #        #new_grad = self.downsample_grads(gradient, self.coord_dims,  new_shape, n_orders)
+    #        new_grad = self.downsample_grads(new_grad.clone(), old_shape,  new_shape, n_orders)
+    #        old_shape = new_shape
+    #        new_grad = new_grad.reshape(bs,-1)
+    #        grad_list.append(new_grad.clone())
 
-        return grad_list
+    #    return grad_list
     
 
     def downsample_steps(self, steps_list, old_shape):

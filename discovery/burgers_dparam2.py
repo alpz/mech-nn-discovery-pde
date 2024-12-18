@@ -669,17 +669,21 @@ def optimize(nepoch=5000):
             var2 = var2.reshape(*data_shape)[:, :t_end, :x_end]
 
 
+            bs = batch_in.shape[0]
+            x0 = x0.reshape(bs, -1)
+            batch_in = batch_in.reshape(bs, -1)
+            var =var.reshape(bs, -1)
             #x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
-            x_loss = (x0- batch_in).pow(2)#.mean()
-            #x_loss = (x0- batch_in).abs()#.mean()
+            #x_loss = (x0- batch_in).abs().mean(dim=-1)/batch_in.abs().mean(dim=-1)#.mean()
+            x_loss = (x0- batch_in).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             #x_loss = (x0- batch_in).pow(2).mean()
             #var_loss = (var- batch_in).abs()#.pow(2)#.mean()
             #var2_loss = (var2- batch_in).abs()#.pow(2)#.mean()
 
-            var_loss = (var- batch_in).pow(2)#.mean()
-            var2_loss = (var2- batch_in).pow(2)#.mean()
+            #var_loss = (var- batch_in).abs().mean(dim=-1)/batch_in.abs().mean(dim=-1)
+            #var2_loss = (var2- batch_in).pow(2).mean()/batch_in.pow(2).mean()
             #var_loss = (var- batch_in).pow(2)#.mean()
-            #var_loss = (var- batch_in).abs()#.mean()
+            var_loss = (var- batch_in).abs().mean(dim=-1) + (var**2- batch_in**2).abs().mean(dim=-1)
             #var_loss = (var- batch_in).pow(2)#.mean()
             #time_loss = (time- var_time).pow(2).mean()
             #time_loss = (time- var_time).abs().mean()
@@ -689,7 +693,7 @@ def optimize(nepoch=5000):
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.001*param_loss.mean()
-            loss = 2*x_loss.mean() + var_loss.mean()  +  0.0001*param_loss.mean()
+            loss = x_loss.mean() + var_loss.mean()  +  0.001*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + 0.001*param_loss.mean()
             #loss = x_loss.mean() #+ 0.01*param_loss.mean()
             #loss = var_loss.mean()
@@ -712,6 +716,9 @@ def optimize(nepoch=5000):
             #beta = beta.squeeze().item()
         _x_loss = torch.cat(x_losses,dim=0).mean()
         _v_loss = torch.cat(var_losses,dim=0).mean()
+
+        #_x_loss = torch.tensor(x_losses).mean()
+        #_v_loss = torch.tensor(var_losses).mean()
 
         #total_loss.backward()
         #optimizer.step()
