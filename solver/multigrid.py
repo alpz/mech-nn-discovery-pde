@@ -326,11 +326,11 @@ class MultigridSolver():
         #    raise ValueError('incorrect num coordinates')
 
         #print('ds coeffs ', coeffs.shape, new_shape)
-        #coeffs = F.interpolate(coeffs, size=new_shape, mode=self.interp_mode, align_corners=self.align_corners)
-        m = old_shape[0]
+        coeffs = F.interpolate(coeffs, size=new_shape, mode=self.interp_mode, align_corners=self.align_corners)
+        #m = old_shape[0]
 
-        coeffs = coeffs.reshape(self.bs*self.n_ind_dim,n_orders,m//2,2,m//2,2)
-        coeffs = coeffs[:, :, :, 0, :, 0]
+        #coeffs = coeffs.reshape(self.bs*self.n_ind_dim,n_orders,m//2,2,m//2,2)
+        #coeffs = coeffs[:, :, :, 0, :, 0]
         #print('ds coeffs ', coeffs.shape)
 
         new_grid_size = np.prod(np.array(new_shape))

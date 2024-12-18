@@ -1817,9 +1817,21 @@ class PDESYSLP(nn.Module):
                                        #size=(self.num_added_derivative_constraints, self.num_vars), 
                                        dtype=self.dtype, device=x.device)
 
-        #ipdb.set_trace()
+        #Bug: multiplying sparse matrices pointwise raises floating point exception for large 3D inputs
+        #dD = X*Y
 
-        dD = X*Y
+        #Workaround
+        X = X.coalesce()
+        Y = Y.coalesce()
+        #assert((X._indices()==Y._indices()).all())
+
+        dD_values = X._values()*Y._values()
+
+        dD = torch.sparse_coo_tensor(X._indices(), dD_values, 
+                                       #size=(self.num_added_derivative_constraints, self.num_vars), 
+                                       #size=(self.bs, self.num_added_equation_constraints, 
+                                       #     total_vars),
+                                       dtype=self.dtype, device=x.device)
 
         return dD
 
@@ -1858,32 +1870,43 @@ class PDESYSLP(nn.Module):
         x_repeat = x_repeat.reshape(-1)
         y_repeat = y_repeat.reshape(-1)
 
+
         total_vars = self.var_set.num_vars + self.var_set.num_added_eps_vars
 
         X = torch.sparse_coo_tensor(self.eq_row_sorted, x_repeat, 
                                        #size=(self.num_added_derivative_constraints, self.num_vars), 
-                                       size=(self.bs, self.num_added_equation_constraints, 
-                                            total_vars),
+                                       #size=(self.bs, self.num_added_equation_constraints, 
+                                       #     total_vars),
                                        dtype=self.dtype, device=x.device)
 
         Y = torch.sparse_coo_tensor(self.eq_column_sorted, y_repeat, 
                                        #size=(self.num_added_derivative_constraints, self.num_vars), 
-                                       size=(self.bs, self.num_added_equation_constraints, 
-                                            total_vars),
+                                       #size=(self.bs, self.num_added_equation_constraints, 
+                                       #     total_vars),
                                        dtype=self.dtype, device=y.device)
 
-        #ones = torch.sparse_coo_tensor(self.eq_row_sorted, torch.ones_like(x_repeat), 
+
+        #Y = torch.sparse_coo_tensor(self.eq_column_sorted, y_repeat, 
         #                               #size=(self.num_added_derivative_constraints, self.num_vars), 
         #                               size=(self.bs, self.num_added_equation_constraints, 
         #                                    total_vars),
-        #                               dtype=self.dtype, device=x.device)
-        #ones = ones.to_dense()
-        #dA = dA_dense*ones
-        ##return dA
+        #                               dtype=self.dtype, device=y.device)
 
-
-        dD = Y*X
+        #Bug: multiplying sparse matrices pointwise raises floating point exception for large 3D inputs
         #ipdb.set_trace()
+        #dD = Y*X
+
+        X = X.coalesce()
+        Y = Y.coalesce()
+        #assert((X._indices()==Y._indices()).all())
+
+        dD_values = X._values()*Y._values()
+
+        dD = torch.sparse_coo_tensor(X._indices(), dD_values, 
+                                       #size=(self.num_added_derivative_constraints, self.num_vars), 
+                                       size=(self.bs, self.num_added_equation_constraints, 
+                                            total_vars),
+                                       dtype=self.dtype, device=x.device)
 
         return dD
     

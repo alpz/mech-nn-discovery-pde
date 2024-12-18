@@ -463,6 +463,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             ## dnu + G^(-1)*Adnu = 0
             #dnu = torch.bmm(A, dz.unsqueeze(2)).squeeze(2)
             #dnu = torch.bmm(A, dz.unsqueeze(1)).squeeze(1)
+            print('a1')
             dnu = torch.mm(A, dz.unsqueeze(1)).squeeze(1)
             #dnu = -(1/G)*dnu
             dnu = -(1)*dnu
@@ -481,17 +482,21 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             db = -dnu
             #dz = dz
 
+            print('a2')
             drhs = db[:, :pde.num_added_equation_constraints] #torch.tensor(-dnu.squeeze())
             div_rhs = db[:, pde.num_added_equation_constraints:pde.num_added_equation_constraints + pde.num_added_initial_constraints]#.squeeze(2)
 
 
             # eq grad
             dA1 = pde.sparse_grad_eq_constraint(dz,_lam)
+            print('a31')
             dA2 = pde.sparse_grad_eq_constraint(_x,dnu)
+            print('a3')
 
             # step gradient
             dD1 = pde.sparse_grad_derivative_constraint(dz,_lam)
             dD2 = pde.sparse_grad_derivative_constraint(_x,dnu)
+            print('a4')
 
 
             #Workaround: adding sparse matrices directly doubles the nnz. 
@@ -504,6 +509,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
                                        dtype=dD1.dtype, device=dD1.device)
 
                                        
+            print('a5')
 
             print('grad nnz', dA._nnz(), dD._nnz())
             print('grad shape', dA.shape, dD.shape)
