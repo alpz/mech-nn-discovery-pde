@@ -380,7 +380,7 @@ class Model(nn.Module):
             #nn.ReLU(),
             #two polynomials, second order
             #nn.Linear(1024, 3*2),
-            nn.Linear(1024, 3),
+            nn.Linear(1024, 5),
             #nn.Tanh()
         )
         #self.param_net_out = nn.Linear(1024, 3)
@@ -395,7 +395,7 @@ class Model(nn.Module):
             #nn.ReLU(),
             #two polynomials, second order
             #nn.Linear(1024, 3*2),
-            nn.Linear(1024, 3),
+            nn.Linear(1024, 5),
             #nn.Tanh()
         )
 
@@ -433,8 +433,8 @@ class Model(nn.Module):
         self.steps0 = torch.logit(self.t_step_size*torch.ones(1,1,1))
         self.steps1 = torch.logit(self.x_step_size*torch.ones(1,1,1))
 
-        self.steps0 = nn.Parameter(self.steps0)
-        self.steps1 = nn.Parameter(self.steps1)
+        #self.steps0 = nn.Parameter(self.steps0)
+        #self.steps1 = nn.Parameter(self.steps1)
 
 
         #up_coeffs = torch.randn((1, 1, self.num_multiindex), dtype=dtype)
@@ -498,10 +498,10 @@ class Model(nn.Module):
         #iv_rhs = self.iv_mlp(iv_rhs)
 
 
-        basis = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
+        basis = torch.stack([torch.ones_like(up), up, up**2, up.pow(3), up.pow(4)], dim=-1)
         #basis2 = torch.stack([torch.ones_like(up2), up2, up2**2], dim=-1)
         #basis2 = torch.stack([torch.ones_like(up2), up2, up2**2], dim=-1)
-        basis2 = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
+        basis2 = torch.stack([torch.ones_like(up), up, up**2, up.pow(3), up.pow(4)], dim=-1)
         #basis2 = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
 
         p = (basis*params[...,0,:]).sum(dim=-1)
@@ -675,6 +675,7 @@ def optimize(nepoch=5000):
             var =var.reshape(bs, -1)
             #x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
             #x_loss = (x0- batch_in).abs().mean(dim=-1)/batch_in.abs().mean(dim=-1)#.mean()
+            #x_loss = (x0- batch_in).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             x_loss = (x0- batch_in).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             #x_loss = (x0- batch_in).pow(2).mean()
             #var_loss = (var- batch_in).abs()#.pow(2)#.mean()
@@ -683,7 +684,8 @@ def optimize(nepoch=5000):
             #var_loss = (var- batch_in).abs().mean(dim=-1)/batch_in.abs().mean(dim=-1)
             #var2_loss = (var2- batch_in).pow(2).mean()/batch_in.pow(2).mean()
             #var_loss = (var- batch_in).pow(2)#.mean()
-            var_loss = (var- batch_in).pow(2).mean(dim=-1) + (var**2- batch_in**2).pow(2).mean(dim=-1)
+            var_loss = (var- batch_in).pow(2).mean(dim=-1) #+ (var**2- batch_in**2).pow(2).mean(dim=-1)
+            #var_loss = var_loss +  (var.pow(3)- batch_in.pow(3)).pow(2).mean(dim=-1) + (var.pow(4)- batch_in.pow(4)).pow(2).mean(dim=-1)
             #var_loss = (var- batch_in).pow(2)#.mean()
             #time_loss = (time- var_time).pow(2).mean()
             #time_loss = (time- var_time).abs().mean()

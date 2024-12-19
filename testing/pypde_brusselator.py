@@ -22,7 +22,7 @@ state = FieldCollection([u, v])
 
 storage = MemoryStorage()  # store intermediate information of the simulation
 #sol = eq.solve(state, t_range=20, dt=1e-3, tracker=tracker)
-sol = eq.solve(state, t_range=100, dt=1e-3, tracker=storage.tracker(1))
+sol = eq.solve(state, t_range=128, dt=1e-3, tracker=storage.tracker(1))
 # %%
 print(sol.data.shape)
 # %%

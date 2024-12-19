@@ -13,7 +13,7 @@ eq = DiffusionPDE(diffusivity=0.1)  # define the pde
 #result = eq.solve(state, t_range=10)
 
 storage = MemoryStorage()  # store intermediate information of the simulation
-result = eq.solve(state, 100, dt=5e-2, tracker=storage.tracker(1))  # solve the PDE
+result = eq.solve(state, 128, dt=5e-2, tracker=storage.tracker(1))  # solve the PDE
 #result.plot()
 # %%
 
