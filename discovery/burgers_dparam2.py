@@ -131,6 +131,15 @@ class BurgersDataset(Dataset):
         #self.length = self.num_t_idx*self.num_x_idx
         self.length = self.num_t_idx*self.num_x_idx
 
+        #mask
+        mask = torch.rand_like(self.data)
+        #keep only 80% of data
+        mask = (mask>0.8).double()
+        
+        self.data = self.data*mask
+        self.mask = mask
+        
+
 
     def __len__(self):
         return self.length #self.x_train.shape[0]
@@ -153,8 +162,10 @@ class BurgersDataset(Dataset):
         x = self.x[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
 
         data = self.data[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+        mask = self.mask[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
 
-        return data, t, x
+
+        return data, t, x, mask
 
 #%%
 
@@ -645,11 +656,13 @@ def optimize(nepoch=5000):
         var_losses = []
         losses = []
         total_loss = 0
-        for i, batch_in in enumerate(tqdm(train_loader)):
+        for i, batch_in,mask in enumerate(tqdm(train_loader)):
         #for i, batch_in in enumerate((train_loader)):
             optimizer.zero_grad()
             batch_in,t,x = batch_in[0], batch_in[1], batch_in[2]
             batch_in = batch_in.double().to(device)
+            mask = mask.double().to(device)
+
             t = t.double().to(device)
             x = x.double().to(device)
             #time = time.to(device)
@@ -672,19 +685,22 @@ def optimize(nepoch=5000):
             bs = batch_in.shape[0]
             x0 = x0.reshape(bs, -1)
             batch_in = batch_in.reshape(bs, -1)
+            mask = mask.reshape(bs, -1)
+
             var =var.reshape(bs, -1)
             #x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
             #x_loss = (x0- batch_in).abs().mean(dim=-1)/batch_in.abs().mean(dim=-1)#.mean()
             #x_loss = (x0- batch_in).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
-            x_loss = (x0- batch_in).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
+            x_loss = (x0*mask- batch_in).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             #x_loss = (x0- batch_in).pow(2).mean()
             #var_loss = (var- batch_in).abs()#.pow(2)#.mean()
             #var2_loss = (var2- batch_in).abs()#.pow(2)#.mean()
 
             #var_loss = (var- batch_in).abs().mean(dim=-1)/batch_in.abs().mean(dim=-1)
             #var2_loss = (var2- batch_in).pow(2).mean()/batch_in.pow(2).mean()
-            #var_loss = (var- batch_in).pow(2)#.mean()
-            var_loss = (var- batch_in).abs().mean(dim=-1) #+ (var**2- batch_in**2).pow(2).mean(dim=-1)
+            #var_loss = (var- x0).pow(2).mean(dim=-1)
+            #var_loss = (var- batch_in).abs().mean(dim=-1) #+ (var**2- batch_in**2).pow(2).mean(dim=-1)
+            var_loss = (var- x0).abs().mean(dim=-1) #+ (var**2- batch_in**2).pow(2).mean(dim=-1)
             #var_loss = var_loss +  (var.pow(3)- batch_in.pow(3)).pow(2).mean(dim=-1) + (var.pow(4)- batch_in.pow(4)).pow(2).mean(dim=-1)
             #var_loss = (var- batch_in).pow(2)#.mean()
             #time_loss = (time- var_time).pow(2).mean()
