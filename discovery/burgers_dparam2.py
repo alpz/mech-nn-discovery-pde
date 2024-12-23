@@ -134,7 +134,7 @@ class BurgersDataset(Dataset):
         #mask
         mask = torch.rand_like(self.data)
         #keep only 80% of data
-        mask = (mask>0.8).double()
+        mask = (mask>0.5).double()
         
         self.data = self.data*mask
         self.mask = mask
@@ -656,10 +656,10 @@ def optimize(nepoch=5000):
         var_losses = []
         losses = []
         total_loss = 0
-        for i, batch_in,mask in enumerate(tqdm(train_loader)):
+        for i, batch_in in enumerate(tqdm(train_loader)):
         #for i, batch_in in enumerate((train_loader)):
             optimizer.zero_grad()
-            batch_in,t,x = batch_in[0], batch_in[1], batch_in[2]
+            batch_in,t,x,mask = batch_in[0], batch_in[1], batch_in[2], batch_in[3]
             batch_in = batch_in.double().to(device)
             mask = mask.double().to(device)
 
@@ -692,16 +692,16 @@ def optimize(nepoch=5000):
             #x_loss = (x0- batch_in).abs().mean(dim=-1)/batch_in.abs().mean(dim=-1)#.mean()
             #x_loss = (x0- batch_in).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             x_loss = (x0*mask- batch_in).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
-            #x_loss = (x0- batch_in).pow(2).mean()
+            #x_loss = (x0*mask- batch_in).pow(2).mean(dim=-1)
             #var_loss = (var- batch_in).abs()#.pow(2)#.mean()
             #var2_loss = (var2- batch_in).abs()#.pow(2)#.mean()
 
             #var_loss = (var- batch_in).abs().mean(dim=-1)/batch_in.abs().mean(dim=-1)
             #var2_loss = (var2- batch_in).pow(2).mean()/batch_in.pow(2).mean()
-            #var_loss = (var- x0).pow(2).mean(dim=-1)
-            #var_loss = (var- batch_in).abs().mean(dim=-1) #+ (var**2- batch_in**2).pow(2).mean(dim=-1)
-            var_loss = (var- x0).abs().mean(dim=-1) #+ (var**2- batch_in**2).pow(2).mean(dim=-1)
-            #var_loss = var_loss +  (var.pow(3)- batch_in.pow(3)).pow(2).mean(dim=-1) + (var.pow(4)- batch_in.pow(4)).pow(2).mean(dim=-1)
+            var_loss = (var- x0).abs().mean(dim=-1)
+            ##var_loss = (var- batch_in).abs().mean(dim=-1) #+ (var**2- batch_in**2).pow(2).mean(dim=-1)
+            #var_loss = (var- x0).abs().mean(dim=-1) + (var**2- x0**2).abs().mean(dim=-1)
+            #var_loss = var_loss +  (var.pow(3)- x0.pow(3)).abs().mean(dim=-1) + (var.pow(4)- x0.pow(4)).abs().mean(dim=-1)
             #var_loss = (var- batch_in).pow(2)#.mean()
             #time_loss = (time- var_time).pow(2).mean()
             #time_loss = (time- var_time).abs().mean()
@@ -711,7 +711,7 @@ def optimize(nepoch=5000):
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.001*param_loss.mean()
-            loss = x_loss.mean() + var_loss.mean()  +  0.001*param_loss.mean()
+            loss = x_loss.mean() + var_loss.mean()  +  0.005*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + 0.001*param_loss.mean()
             #loss = x_loss.mean() #+ 0.01*param_loss.mean()
             #loss = var_loss.mean()
