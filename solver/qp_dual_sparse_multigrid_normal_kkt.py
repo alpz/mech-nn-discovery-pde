@@ -315,8 +315,8 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
         @staticmethod
         def forward(ctx, eq_constraints, rhs, iv_rhs, derivative_constraints, coeffs, steps_list):
-            print('input nnz', eq_constraints._nnz(), derivative_constraints._nnz())
-            print('input shape', eq_constraints.shape, derivative_constraints.shape)
+            #print('input nnz', eq_constraints._nnz(), derivative_constraints._nnz())
+            #print('input shape', eq_constraints.shape, derivative_constraints.shape)
 
             bs = pde.bs
             coarse_A_list, coarse_rhs_list = mg.fill_coarse_grids(coeffs, rhs, iv_rhs, steps_list)

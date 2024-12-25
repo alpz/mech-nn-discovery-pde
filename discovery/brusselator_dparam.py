@@ -50,6 +50,7 @@ cuda=True
 #n_step_per_batch = T
 #solver_dim=(10,256)
 solver_dim=(32,32,32)
+#solver_dim=(64,64,64)
 #solver_dim=(50,64)
 #solver_dim=(32,48)
 n_grid=3
@@ -416,7 +417,7 @@ class Model(nn.Module):
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step, ds.y_step), device=device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.00005)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
 #optimizer = torch.optim.SGD(model.parameters(), lr=0.0001, momentum =0.9)
@@ -501,23 +502,27 @@ def optimize(nepoch=5000):
             var_u_losses.append(var_u_loss.mean().item())
             var_v_losses.append(var_v_loss.mean().item())
             #var_losses.append(var_loss )
-            losses.append(loss)
-            total_loss = total_loss + loss
+            losses.append(loss.detach().item())
+            #total_loss = total_loss + loss
             
 
             loss.backward()
             optimizer.step()
 
+            del loss,u,u_loss,v,v_loss,var_u,var_v,var_u_loss,var_v_loss,params
 
+
+            print('mem after',torch.cuda.mem_get_info(), (torch.cuda.mem_get_info()[1]-torch.cuda.mem_get_info()[0])/1e9)
+            print('mem allocated {:.3f}MB'.format(torch.cuda.memory_allocated()/1024**2))
             #xi = xi.detach().cpu().numpy()
             #alpha = alpha.squeeze().item() #.detach().cpu().numpy()
             #beta = beta.squeeze().item()
         _u_loss = torch.tensor(u_losses).mean().item()
         _v_loss = torch.tensor(v_losses).mean().item()
-        _var_u_loss = torch.cat(var_u_losses).mean().item()
-        _var_v_loss = torch.cat(var_v_losses).mean().item()
+        _var_u_loss = torch.tensor(var_u_losses).mean().item()
+        _var_v_loss = torch.tensor(var_v_losses).mean().item()
 
-        mean_loss = torch.tensor(losses).mean()
+        mean_loss = torch.tensor(losses).mean().item()
 
         print_eq()
         #L.info(f'parameters\n{params}')

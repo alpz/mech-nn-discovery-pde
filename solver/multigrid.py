@@ -732,10 +732,10 @@ class MultigridSolver():
         #r = b-torch.bmm(A, x.unsqueeze(2)).squeeze(2)
         r = b-self.mult_AtA(A, x) #torch.bmm(A, x.unsqueeze(2)).squeeze(2)
 
-        cx = r.reshape(2, -1)
-        dd = cx[0] - cx[1]
-        #dd = dd.pow(2).sum()
-        dd = (dd**2).sum()
+        #cx = r.reshape(2, -1)
+        #dd = cx[0] - cx[1]
+        ##dd = dd.pow(2).sum()
+        #dd = (dd**2).sum()
         #print(dd, 'resid')
         #if back:
         #dr, drn = self.get_residual_norm(As, x, b)
@@ -744,10 +744,10 @@ class MultigridSolver():
 
         rH = self.restrict(idx, r, back=back)
 
-        cx = rH.reshape(2, -1)
-        dd = cx[0] - cx[1]
-        #dd = dd.pow(2).sum()
-        dd = (dd**2).sum()
+        #cx = rH.reshape(2, -1)
+        #dd = cx[0] - cx[1]
+        ##dd = dd.pow(2).sum()
+        #dd = (dd**2).sum()
         #print(dd, 'restrict')
 
         #print(idx, self.n_grid, len(As_list))

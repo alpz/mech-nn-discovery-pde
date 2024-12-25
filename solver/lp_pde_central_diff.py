@@ -1592,34 +1592,41 @@ class PDESYSLP(nn.Module):
         return G
     
     def build_derivative_tensor(self, steps_list):
-        self.derivative_A = self.derivative_A.to(steps_list[0].device)
+        #self.derivative_A = self.derivative_A.to(steps_list[0].device)
+        derivative_A = self.derivative_A.to(steps_list[0].device)
         derivative_values = self.build_derivative_values(steps_list)#.reshape(-1)
         derivative_values = derivative_values.reshape(-1)
 
         #print('built', len(derivative_values))
-        derivative_indices = self.derivative_A._indices()
+        derivative_indices = derivative_A._indices()
         G = torch.sparse_coo_tensor(derivative_indices, derivative_values, size=self.derivative_A.shape, dtype=self.dtype)
 
         return G
 
 
     def fill_block_constraints_torch(self, eq_A, eq_rhs, iv_rhs, derivative_A):
-        self.initial_A = self.initial_A.type_as(derivative_A)
+        #self.initial_A = self.initial_A.type_as(derivative_A)
+        initial_A = self.initial_A.type_as(derivative_A)
 
         eq_values = eq_A._values().reshape(self.bs,-1)
-        init_values = self.initial_A._values().reshape(self.bs, -1)
+        #init_values = self.initial_A._values().reshape(self.bs, -1)
+        init_values = initial_A._values().reshape(self.bs, -1)
         deriv_values = derivative_A._values().reshape(self.bs, -1)
 
 
         values = torch.cat([eq_values, init_values, deriv_values], dim=1)
         values = values.reshape(-1)
 
-        self.A_block_indices = self.A_block_indices.to(values.device)
+        #self.A_block_indices = self.A_block_indices.to(values.device)
+        A_block_indices = self.A_block_indices.to(values.device)
 
-        A_block = torch.sparse_coo_tensor(indices=self.A_block_indices, values=values, size=self.A_block_shape)
+        #A_block = torch.sparse_coo_tensor(indices=self.A_block_indices, values=values, size=self.A_block_shape)
+        A_block = torch.sparse_coo_tensor(indices=A_block_indices, values=values, size=self.A_block_shape)
 
-        self.derivative_rhs = self.derivative_rhs.type_as(eq_rhs)
-        rhs = torch.cat([eq_rhs, iv_rhs, self.derivative_rhs], axis=1)
+        #self.derivative_rhs = self.derivative_rhs.type_as(eq_rhs)
+        derivative_rhs = self.derivative_rhs.type_as(eq_rhs)
+        #rhs = torch.cat([eq_rhs, iv_rhs, self.derivative_rhs], axis=1)
+        rhs = torch.cat([eq_rhs, iv_rhs, derivative_rhs], axis=1)
         rhs = rhs.reshape(-1)
 
         return A_block, rhs
@@ -1800,11 +1807,11 @@ class PDESYSLP(nn.Module):
         x = x.reshape(b,-1)
         y = y.reshape(b,-1)
 
-        self.derivative_row_counts = self.derivative_row_counts.to(x.device)
-        self.derivative_column_counts = self.derivative_column_counts.to(x.device)
+        derivative_row_counts = self.derivative_row_counts.to(x.device)
+        derivative_column_counts = self.derivative_column_counts.to(x.device)
 
-        y_repeat = torch.repeat_interleave(y, self.derivative_row_counts, dim=-1)
-        x_repeat = torch.repeat_interleave(x, self.derivative_column_counts, dim=-1)
+        y_repeat = torch.repeat_interleave(y, derivative_row_counts, dim=-1)
+        x_repeat = torch.repeat_interleave(x, derivative_column_counts, dim=-1)
 
         x_repeat = x_repeat.reshape(-1)
         y_repeat = y_repeat.reshape(-1)
@@ -1861,10 +1868,10 @@ class PDESYSLP(nn.Module):
         x = x.reshape(b,-1)
         y = y.reshape(b,-1)
 
-        self.eq_row_counts = self.eq_row_counts.to(x.device)
-        self.eq_column_counts = self.eq_column_counts.to(x.device)
+        eq_row_counts = self.eq_row_counts.to(x.device)
+        eq_column_counts = self.eq_column_counts.to(x.device)
 
-        y_repeat = torch.repeat_interleave(y, self.eq_row_counts, dim=-1)
+        y_repeat = torch.repeat_interleave(y, eq_row_counts, dim=-1)
         x_repeat = x #torch.repeat_interleave(x, self.eq_column_counts, dim=-1)
 
         x_repeat = x_repeat.reshape(-1)
