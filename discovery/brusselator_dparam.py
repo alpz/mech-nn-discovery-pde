@@ -6,8 +6,8 @@ import os
 import numpy as np
 
 import torch
-torch.manual_seed(10)
 import torch.nn as nn
+torch.manual_seed(10)
 from torch.nn.parameter import Parameter
 import numpy as np
 
@@ -53,7 +53,7 @@ solver_dim=(32,32,32)
 #solver_dim=(50,64)
 #solver_dim=(32,48)
 n_grid=3
-batch_size= 24
+batch_size= 4
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
 
@@ -218,14 +218,20 @@ class Model(nn.Module):
         self.param_in = nn.Parameter(torch.randn(1,64))
 
         self.coord_dims = solver_dim
-        self.iv_list = [lambda nx, ny: (0,0, [0,0],[0,ny-2]), 
-                        lambda nx,ny: (1,0, [1,0], [nx-1, 0]), 
-                        #(0,1, [0,0],[0,self.coord_dims[1]-1]), 
-                        #(0,0, [self.coord_dims[0]-1,1],[self.coord_dims[0]-1,self.coord_dims[1]-2]), 
-                        #(1,2, [0,0], [self.coord_dims[0]-1, 0]),
-                        #(1,3, [0,0], [self.coord_dims[0]-1, 0])
-                        lambda nx,ny: (1,0, [0,ny-1], [nx-1, ny-1])
+        self.iv_list = [
+                        #t=0
+                        lambda nt, nx, ny: (0,0, [0,0,0],[0,nx-1, ny-1]), 
+                        #nx = 0
+                        lambda nt, nx, ny: (1,0, [1,0,0],[nt-1,0, ny-1]), 
+                        #ny = 0
+                        lambda nt, nx, ny: (2,0, [1,1,0],[nt-1,nx-1, 0]), 
+
+                        #nx = endx
+                        lambda nt, nx, ny: (1,0, [1,nx-1,1],[nt-1,nx-1, ny-1]), 
+                        lambda nt, nx, ny: (2,0, [1,1,ny-1],[nt-1, nx-2, ny-1]), 
+
                         ]
+
 
         #self.iv_len = self.coord_dims[1]-1 + self.coord_dims[0]-1 + self.coord_dims[1]-2 + self.coord_dims[0]
         #self.iv_len = self.coord_dims[1]-1 + self.coord_dims[0]-1 + self.coord_dims[0]
@@ -259,7 +265,7 @@ class Model(nn.Module):
             #nn.ReLU(),
             #two polynomials, second order
             #nn.Linear(1024, 3*2),
-            nn.Linear(1024, 5),
+            nn.Linear(1024, 3),
             #nn.Tanh()
         )
         #self.param_net_out = nn.Linear(1024, 3)
@@ -274,14 +280,14 @@ class Model(nn.Module):
             #nn.ReLU(),
             #two polynomials, second order
             #nn.Linear(1024, 3*2),
-            nn.Linear(1024, 5),
+            nn.Linear(1024, 2),
             #nn.Tanh()
         )
 
 
         self.t_step_size = steps[0]
-        self.x_step_size = steps[1]
-        self.y_step_size = steps[2]
+        self.x_step_size = 0.5 #steps[1]
+        self.y_step_size = 0.5 #steps[2]
         print('steps ', steps)
         #self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
         #self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
@@ -305,21 +311,21 @@ class Model(nn.Module):
         #params = self.param_net_out(self.param_net(self.param_in))
         #params2 =self.param_net2_out(self.param_net2(self.param_in2))
 
-        params = (self.param_net(self.param_in))
-        params2 =(self.param_net2(self.param_in2))
+        u_params = (self.param_net(self.param_in))
+        v_params =(self.param_net2(self.param_in2))
         #params = params.reshape(-1,1,2, 3)
         #params = params.reshape(-1,1,2, 2)
-        params = torch.stack([params, params2], dim=-2)
-        return params
+        return u_params, v_params
 
     def get_iv(self, u):
-        u1 = u[:,0, :self.coord_dims[1]-2+1]
-        u2 = u[:, 1:self.coord_dims[0]-1+1:,0]
-        #u3 = u[:, self.coord_dims[0]-1, 1:self.coord_dims[1]-2+1]
-        u4 = u[:, 0:self.coord_dims[0]-1+1, self.coord_dims[1]-1]
+        u1 = u[:,0, :self.coord_dims[1], :self.coord_dims[2]]
+        u2 = u[:,1:self.coord_dims[0], 0, :self.coord_dims[2]]
+        u3 = u[:,1:self.coord_dims[0], 1:self.coord_dims[1], 0]
 
-        #ub = torch.cat([u1,u2,u3,u4], dim=-1)
-        ub = torch.cat([u1,u2,u4], dim=-1)
+        u4 = u[:,1:self.coord_dims[0], -1, 1:self.coord_dims[2]]
+        u5 = u[:,1:self.coord_dims[0], 1:self.coord_dims[1]-1, -1]
+
+        ub = torch.cat([u1,u2,u3,u4,u5], dim=-1)
 
         return ub
 
@@ -329,9 +335,9 @@ class Model(nn.Module):
         steps0 = self.steps0.type_as(u).expand(2*self.bs, self.coord_dims[0]-1)
         steps1 = self.steps1.type_as(u).expand(2*self.bs, self.coord_dims[1]-1)
         steps2 = self.steps2.type_as(u).expand(2*self.bs, self.coord_dims[2]-1)
-        steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.5)
-        steps1 = 2*torch.sigmoid(steps1).clip(min=0.005, max=0.75)
-        steps2 = 2*torch.sigmoid(steps1).clip(min=0.005, max=0.75)
+        steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.2)
+        steps1 = 2*torch.sigmoid(steps1).clip(min=0.005, max=0.55)
+        steps2 = 2*torch.sigmoid(steps1).clip(min=0.005, max=0.55)
 
         steps_list = [steps0, steps1, steps2]
 
@@ -356,7 +362,7 @@ class Model(nn.Module):
         #u, u_t, u_x, u_y, u_tt, u_xx, u_yy
         #(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1), (2, 0, 0), (0, 2, 0), (0, 0, 2)
         #u
-        coeffs_u[..., 0] = params_u[0]
+        coeffs_u[..., 0] = -1-params_u[0]
         coeffs_v[..., 0] = params_v[0]
         #u_t
         coeffs_u[..., 1] = 1.
@@ -365,13 +371,13 @@ class Model(nn.Module):
         coeffs_u[..., 5] = params_u[1]
         coeffs_v[..., 5] = params_v[1]
         #u_yy
-        coeffs_u[..., 6] = params_u[2]
-        coeffs_v[..., 6] = params_v[2]
+        coeffs_u[..., 6] = params_u[1]
+        coeffs_v[..., 6] = params_v[1]
 
         #up = up.reshape(bs, *self.coord_dims)
 
         #rhs_u = torch.zeros(bs, *self.coord_dims, device=u.device)
-        rhs_u = params_u[3] + vp*up.pow(2)
+        rhs_u = params_u[2] + vp*up.pow(2)
         #rhs_v = torch.zeros(bs, *self.coord_dims, device=u.device)
         rhs_v = -vp*up.pow(2)
 
@@ -408,7 +414,7 @@ class Model(nn.Module):
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step), device=device)
+model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step, ds.y_step), device=device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
@@ -422,10 +428,15 @@ model=model.to(device)
 
 def print_eq(stdout=False):
     #print learned equation
-    xi = model.get_params()
-    params = xi.squeeze().detach().cpu().numpy()
+    xu, xv = model.get_params()
+    xu = xu.squeeze().detach().cpu().numpy()
+    xv = xv.squeeze().detach().cpu().numpy()
+
+    L.info(f'param u\n{xu}')
+    L.info(f'param v\n{xv}')
+    
     #print(params)
-    return params
+    return xu, xv
     #return code
 
 
@@ -504,12 +515,12 @@ def optimize(nepoch=5000):
 
         mean_loss = torch.tensor(losses).mean()
 
-        params=print_eq()
-        L.info(f'parameters\n{params}')
+        print_eq()
+        #L.info(f'parameters\n{params}')
             #pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item():.3E}  xloss {x_loss:.3E} max eps {meps}\n')
         #print(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E}  xloss {_x_loss:.3E} vloss {_v_loss:.3E} max eps {meps}\n')
-        L.info(f'run {run_id} epoch {epoch}, loss {mean_loss:.3E} 
-               uloss {_u_loss:.3E} vloss {_v_loss:.3E}
+        L.info(f'run {run_id} epoch {epoch}, loss {mean_loss:.3E}  \
+               uloss {_u_loss:.3E} vloss {_v_loss:.3E} \
                var_u_loss {_var_u_loss:.3E} var_v_loss {_var_v_loss:.3E} ')
 
 
