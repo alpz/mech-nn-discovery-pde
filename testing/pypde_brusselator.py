@@ -22,9 +22,10 @@ state = FieldCollection([u, v])
 
 storage = MemoryStorage()  # store intermediate information of the simulation
 #sol = eq.solve(state, t_range=20, dt=1e-3, tracker=tracker)
-sol = eq.solve(state, t_range=128, dt=1e-3, tracker=storage.tracker(1))
+sol = eq.solve(state, t_range=128, dt=1e-2, tracker=storage.tracker(1))
 # %%
 print(sol.data.shape)
+print((sol.grid.cell_coords[:,:,0]))
 # %%
 len(storage.data)
 # %%
@@ -53,7 +54,7 @@ def animate(i):
     cax0.set_array(data_list[i][1].ravel())
     #cax1.set_array(func_list[i].reshape(*coord_dims).flatten())
 
-anim = FuncAnimation(fig, animate, interval=100, frames=100)
+anim = FuncAnimation(fig, animate, interval=100, frames=len(data_list))
 HTML(anim.to_html5_video())
 # %%
 

@@ -29,6 +29,7 @@ class PDEConfig:
     ilu_preconditioner=False
     ilu_fill_factor= 60.0
     sindpy_data = os.path.join(os.path.expanduser('~'),'data/pysindy/')
+    brusselator_dir = os.path.join(os.path.expanduser('~'),'data', 'brusselator')
     #relax
     ds = 1e2
 
