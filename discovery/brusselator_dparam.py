@@ -243,7 +243,7 @@ class Model(nn.Module):
         print('num patches ', self.n_patches)
 
 
-        self.pde = MultigridLayer(bs=bs, coord_dims=self.coord_dims, order=2, n_ind_dim=self.n_ind_dim, n_iv=1, 
+        self.pde = MultigridLayer(bs=2*bs, coord_dims=self.coord_dims, order=2, n_ind_dim=self.n_ind_dim, n_iv=1, 
                         n_grid=n_grid,
                         init_index_mi_list=self.iv_list,  n_iv_steps=1, double_ret=True, solver_dbl=True)
 
@@ -251,8 +251,8 @@ class Model(nn.Module):
         self.num_multiindex = self.pde.n_orders
 
 
-        self.rnet1 = N.ResNet(out_channels=1, in_channels=1)
-        self.rnet2 = N.ResNet(out_channels=1, in_channels=1)
+        self.rnet1 = N.ResNet(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0])
+        self.rnet2 = N.ResNet(out_channels=self.coord_dims[0], in_channels=self.coord_dims[2])
 
         self.param_in = nn.Parameter(torch.randn(1,512))
         self.param_net = nn.Sequential(
@@ -292,9 +292,9 @@ class Model(nn.Module):
         #self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
         #self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
 
-        self.steps0 = torch.logit(self.t_step_size*torch.ones(1,1,1))
-        self.steps1 = torch.logit(self.x_step_size*torch.ones(1,1,1))
-        self.steps2 = torch.logit(self.y_step_size*torch.ones(1,1,1))
+        self.steps0 = torch.logit(self.t_step_size*torch.ones(1,1))
+        self.steps1 = torch.logit(self.x_step_size*torch.ones(1,1))
+        self.steps2 = torch.logit(self.y_step_size*torch.ones(1,1))
 
         self.steps0 = nn.Parameter(self.steps0)
         self.steps1 = nn.Parameter(self.steps1)
@@ -311,25 +311,26 @@ class Model(nn.Module):
         #params = self.param_net_out(self.param_net(self.param_in))
         #params2 =self.param_net2_out(self.param_net2(self.param_in2))
 
-        u_params = (self.param_net(self.param_in))
-        v_params =(self.param_net2(self.param_in2))
+        u_params = (self.param_net(self.param_in)).squeeze()
+        v_params =(self.param_net2(self.param_in2)).squeeze()
         #params = params.reshape(-1,1,2, 3)
         #params = params.reshape(-1,1,2, 2)
         return u_params, v_params
 
     def get_iv(self, u):
-        u1 = u[:,0, :self.coord_dims[1], :self.coord_dims[2]]
-        u2 = u[:,1:self.coord_dims[0], 0, :self.coord_dims[2]]
-        u3 = u[:,1:self.coord_dims[0], 1:self.coord_dims[1], 0]
+        bs = u.shape[0]
+        u1 = u[:,0, :self.coord_dims[1], :self.coord_dims[2]].reshape(bs, -1)
+        u2 = u[:,1:self.coord_dims[0], 0, :self.coord_dims[2]].reshape(bs, -1)
+        u3 = u[:,1:self.coord_dims[0], 1:self.coord_dims[1], 0].reshape(bs, -1)
 
-        u4 = u[:,1:self.coord_dims[0], -1, 1:self.coord_dims[2]]
-        u5 = u[:,1:self.coord_dims[0], 1:self.coord_dims[1]-1, -1]
+        u4 = u[:,1:self.coord_dims[0], -1, 1:self.coord_dims[2]].reshape(bs, -1)
+        u5 = u[:,1:self.coord_dims[0], 1:self.coord_dims[1]-1, -1].reshape(bs, -1)
 
         ub = torch.cat([u1,u2,u3,u4,u5], dim=-1)
 
         return ub
 
-    def solve_chunks(self, u, v, up, vp, params_u, params_v):
+    def solve(self, u, v, up, vp, params_u, params_v):
         bs = u.shape[0]
 
         steps0 = self.steps0.type_as(u).expand(2*self.bs, self.coord_dims[0]-1)
@@ -464,27 +465,30 @@ def optimize(nepoch=5000):
         #for i, batch_in in enumerate((train_loader)):
             optimizer.zero_grad()
             batch_u, batch_v = batch_in[0], batch_in[1]
-            batch_u = batch_v.double().to(device)
+            batch_u = batch_u.double().to(device)
+            batch_v = batch_v.double().to(device)
 
             data_shape = batch_u.shape
 
             #optimizer.zero_grad()
             #x0, steps, eps, var,xi = model(index, batch_in)
-            u, v, var_u, var_v, eps, params = model(batch_u, batch_v)
+            u, v, var_u, var_v, params = model(batch_u, batch_v)
 
 
-            bs = batch_in.shape[0]
-            x0 = x0.reshape(bs, -1)
+            bs = batch_u.shape[0]
+            u = u.reshape(bs, -1)
+            v = v.reshape(bs, -1)
             batch_u = batch_u.reshape(bs, -1)
             batch_v = batch_v.reshape(bs, -1)
+            var_u =var_u.reshape(bs, -1)
+            var_v =var_v.reshape(bs, -1)
 
-            var =var.reshape(bs, -1)
             u_loss = (u- batch_u).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             v_loss = (v- batch_v).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             var_u_loss = (var_u- batch_u).abs().mean(dim=-1)
             var_v_loss = (var_v- batch_u).abs().mean(dim=-1)
             #loss = x_loss + var_loss + time_loss
-            param_loss = params.abs()
+            #param_loss = params.abs()
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.001*param_loss.mean()
