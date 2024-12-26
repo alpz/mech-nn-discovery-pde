@@ -417,7 +417,7 @@ class Model(nn.Module):
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step, ds.y_step), device=device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.00005)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
 #optimizer = torch.optim.SGD(model.parameters(), lr=0.0001, momentum =0.9)
@@ -487,7 +487,7 @@ def optimize(nepoch=5000):
             u_loss = (u- batch_u).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             v_loss = (v- batch_v).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             var_u_loss = (var_u- batch_u).abs().mean(dim=-1)
-            var_v_loss = (var_v- batch_u).abs().mean(dim=-1)
+            var_v_loss = (var_v- batch_v).abs().mean(dim=-1)
             #loss = x_loss + var_loss + time_loss
             #param_loss = params.abs()
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
