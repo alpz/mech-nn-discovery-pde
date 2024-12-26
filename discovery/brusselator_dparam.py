@@ -117,6 +117,7 @@ class BrusselatorDataset(Dataset):
 
         #permute time, x
         data = torch.tensor(data, dtype=dtype).permute(1,0,2,3) 
+        data = data[:, :100]
         self.u_data = data[0]
         self.v_data = data[1]
         print('u,v ', self.u_data.shape, self.v_data.shape)
@@ -178,8 +179,15 @@ class BrusselatorDataset(Dataset):
                              x_idx:x_idx+x_step,
                              y_idx:y_idx+y_step]
 
+        tlen = self.u_data.shape[0]
+        xlen = self.u_data.shape[1]
+        ylen = self.u_data.shape[2]
 
-        return u_data, v_data
+        t_steps = torch.linspace(t_idx/tlen, (t_idx+t_step)/tlen, steps=solver_dim[0]-1)
+        x_steps = torch.linspace(x_idx/xlen, (x_idx+x_step)/xlen, steps=solver_dim[1]-1)
+        y_steps = torch.linspace(y_idx/ylen, (y_idx+y_step)/ylen, steps=solver_dim[2]-1)
+
+        return u_data, v_data, (t_steps, x_steps, y_steps)
 
 #%%
 
@@ -253,7 +261,7 @@ class Model(nn.Module):
 
 
         self.rnet1 = N.ResNet(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0])
-        self.rnet2 = N.ResNet(out_channels=self.coord_dims[0], in_channels=self.coord_dims[2])
+        self.rnet2 = N.ResNet(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0])
 
         self.param_in = nn.Parameter(torch.randn(1,512))
         self.param_net = nn.Sequential(
@@ -289,18 +297,56 @@ class Model(nn.Module):
         self.t_step_size = steps[0]
         self.x_step_size = 0.5 #steps[1]
         self.y_step_size = 0.5 #steps[2]
-        print('steps ', steps)
-        #self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
-        #self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
+        #print('steps ', steps)
+        ##self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
+        ##self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
 
-        self.steps0 = torch.logit(self.t_step_size*torch.ones(1,1))
-        self.steps1 = torch.logit(self.x_step_size*torch.ones(1,1))
-        self.steps2 = torch.logit(self.y_step_size*torch.ones(1,1))
+        steps0 = torch.logit(self.t_step_size*torch.ones(1,1))
+        steps1 = torch.logit(self.x_step_size*torch.ones(1,1))
+        steps2 = torch.logit(self.y_step_size*torch.ones(1,1))
 
-        self.steps0 = nn.Parameter(self.steps0)
-        self.steps1 = nn.Parameter(self.steps1)
-        self.steps2 = nn.Parameter(self.steps2)
+        #self.steps0 = nn.Parameter(self.steps0)
+        #self.steps1 = nn.Parameter(self.steps1)
+        #self.steps2 = nn.Parameter(self.steps2)
 
+        self.t_steps_net = nn.Sequential(
+            nn.Linear(solver_dim[0]-1, 1024),
+            #nn.ELU(),
+            nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, solver_dim[0]-1),
+            nn.Sigmoid()
+        )
+
+        self.x_steps_net = nn.Sequential(
+            nn.Linear(solver_dim[1]-1, 1024),
+            #nn.ELU(),
+            nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, solver_dim[1]-1),
+            nn.Sigmoid()
+        )
+        self.y_steps_net = nn.Sequential(
+            nn.Linear(solver_dim[2]-1, 1024),
+            #nn.ELU(),
+            nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, solver_dim[2]-1),
+            nn.Sigmoid()
+        )
+
+        with torch.no_grad():
+            self.t_steps_net[-2].weight.data.zero_()
+            self.t_steps_net[-2].bias.data.fill_(steps0[0].item())
+
+            self.x_steps_net[-2].weight.data.zero_()
+            self.x_steps_net[-2].bias.data.fill_(steps1[0].item())
+
+            self.y_steps_net[-2].weight.data.zero_()
+            self.y_steps_net[-2].bias.data.fill_(steps2[0].item())
 
         #up_coeffs = torch.randn((1, 1, self.num_multiindex), dtype=dtype)
         #self.up_coeffs = nn.Parameter(up_coeffs)
@@ -331,15 +377,25 @@ class Model(nn.Module):
 
         return ub
 
-    def solve(self, u, v, up, vp, params_u, params_v):
+    def solve(self, u, v, up, vp, params_u, params_v, steps_in):
         bs = u.shape[0]
 
-        steps0 = self.steps0.type_as(u).expand(2*self.bs, self.coord_dims[0]-1)
-        steps1 = self.steps1.type_as(u).expand(2*self.bs, self.coord_dims[1]-1)
-        steps2 = self.steps2.type_as(u).expand(2*self.bs, self.coord_dims[2]-1)
-        steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.2)
-        steps1 = 2*torch.sigmoid(steps1).clip(min=0.005, max=0.55)
-        steps2 = 2*torch.sigmoid(steps1).clip(min=0.005, max=0.55)
+        #steps0 = self.steps0.type_as(u).expand(2*self.bs, self.coord_dims[0]-1)
+        #steps1 = self.steps1.type_as(u).expand(2*self.bs, self.coord_dims[1]-1)
+        #steps2 = self.steps2.type_as(u).expand(2*self.bs, self.coord_dims[2]-1)
+        #steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.2)
+        #steps1 = 2*torch.sigmoid(steps1).clip(min=0.005, max=0.55)
+        #steps2 = 2*torch.sigmoid(steps1).clip(min=0.005, max=0.55)
+
+        steps0 = steps_in[0].unsqueeze(0).expand(2, -1, -1)
+        steps1 = steps_in[1].unsqueeze(0).expand(2, -1, -1)
+        steps2 = steps_in[2].unsqueeze(0).expand(2, -1, -1)
+
+        steps0 = steps0.clip(min=0.005, max=0.2)
+        steps1 = 2*steps1.clip(min=0.05, max=0.6)
+        steps2 = 2*steps2.clip(min=0.05, max=0.6)
+
+        print(steps0, steps1, steps2)
 
         steps_list = [steps0, steps1, steps2]
 
@@ -400,7 +456,7 @@ class Model(nn.Module):
 
         return u, v
     
-    def forward(self, u, v):
+    def forward(self, u, v, steps_in):
         bs = u.shape[0]
 
         # u batch, time, x, y
@@ -409,7 +465,11 @@ class Model(nn.Module):
 
         params = self.get_params()
 
-        u0, v0 = self.solve(u,v, up, vp, params[0], params[1])
+        steps_t = self.t_steps_net(steps_in[0])
+        steps_x = self.x_steps_net(steps_in[1])
+        steps_y = self.y_steps_net(steps_in[2])
+
+        u0, v0 = self.solve(u,v, up, vp, params[0], params[1], (steps_t, steps_x, steps_y))
 
         return u0, v0,up,vp, params
         #return u0, up,eps, params
@@ -465,15 +525,16 @@ def optimize(nepoch=5000):
         for i, batch_in in enumerate(tqdm(train_loader)):
         #for i, batch_in in enumerate((train_loader)):
             optimizer.zero_grad()
-            batch_u, batch_v = batch_in[0], batch_in[1]
+            batch_u, batch_v, steps_in = batch_in[0], batch_in[1], batch_in[2]
             batch_u = batch_u.double().to(device)
             batch_v = batch_v.double().to(device)
+            steps_in = [steps.double().to(device) for steps in steps_in]
 
             data_shape = batch_u.shape
 
             #optimizer.zero_grad()
             #x0, steps, eps, var,xi = model(index, batch_in)
-            u, v, var_u, var_v, params = model(batch_u, batch_v)
+            u, v, var_u, var_v, params = model(batch_u, batch_v, steps_in)
 
 
             bs = batch_u.shape[0]
@@ -484,17 +545,24 @@ def optimize(nepoch=5000):
             var_u =var_u.reshape(bs, -1)
             var_v =var_v.reshape(bs, -1)
 
+            #u_loss = (u- batch_u).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
+            #v_loss = (v- batch_v).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
+            #var_u_loss = (var_u- batch_u).pow(2).mean(dim=-1)
+            #var_v_loss = (var_v- batch_v).pow(2).mean(dim=-1)
+
             u_loss = (u- batch_u).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             v_loss = (v- batch_v).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
-            var_u_loss = (var_u- batch_u).abs().mean(dim=-1)
-            var_v_loss = (var_v- batch_v).abs().mean(dim=-1)
+            #var_u_loss = (var_u- batch_u).abs().mean(dim=-1)
+            #var_v_loss = (var_v- batch_v).abs().mean(dim=-1)
+            var_u_loss = (var_u- u).abs().mean(dim=-1)
+            var_v_loss = (var_v- v).abs().mean(dim=-1)
             #loss = x_loss + var_loss + time_loss
-            #param_loss = params.abs()
+            param_loss = params[0].abs().mean() + params[1].abs().mean()
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.001*param_loss.mean()
             loss = u_loss.mean() +  v_loss.mean() + var_u_loss.mean() + var_v_loss.mean()
-                    #+  0.005*param_loss.mean()
+            #loss = loss +  0.0001*param_loss.mean()
 
             u_losses.append(u_loss.mean().item())
             v_losses.append(v_loss.mean().item())
@@ -509,11 +577,12 @@ def optimize(nepoch=5000):
             loss.backward()
             optimizer.step()
 
-            del loss,u,u_loss,v,v_loss,var_u,var_v,var_u_loss,var_v_loss,params
 
 
             print('mem after',torch.cuda.mem_get_info(), (torch.cuda.mem_get_info()[1]-torch.cuda.mem_get_info()[0])/1e9)
             print('mem allocated {:.3f}MB'.format(torch.cuda.memory_allocated()/1024**2))
+
+            del loss,u,u_loss,v,v_loss,var_u,var_v,var_u_loss,var_v_loss,params
             #xi = xi.detach().cpu().numpy()
             #alpha = alpha.squeeze().item() #.detach().cpu().numpy()
             #beta = beta.squeeze().item()
