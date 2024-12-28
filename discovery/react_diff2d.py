@@ -50,12 +50,12 @@ cuda=True
 #T = 2000
 #n_step_per_batch = T
 #solver_dim=(10,256)
-solver_dim=(32,32,32)
-#solver_dim=(64,64,64)
+#solver_dim=(32,32,32)
+solver_dim=(64,64,64)
 #solver_dim=(50,64)
 #solver_dim=(32,48)
-n_grid=3
-batch_size= 4
+n_grid=4
+batch_size= 1
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
 
@@ -64,7 +64,7 @@ noise =False
 L.info(f'Solver dim {solver_dim} ')
 
 
-class BrusselatorDataset(Dataset):
+class ReactDiffDataset(Dataset):
     def __init__(self, solver_dim=(32,32)):
         #self.n_step_per_batch=n_step_per_batch
         #self.n_step=n_step
@@ -72,8 +72,10 @@ class BrusselatorDataset(Dataset):
         self.down_sample = 1
 
         #129,2,64,64
-        data=np.load(os.path.join(PDEConfig.brusselator_dir, 'brusselator_01_1en3.npy'))
-        print('brusselator shape', data.shape)
+        #data=np.load(os.path.join(PDEConfig.brusselator_dir, 'brusselator_01_1en3.npy'))
+        u_data=np.load(os.path.join(PDEConfig.sindpy_data,'gen', 'rdiff2d_u.npy'))
+        v_data=np.load(os.path.join(PDEConfig.sindpy_data,'gen', 'rdiff2d_v.npy'))
+        print('rdiff shape', u_data.shape)
 
         #print(data.keys())
         #t = torch.tensor(np.array(data['t'])).squeeze()
@@ -88,27 +90,6 @@ class BrusselatorDataset(Dataset):
         self.x_step = 1
         self.y_step = 1
 
-        #self.t = t.unsqueeze(1).expand(-1, x.shape[0])
-        #self.x = x.unsqueeze(0).expand(t.shape[0],-1)
-
-        #print('t x', self.t.shape, self.x.shape)
-
-        ##self.t_subsample = 10
-        ##self.x_subsample = 1
-
-        ##self.t_subsample = 32 #10
-        ##self.x_subsample = 32 #256
-
-
-        ##L.info(f'subsample {self.t_subsample}, {self.x_subsample} ')
-        ##self.t_subsample =50
-        ##self.x_subsample =64
-
-        #print(self.t.shape)
-        #print(self.x.shape)
-        #print(data['usol'].shape)
-
-        #data = np.real(data['usol'])
 
         if noise:
             print('adding noise')
@@ -116,10 +97,10 @@ class BrusselatorDataset(Dataset):
             # add 20% noise (note the impact on derivatives depends on step size...)
             data = data + np.random.normal(0, rmse / 5.0, data.shape) 
 
-        #permute time, x
-        data = torch.tensor(data, dtype=dtype).permute(1,0,2,3) 
+        u_data = torch.tensor(u_data, dtype=dtype)#.permute(1,0,2,3) 
+        v_data = torch.tensor(v_data, dtype=dtype)#.permute(1,0,2,3) 
 
-        data_shape = tuple(data.shape[1:])
+        data_shape = tuple(u_data.shape)
         #self.t = torch.linspace(0,1,self.u_data.shape[0]).reshape(-1,1,1).expand(-1, self.u_data.shape[0],self.u_data.shape[2])       
         #self.x = torch.linspace(0,1,self.u_data.shape[1]).reshape(1,-1,1).expand(self.u_data.shape[0], -1, self.u_data.shape[2])        
         #self.y = torch.linspace(0,1,self.u_data.shape[2]).reshape(1,1,-1).expand(self.u_data.shape[0], self.u_data.shape[1], -1)        
@@ -128,9 +109,9 @@ class BrusselatorDataset(Dataset):
         self.y = torch.linspace(0,1,data_shape[2]).reshape(1,-1).expand( data_shape[1], -1)        
         
 
-        data = data[:, :100]
-        self.u_data = data[0]
-        self.v_data = data[1]
+        self.u_data = u_data[:128]
+        self.v_data = v_data[:128]
+        #self.v_data = data[1]
         print('u,v ', self.u_data.shape, self.v_data.shape)
 
         self.data_dim = self.u_data.shape
@@ -205,7 +186,7 @@ class BrusselatorDataset(Dataset):
 
 #%%
 
-ds = BrusselatorDataset(solver_dim=solver_dim)#.generate()
+ds = ReactDiffDataset(solver_dim=solver_dim)#.generate()
 
 #
 ##%%
@@ -385,6 +366,7 @@ class Model(nn.Module):
         u_params =(self.param_net(self.param_in)).squeeze()
         v_params =(self.param_net2(self.param_in2)).squeeze()
         v_params = -2*torch.sigmoid(v_params)
+        u_params = -torch.sigmoid(v_params)
         #params = params.reshape(-1,1,2, 3)
         #params = params.reshape(-1,1,2, 2)
         return u_params, v_params
@@ -443,39 +425,26 @@ class Model(nn.Module):
 
 
         coeffs_u = torch.zeros((bs, self.pde.grid_size, self.pde.n_orders), device=u.device)
-        coeffs_v = torch.zeros((bs, self.pde.grid_size, self.pde.n_orders), device=u.device)
+        #coeffs_v = torch.zeros((bs, self.pde.grid_size, self.pde.n_orders), device=u.device)
 
         #u, u_t, u_x, u_y, u_tt, u_xx, u_yy
         #(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1), (2, 0, 0), (0, 2, 0), (0, 0, 2)
         #u
-        #coeffs_u[..., 0] = -1-params_u[0]
-        coeffs_u[..., 0] = 4 #params_u[0]
+        coeffs_u[..., 0] = -(1-up.pow(2)-v.pow(2))
         #coeffs_v[..., 0] = params_v[0]
         #u_t
         coeffs_u[..., 1] = 1.
-        coeffs_v[..., 1] = 1.
+        #coeffs_v[..., 1] = 1.
         #u_xx
-        coeffs_u[..., 5] = -1 # params_v[0]
+        coeffs_u[..., 5] = params_u[0]
         #coeffs_v[..., 5] = params_v[1]
         #u_yy
-        coeffs_u[..., 6] = -1 #params_v[0]
+        coeffs_u[..., 6] = params_u[0]
         #coeffs_v[..., 6] = params_v[1]
 
-        #up = up.reshape(bs, *self.coord_dims)
-
-        #rhs_u = self.rhs_net(u.unsqueeze(1)).squeeze(1)
-        #rhs_u = torch.zeros(bs, *self.coord_dims, device=u.device)
-        #rhs_u_true = params_u[2] + vp*up.pow(2)
-        #rhs_u = params_u[2] + vp*up.pow(2)
-        #rhs_u = params_u[2] + params_u[3]*v*(up.pow(2))
-        rhs_u = 1 + 1*v*(up.pow(2))
-        #rhs_v = torch.zeros(bs, *self.coord_dims, device=u.device)
-        #rhs_v = -vp*up.pow(2)
+        rhs_u = (up.pow(2) +v.pow(2))*v
 
         rhs_loss = None #(rhs_u - rhs_u_true).abs().mean()
-        #coeffs = torch.stack([coeffs_u, coeffs_v], dim=0)
-        #rhs = torch.stack([rhs_u, rhs_v], dim=0)
-        #iv_rhs = torch.stack([iv_u_rhs, iv_v_rhs], dim=0)
 
         coeffs = coeffs_u #torch.stack([coeffs_u, coeffs_v], dim=0)
         rhs = rhs_u #torch.stack([rhs_u, rhs_v], dim=0)

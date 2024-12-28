@@ -8,7 +8,8 @@ eq = PDE(
     {
         "u": f"{d0} * laplace(u) + {a} - ({b} + 1) * u + u**2 * v",
         "v": f"{d1} * laplace(v) + {b} * u - u**2 * v",
-    }
+    },
+    bc='auto_periodic_dirichlet'
 )
 
 # initialize state
@@ -26,8 +27,9 @@ sol = eq.solve(state, t_range=128, dt=1e-2, tracker=storage.tracker(1))
 # %%
 print(sol.data.shape)
 print((sol.grid.cell_coords[:,:,0]))
+
 # %%
-len(storage.data)
+storage.data[10].min()
 # %%
 # %%
 import matplotlib.pyplot as plt
