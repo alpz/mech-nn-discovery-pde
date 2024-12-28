@@ -50,12 +50,12 @@ cuda=True
 #T = 2000
 #n_step_per_batch = T
 #solver_dim=(10,256)
-#solver_dim=(32,32,32)
-solver_dim=(64,64,64)
+solver_dim=(32,32,32)
+#solver_dim=(64,64,64)
 #solver_dim=(50,64)
 #solver_dim=(32,48)
-n_grid=4
-batch_size= 1
+n_grid=3
+batch_size= 8
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
 
@@ -298,9 +298,9 @@ class Model(nn.Module):
         )
 
 
-        self.t_step_size = steps[0]
-        self.x_step_size = 0.5 #steps[1]
-        self.y_step_size = 0.5 #steps[2]
+        self.t_step_size = 0.05 #steps[0]
+        self.x_step_size = 0.1 #steps[1]
+        self.y_step_size = 0.1 #steps[2]
         #print('steps ', steps)
         ##self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
         ##self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
@@ -365,8 +365,9 @@ class Model(nn.Module):
         #u_params = self.params_u.squeeze()#(self.param_net(self.param_in)).squeeze()
         u_params =(self.param_net(self.param_in)).squeeze()
         v_params =(self.param_net2(self.param_in2)).squeeze()
-        v_params = -2*torch.sigmoid(v_params)
-        u_params = -torch.sigmoid(v_params)
+        #v_params = -2*torch.sigmoid(v_params)
+        v_params = torch.sigmoid(v_params)
+        u_params = -torch.sigmoid(u_params)
         #params = params.reshape(-1,1,2, 3)
         #params = params.reshape(-1,1,2, 2)
         return u_params, v_params
@@ -395,8 +396,8 @@ class Model(nn.Module):
         steps1 = self.steps1.type_as(u).expand(self.bs, self.coord_dims[1]-1)
         steps2 = self.steps2.type_as(u).expand(self.bs, self.coord_dims[2]-1)
         steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.2)
-        steps1 = 2*torch.sigmoid(steps1).clip(min=0.005, max=0.55)
-        steps2 = 2*torch.sigmoid(steps1).clip(min=0.005, max=0.55)
+        steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.55)
+        steps2 = torch.sigmoid(steps1).clip(min=0.005, max=0.55)
 
         #steps0 = steps_in[0].unsqueeze(0).expand(2, -1, -1)
         #steps1 = steps_in[1].unsqueeze(0).expand(2, -1, -1)
@@ -427,6 +428,8 @@ class Model(nn.Module):
         coeffs_u = torch.zeros((bs, self.pde.grid_size, self.pde.n_orders), device=u.device)
         #coeffs_v = torch.zeros((bs, self.pde.grid_size, self.pde.n_orders), device=u.device)
 
+        up = up.reshape(bs, self.pde.grid_size)
+        v = v.reshape(bs, self.pde.grid_size)
         #u, u_t, u_x, u_y, u_tt, u_xx, u_yy
         #(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1), (2, 0, 0), (0, 2, 0), (0, 0, 2)
         #u
