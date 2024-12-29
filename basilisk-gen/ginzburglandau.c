@@ -15,7 +15,8 @@ double dt;
 //We create then two variables that will give us information about the simulation timesteps
 mgstats mgd1, mgd2;
 
-int num_cells = 256;
+//int num_cells = 256;
+int num_cells = 128;
 double domain_size = 100.0;
 
 int main(){
@@ -71,8 +72,11 @@ event movies (i += 3; t <= 150){
 
 event output_binary_files(t+=1) {
     // List of fields to print and the name to be given for each of them
-    scalar *list = {Ai, A2};
-    const char *list_names[] = {"Ai", "A2"};
+    //scalar *list = {Ai, A2};
+    //const char *list_names[] = {"Ai", "A2"};
+
+    scalar *list = {Ai, Ar};
+    const char *list_names[] = {"Ai", "Ar"};
 
     // Dumping the requested fields into a uniform_grid format
     PrintMeshDataDump(i, t, num_cells, domain_size, list, list_names);

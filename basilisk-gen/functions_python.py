@@ -57,17 +57,21 @@ def ReadAllDataFilesInFolder(foldername):
 	total_list_files = os.listdir(foldername)
 	list_files = []
 	for file in total_list_files:
-		if( file.startswith("Interface") ):
-			list_files.append( int(file[11:-4]) )
+		#if( file.startswith("Interface") ):
+		if( file.startswith("Mesh") ):
+			#list_files.append( int(file[11:-4]) )
+			list_files.append( int(file[10:-4]) )
 	list_files = np.sort(list_files)
 
 	number_snapshots = len(list_files)
+	print(number_snapshots)
 
 	# number_snapshots = 5
 
 	for i_snapshot, simulation_step in enumerate(list_files):
 
 		filename = "%s/MeshDump-N%d.bin" % (foldername, simulation_step)
+		print(filename)
 		snapshot_data = ReadDataFile(filename)
 
 		if( i_snapshot==number_snapshots ):
