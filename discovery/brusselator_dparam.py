@@ -317,9 +317,13 @@ class Model(nn.Module):
         )
 
 
-        self.t_step_size = steps[0]
-        self.x_step_size = 0.5 #steps[1]
-        self.y_step_size = 0.5 #steps[2]
+        #self.t_step_size = steps[0]
+        #self.x_step_size = 0.5 #steps[1]
+        #self.y_step_size = 0.5 #steps[2]
+
+        self.t_step_size = 0.05 #steps[0]
+        self.x_step_size = 0.1 #steps[1]
+        self.y_step_size = 0.1 #steps[2]
         #print('steps ', steps)
         ##self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
         ##self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
@@ -413,8 +417,8 @@ class Model(nn.Module):
         steps1 = self.steps1.type_as(u).expand(self.bs, self.coord_dims[1]-1)
         steps2 = self.steps2.type_as(u).expand(self.bs, self.coord_dims[2]-1)
         steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.2)
-        steps1 = 2*torch.sigmoid(steps1).clip(min=0.005, max=0.55)
-        steps2 = 2*torch.sigmoid(steps1).clip(min=0.005, max=0.55)
+        steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.55)
+        steps2 = torch.sigmoid(steps1).clip(min=0.005, max=0.55)
 
         #steps0 = steps_in[0].unsqueeze(0).expand(2, -1, -1)
         #steps1 = steps_in[1].unsqueeze(0).expand(2, -1, -1)

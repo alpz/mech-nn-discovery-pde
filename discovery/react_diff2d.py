@@ -265,32 +265,49 @@ class Model(nn.Module):
         #self.fnet1 = FNO.FourierNet2d(n_layers=8, width=100, n_modes=(16,16), t_in=solver_dim[0], t_out=solver_dim[0], pad=True)
         #self.fnet2 = FNO.FourierNet2d(n_layers=8, width=100, n_modes=(16,16), t_in=solver_dim[0], t_out=solver_dim[0], pad=True)
 
-        self.params_u = nn.Parameter(0.5*torch.randn(1,4))
+        #self.params_u = nn.Parameter(0.5*torch.randn(1,4))
         self.param_in = nn.Parameter(torch.randn(1,64))
         self.param_net = nn.Sequential(
             nn.Linear(64, 1024),
-            nn.ELU(),
-            #nn.ReLU(),
+            nn.ReLU(),
             nn.Linear(1024, 1024),
-            #nn.ReLU(),
-            nn.ELU(),
+            nn.ReLU(),
             nn.Linear(1024, 1024),
-            nn.ELU(),
+            nn.ReLU(),
             #two polynomials, second order
             #nn.Linear(1024, 3*2),
-            nn.Linear(1024, 4),
+            nn.Linear(1024, 2),
             #nn.Tanh()
         )
-        #self.param_net_out = nn.Linear(1024, 3)
 
-        self.param_in2 = nn.Parameter(torch.randn(1,512))
+        self.param_in2 = nn.Parameter(torch.randn(1,64))
         self.param_net2 = nn.Sequential(
-            nn.Linear(512, 1024),
+            nn.Linear(64, 1024),
+            nn.ReLU(),
+            #nn.ReLU(),
+            nn.Linear(1024, 1024),
+            #nn.ReLU(),
             nn.ReLU(),
             nn.Linear(1024, 1024),
             nn.ReLU(),
-            #nn.Linear(1024, 1024),
             #nn.ReLU(),
+            #two polynomials, second order
+            #nn.Linear(1024, 3*2),
+            nn.Linear(1024, 2),
+            #nn.Tanh()
+        )
+
+        self.param_in3 = nn.Parameter(torch.randn(1,64))
+        self.param_net3 = nn.Sequential(
+            nn.Linear(64, 1024),
+            #nn.ELU(),
+            nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
+            #nn.ELU(),
+            nn.Linear(1024, 1024),
+            #nn.ELU(),
+            nn.ReLU(),
             #two polynomials, second order
             #nn.Linear(1024, 3*2),
             nn.Linear(1024, 2),
@@ -365,19 +382,18 @@ class Model(nn.Module):
         #u_params = self.params_u.squeeze()#(self.param_net(self.param_in)).squeeze()
         u_params =(self.param_net(self.param_in)).squeeze()
         v_params =(self.param_net2(self.param_in2)).squeeze()
+        w_params =(self.param_net3(self.param_in3)).squeeze()
         #v_params = -2*torch.sigmoid(v_params)
-        v_params = torch.sigmoid(v_params)
-        u_params = -torch.sigmoid(u_params)
+        #v_params = torch.sigmoid(v_params)
+        #u_params = -torch.sigmoid(u_params)
         #params = params.reshape(-1,1,2, 3)
         #params = params.reshape(-1,1,2, 2)
-        return u_params, v_params
+        return u_params, v_params, w_params
 
     def get_iv(self, u):
         bs = u.shape[0]
 
         #u = self.rnet3d_2(u.unsqueeze(1)).squeeze(1)
-        
-
         u1 = u[:,0, :self.coord_dims[1], :self.coord_dims[2]].reshape(bs, -1)
         u2 = u[:,1:self.coord_dims[0], 0, :self.coord_dims[2]].reshape(bs, -1)
         u3 = u[:,1:self.coord_dims[0], 1:self.coord_dims[1], 0].reshape(bs, -1)
@@ -389,7 +405,7 @@ class Model(nn.Module):
 
         return ub
 
-    def solve(self, u, v, up, vp, params_u, params_v, steps_in):
+    def solve(self, u, v, up, vp, params, steps_in):
         bs = u.shape[0]
 
         steps0 = self.steps0.type_as(u).expand(self.bs, self.coord_dims[0]-1)
@@ -408,6 +424,8 @@ class Model(nn.Module):
         #steps2 = 2*steps2.clip(min=0.05, max=0.6)
 
         steps_list = [steps0, steps1, steps2]
+
+        params_u,params_v,params_w = params
 
         upi = up.reshape(bs, *self.coord_dims)
         #vpi = vp.reshape(bs, *self.coord_dims)
@@ -432,20 +450,23 @@ class Model(nn.Module):
         v = v.reshape(bs, self.pde.grid_size)
         #u, u_t, u_x, u_y, u_tt, u_xx, u_yy
         #(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1), (2, 0, 0), (0, 2, 0), (0, 0, 2)
+        A2 = up.pow(2) + v.pow(2)
         #u
-        coeffs_u[..., 0] = -(1-up.pow(2)-v.pow(2))
+        #coeffs_u[..., 0] = -(1-up.pow(2)-v.pow(2))
+        coeffs_u[..., 0] = (1*params_u[0] + params_u[1]*A2) #+ params_u[2]*A2.pow(2))
         #coeffs_v[..., 0] = params_v[0]
         #u_t
         coeffs_u[..., 1] = 1.
         #coeffs_v[..., 1] = 1.
         #u_xx
-        coeffs_u[..., 5] = params_u[0]
+        coeffs_u[..., 5] = params_v[0]
         #coeffs_v[..., 5] = params_v[1]
         #u_yy
-        coeffs_u[..., 6] = params_u[0]
+        coeffs_u[..., 6] = params_v[0]
         #coeffs_v[..., 6] = params_v[1]
 
-        rhs_u = (up.pow(2) +v.pow(2))*v
+        #rhs_u = (up.pow(2) +v.pow(2))*v
+        rhs_u = (1*params_w[0] + params_w[1]*A2)*v
 
         rhs_loss = None #(rhs_u - rhs_u_true).abs().mean()
 
@@ -491,7 +512,7 @@ class Model(nn.Module):
         steps_x = None #self.x_steps_net(steps_in[1])
         steps_y = None #self.y_steps_net(steps_in[2])
 
-        u0, v0, rhs_loss = self.solve(u,v, up, vp, params[0], params[1], (steps_t, steps_x, steps_y))
+        u0, v0, rhs_loss = self.solve(u,v, up, vp, params, (steps_t, steps_x, steps_y))
 
         return u0, v0,up,vp, params, rhs_loss
         #return u0, up,eps, params
@@ -512,15 +533,17 @@ model=model.to(device)
 
 def print_eq(stdout=False):
     #print learned equation
-    xu, xv = model.get_params()
+    xu, xv,xw = model.get_params()
     xu = xu.squeeze().detach().cpu().numpy()
     xv = xv.squeeze().detach().cpu().numpy()
+    xw = xw.squeeze().detach().cpu().numpy()
 
     L.info(f'param u\n{xu}')
     L.info(f'param v\n{xv}')
+    L.info(f'param w\n{xw}')
     
     #print(params)
-    return xu, xv
+    return xu, xv, xw
     #return code
 
 
@@ -534,7 +557,6 @@ def optimize(nepoch=5000):
     #with tqdm(total=nepoch) as pbar:
 
     params=print_eq()
-    L.info(f'parameters\n{params}')
     for epoch in range(nepoch):
         #pbar.update(1)
         #for i, (time, batch_in) in enumerate(train_loader):
@@ -586,7 +608,7 @@ def optimize(nepoch=5000):
             #var_u_loss = (var_u- batch_u).pow(2).mean(dim=-1)
             #var_v_loss = (var_v- v).abs().mean(dim=-1)
             #loss = x_loss + var_loss + time_loss
-            param_loss = params[0].abs().mean() #+ params[1].abs().mean()
+            param_loss = params[0].abs().mean() + params[1].abs().mean() + params[2].abs().mean()
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.001*param_loss.mean()
@@ -594,7 +616,7 @@ def optimize(nepoch=5000):
             #loss = u_loss.mean() +  var_u_loss.mean() + var_v_loss.mean()
             loss = u_loss.mean() +  var_u_loss.mean() 
             #loss = loss + rhs_loss.mean()
-            #loss = loss +  0.0001*param_loss.mean()
+            loss = loss +  0.0001*param_loss.mean()
 
             u_losses.append(u_loss.mean().item())
             v_losses.append(v_loss.mean().item())
