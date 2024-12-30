@@ -263,7 +263,7 @@ class Model(nn.Module):
         #self.rnet1 = N.ResNet(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0]+2)
         #self.rnet2 = N.ResNet(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0]+2)
 
-        self.rnet3d_1 = N.ResNet3D(out_channels=self.num_multiindex+2, in_channels=1)
+        self.rnet3d_1 = N.ResNet3D(out_channels=1, in_channels=1)
         self.rnet3d_2 = N.ResNet3D(out_channels=1, in_channels=1)
         #self.rnet2 = N.ResNet3D(out_channels=1, in_channels=1)
         #self.rhs_net = N.ResNet3D(out_channels=1, in_channels=1)
@@ -543,7 +543,7 @@ class Model(nn.Module):
 
         return steps_list
 
-    def solve(self, u, v, up, vp, crvals, params, steps_list):
+    def solve(self, u, v, up, vp, params, steps_list):
         bs = u.shape[0]
 
         params_u,params_v,params_w, params_x, params_y, params_z = params
@@ -634,10 +634,8 @@ class Model(nn.Module):
         #up = self.rnet1(u)
         #vp = None #self.rnet2(v)
 
-        _up = self.rnet3d_1(u_in.unsqueeze(1))
+        up = self.rnet3d_1(u_in.unsqueeze(1)).squeeze(1)
         vp = self.rnet3d_2(v_in.unsqueeze(1)).squeeze(1)
-        up = _up[:, 0]
-        crvals = _up[:, 1:]
 
         #up = 3*torch.tanh(up)
         #vp = 3*torch.tanh(vp)
@@ -648,7 +646,7 @@ class Model(nn.Module):
         params = self.get_params()
         steps_list = self.get_steps(u, t,x,y)
 
-        u0, v0, rhs_loss = self.solve(u,v, up, vp, crvals, params, steps_list)
+        u0, v0, rhs_loss = self.solve(u,v, up, vp, params, steps_list)
 
         return u0, v0,up,vp, params, rhs_loss
         #return u0, up,eps, params
@@ -763,7 +761,7 @@ def optimize(nepoch=5000):
             loss = u_loss.mean() +  var_u_loss.mean() + var_v_loss.mean()
             #loss = u_loss.mean() +  var_u_loss.mean() 
             #loss = loss + rhs_loss.mean()
-            loss = loss +  0.001*param_loss.mean()
+            #loss = loss +  0.0001*param_loss.mean()
 
             u_losses.append(u_loss.mean().item())
             v_losses.append(v_loss.mean().item())

@@ -1935,13 +1935,13 @@ class PDESYSLP(nn.Module):
 
 
         
-        #######dense
-        #_x = _x.reshape(b, 1, -1)
+        ########dense
+        #x = x.reshape(b, 1, -1)
         #y = y.reshape(b, -1, 1)
 
-        #dA_dense = y*_x#.reshape(b, -1, 1)
-        #return dA_dense
-        ######3
+        #dA_dense = y*x#.reshape(b, -1, 1)
+        ##return dA_dense
+        #######3
 
         x = x.reshape(b,-1)
         y = y.reshape(b,-1)
@@ -1979,7 +1979,7 @@ class PDESYSLP(nn.Module):
 
         #Bug: multiplying sparse matrices pointwise raises floating point exception for large 3D inputs
         #ipdb.set_trace()
-        #dD = Y*X
+        #dD1 = Y*X
 
         X = X.coalesce()
         Y = Y.coalesce()

@@ -529,6 +529,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             ##dQ = dQ/2
 
             #dq = dnu
+            #ipdb.set_trace()
 
             #return dQ, dq,None, None, None,None,None
             #print(dQ, dq)
