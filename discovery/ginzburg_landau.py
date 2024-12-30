@@ -315,6 +315,57 @@ class Model(nn.Module):
             #nn.Tanh()
         )
 
+        self.param_in4 = nn.Parameter(torch.randn(1,64))
+        self.param_net4 = nn.Sequential(
+            nn.Linear(64, 1024),
+            #nn.ELU(),
+            nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
+            #nn.ELU(),
+            nn.Linear(1024, 1024),
+            #nn.ELU(),
+            nn.ReLU(),
+            #two polynomials, second order
+            #nn.Linear(1024, 3*2),
+            nn.Linear(1024, 2),
+            #nn.Tanh()
+        )
+
+        self.param_in5 = nn.Parameter(torch.randn(1,64))
+        self.param_net5 = nn.Sequential(
+            nn.Linear(64, 1024),
+            #nn.ELU(),
+            nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
+            #nn.ELU(),
+            nn.Linear(1024, 1024),
+            #nn.ELU(),
+            nn.ReLU(),
+            #two polynomials, second order
+            #nn.Linear(1024, 3*2),
+            nn.Linear(1024, 2),
+            #nn.Tanh()
+        )
+
+        self.param_in6 = nn.Parameter(torch.randn(1,64))
+        self.param_net6 = nn.Sequential(
+            nn.Linear(64, 1024),
+            #nn.ELU(),
+            nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
+            #nn.ELU(),
+            nn.Linear(1024, 1024),
+            #nn.ELU(),
+            nn.ReLU(),
+            #two polynomials, second order
+            #nn.Linear(1024, 3*2),
+            nn.Linear(1024, 2),
+            #nn.Tanh()
+        )
+
 
         self.t_step_size = 0.05 #steps[0]
         self.x_step_size = 0.5 #steps[1]
@@ -384,12 +435,15 @@ class Model(nn.Module):
         u_params =(self.param_net(self.param_in)).squeeze()
         v_params =(self.param_net2(self.param_in2)).squeeze()
         w_params =(self.param_net3(self.param_in3)).squeeze()
+        x_params =(self.param_net4(self.param_in4)).squeeze()
+        y_params =(self.param_net5(self.param_in5)).squeeze()
+        z_params =(self.param_net6(self.param_in6)).squeeze()
         #v_params = -2*torch.sigmoid(v_params)
         #v_params = torch.sigmoid(v_params)
         #u_params = -torch.sigmoid(u_params)
         #params = params.reshape(-1,1,2, 3)
         #params = params.reshape(-1,1,2, 2)
-        return u_params, v_params, w_params
+        return u_params, v_params, w_params, x_params, y_params, z_params
 
     def get_iv(self, u):
         bs = u.shape[0]
@@ -426,7 +480,7 @@ class Model(nn.Module):
 
         steps_list = [steps0, steps1, steps2]
 
-        params_u,params_v,params_w = params
+        params_u,params_v,params_w, params_x, params_y, params_z = params
 
         upi = up.reshape(bs, *self.coord_dims)
         #ui = u.reshape(bs, *self.coord_dims)
@@ -457,13 +511,13 @@ class Model(nn.Module):
         A2 = up.pow(2) + vp.pow(2)
         #u
         #coeffs_u[..., 0] = -(1-up.pow(2)-v.pow(2))
-        coeffs_u[..., 0] = (1*params_u[0] + params_u[1]*A2) #+ params_u[2]*A2.pow(2))
+        coeffs_u[..., 0] = 0 #(1*params_u[0] + params_u[1]*A2) #+ params_u[2]*A2.pow(2))
         #coeffs_v[..., 0] = params_v[0]
         #u_t
-        coeffs_u[..., 1] = 1. #params_v[1]
+        coeffs_u[..., 1] = params_v[1]
         #coeffs_v[..., 1] = 1.
         #u_xx
-        coeffs_u[..., 5] = params_v[0]
+        coeffs_u[..., 5] = params_x[0]
         #coeffs_v[..., 5] = params_v[1]
         #u_yy
         coeffs_u[..., 6] = params_w[0]
@@ -472,7 +526,7 @@ class Model(nn.Module):
         #rhs_u = (up.pow(2) +v.pow(2))*v
         #rhs_u = (1*params_w[0] + params_w[1]*A2)*v
         #rhs_u = (params_w[1]*A2)*v
-        rhs_u = (params_w[1]*A2)*vp
+        rhs_u = (params_y[0]*A2)*vp + (1- params_z[0]*A2)*up
 
         rhs_loss = None #(rhs_u - rhs_u_true).abs().mean()
 
@@ -544,14 +598,20 @@ model=model.to(device)
 
 def print_eq(stdout=False):
     #print learned equation
-    xu, xv,xw = model.get_params()
+    xu, xv,xw,xx,xy,xz = model.get_params()
     xu = xu.squeeze().detach().cpu().numpy()
     xv = xv.squeeze().detach().cpu().numpy()
     xw = xw.squeeze().detach().cpu().numpy()
+    xx = xx.squeeze().detach().cpu().numpy()
+    xy = xy.squeeze().detach().cpu().numpy()
+    xz = xz.squeeze().detach().cpu().numpy()
 
     L.info(f'param u\n{xu}')
     L.info(f'param v\n{xv}')
     L.info(f'param w\n{xw}')
+    L.info(f'param x\n{xx}')
+    L.info(f'param y\n{xy}')
+    L.info(f'param z\n{xz}')
     
     #print(params)
     return xu, xv, xw
@@ -622,7 +682,8 @@ def optimize(nepoch=5000):
             #var_u_loss = (var_u- batch_u).pow(2).mean(dim=-1)
             #var_v_loss = (var_v- v).abs().mean(dim=-1)
             #loss = x_loss + var_loss + time_loss
-            param_loss = params[0].abs().mean() + params[1].abs().mean() + params[2].abs().mean()
+            param_loss = params[0].abs().mean() + params[1].abs().mean() + params[2].abs().mean()+ params[3].abs().mean()
+            param_loss = param_loss + params[4].abs().mean() + params[5].abs().mean() 
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.001*param_loss.mean()
