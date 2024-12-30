@@ -132,44 +132,44 @@ class ResNet3D(nn.Module):
 
         x = self.c1(x)
         _x = x
-        x = F.relu(x) 
+        x = F.elu(x) 
 
         x = self.c2(x) + _x 
         _x = x
-        x = F.relu(x) 
+        x = F.elu(x) 
 
         x = self.c3(x) + _x
         _x = x
-        x = F.relu(x)
+        x = F.elu(x)
 
 
         x = self.c4(x) + _x
         _x = x
-        x = F.relu(x)
+        x = F.elu(x)
 
         x = self.c41(x) + _x
         _x = x
-        x = F.relu(x)
+        x = F.elu(x)
 
         x = self.c42(x) + _x
         _x = x
-        x = F.relu(x)
+        x = F.elu(x)
 
-        x = self.c43(x) + _x
-        _x = x
-        x = F.relu(x)
+        #x = self.c43(x) + _x
+        #_x = x
+        #x = F.elu(x)
 
-        x = self.c44(x) + _x
-        _x = x
-        x = F.relu(x)
+        #x = self.c44(x) + _x
+        #_x = x
+        #x = F.elu(x)
 
         x = self.c45(x) + _x
         _x = x
-        x = F.relu(x)
+        x = F.elu(x)
 
         x = self.c46(x) + _x
         _x = x
-        x = F.relu(x)
+        x = F.elu(x)
 
         #_x = x
         #x = self.c4(x)
