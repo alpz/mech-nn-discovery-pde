@@ -255,11 +255,11 @@ class Model(nn.Module):
         self.num_multiindex = self.pde.n_orders
 
 
-        self.rnet1 = N.ResNet(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0]+2)
-        self.rnet2 = N.ResNet(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0]+2)
+        #self.rnet1 = N.ResNet(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0]+2)
+        #self.rnet2 = N.ResNet(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0]+2)
 
-        #self.rnet3d_1 = N.ResNet3D(out_channels=1, in_channels=1)
-        #self.rnet3d_2 = N.ResNet3D(out_channels=1, in_channels=1)
+        self.rnet3d_1 = N.ResNet3D(out_channels=1, in_channels=1)
+        self.rnet3d_2 = N.ResNet3D(out_channels=1, in_channels=1)
         #self.rnet2 = N.ResNet3D(out_channels=1, in_channels=1)
         #self.rhs_net = N.ResNet3D(out_channels=1, in_channels=1)
 
@@ -329,13 +329,13 @@ class Model(nn.Module):
             #two polynomials, second order
             #nn.Linear(1024, 3*2),
             nn.Linear(1024, self.num_multiindex),
-            nn.Tanh()
+            #nn.Tanh()
         )
 
 
         self.t_step_size = 0.05 #steps[0]
-        self.x_step_size = 0.5 #steps[1]
-        self.y_step_size = 0.5 #steps[2]
+        self.x_step_size = 0.05 #steps[1]
+        self.y_step_size = 0.05 #steps[2]
         #print('steps ', steps)
         ##self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
         ##self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
@@ -433,7 +433,9 @@ class Model(nn.Module):
         steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.55)
         steps2 = torch.sigmoid(steps1).clip(min=0.005, max=0.55)
 
-    def solve_expr(self, rhs, ux, upx):
+        return [steps0, steps1, steps2]
+
+    def solve_expr(self, rhs, ux, upx, coeffs):
         bs = rhs.shape[0]
         #up_coeffs = self.up_coeffs.repeat(self.bs,self.pde.grid_size,1)
         #coeffs = self.up_coeffs.expand(self.bs,self.n_patches, self.pde.grid_size,-1)
@@ -469,35 +471,40 @@ class Model(nn.Module):
         #u_in = torch.cat([u,x,y], dim=1) 
         #v_in = torch.cat([v,x,y], dim=1) 
         u_in = u
+        v_in = v
 
         #rhs = self.rnet2(u)
         #up = self.rnet1(u)
         #vp = None #self.rnet2(v)
 
         rhs = self.rnet3d_1(u_in.unsqueeze(1)).squeeze(1)
+        vp = self.rnet3d_2(v_in.unsqueeze(1)).squeeze(1)
+
+        #coeffs = coeffs.permute(0,2,1)
         #vp = None #self.rnet2(v_in).squeeze(1)
         #up = self.fnet1(u_in)
         #vp = self.fnet2(v_in)
-        up_dict = self.solve_expr(rhs, u_in, None)
+        up_dict = self.solve_expr(rhs, u_in, None, None)
 
 
-        v = v.reshape(bs, self.pde.grid_size)
+        #v = v.reshape(bs, self.pde.grid_size)
+        vp = vp.reshape(bs, self.pde.grid_size)
         up = up_dict['up'].reshape(bs, self.pde.grid_size)
         up_t = up_dict['up_t'].reshape(bs, self.pde.grid_size)
         up_xx = up_dict['up_xx'].reshape(bs, self.pde.grid_size)
         up_yy = up_dict['up_yy'].reshape(bs, self.pde.grid_size)
 
-        A2 = up.pow(2) + v.pow(2)
+        A2 = up.pow(2) + vp.pow(2)
 
         params = self.get_params()
         p1,p2,p3 = params
-        expr_rhs = p1[0]*A2*up  + p2[0]*up_xx  + p2[1]*up_yy + p3[0]*A2*v
+        expr_rhs = p1[0]*A2*up  + p2[0]*up_xx  + p2[1]*up_yy + p3[0]*A2*vp
 
         expr_loss = (up_t - expr_rhs).abs()
 
 
         #return u0, v0,up,vp, params, rhs_loss
-        return up, expr_loss, params
+        return up, vp, expr_loss, params
         #return u0, up,eps, params
 
 
@@ -563,12 +570,13 @@ def optimize(nepoch=5000):
 
             #optimizer.zero_grad()
             #x0, steps, eps, var,xi = model(index, batch_in)
-            u, expr_loss, params = model(batch_u, batch_v, x,y)
+            u,v, expr_loss, params = model(batch_u, batch_v, x,y)
 
 
             bs = batch_u.shape[0]
             u = u.reshape(bs, -1)
-            #v = v.reshape(bs, -1)
+            v = v.reshape(bs, -1)
+
             batch_u = batch_u.reshape(bs, -1)
             batch_v = batch_v.reshape(bs, -1)
             #var_u =var_u.reshape(bs, -1)
@@ -581,9 +589,10 @@ def optimize(nepoch=5000):
 
             #u_loss = (u- batch_u).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             u_loss = (u- batch_u).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
+            v_loss = (v- batch_v).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             #u_loss = (u- batch_u).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             param_loss = params[0].abs().mean() + params[1].abs().mean() + params[2].abs().mean()
-            loss = u_loss.mean() +  expr_loss.mean()
+            loss = u_loss.mean() + v_loss.mean() +  expr_loss.mean()
             #loss = loss + rhs_loss.mean()
             loss = loss +  0.001*param_loss.mean()
 

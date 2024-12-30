@@ -25,10 +25,18 @@ plt.show()
 filename = "outputs/GL_beta1.5/"
 times, fields = ReadAllDataFilesInFolder(filename)
 # %%
-times.keys()
+times['x'][2] - times['x'][1]
 
 # %%
 fields
 
 # %%
-times
+Ai =np.transpose(times['Ai'], (2,0,1))
+Ar =np.transpose(times['Ar'], (2,0,1))
+# %%
+Ai.shape
+Ar.shape
+# %%
+np.save('Ai_256.npy', Ai)
+np.save('Ar_256.npy', Ar)
+# %%

@@ -255,11 +255,11 @@ class Model(nn.Module):
         self.num_multiindex = self.pde.n_orders
 
 
-        self.rnet1 = N.ResNet(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0]+2)
-        self.rnet2 = N.ResNet(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0]+2)
+        #self.rnet1 = N.ResNet(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0]+2)
+        #self.rnet2 = N.ResNet(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0]+2)
 
-        #self.rnet3d_1 = N.ResNet3D(out_channels=1, in_channels=1)
-        #self.rnet3d_2 = N.ResNet3D(out_channels=1, in_channels=1)
+        self.rnet3d_1 = N.ResNet3D(out_channels=1, in_channels=1)
+        self.rnet3d_2 = N.ResNet3D(out_channels=1, in_channels=1)
         #self.rnet2 = N.ResNet3D(out_channels=1, in_channels=1)
         #self.rhs_net = N.ResNet3D(out_channels=1, in_channels=1)
 
@@ -317,8 +317,8 @@ class Model(nn.Module):
 
 
         self.t_step_size = 0.05 #steps[0]
-        self.x_step_size = 0.1 #steps[1]
-        self.y_step_size = 0.1 #steps[2]
+        self.x_step_size = 0.5 #steps[1]
+        self.y_step_size = 0.5 #steps[2]
         #print('steps ', steps)
         ##self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
         ##self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
@@ -449,18 +449,18 @@ class Model(nn.Module):
         #coeffs_v = torch.zeros((bs, self.pde.grid_size, self.pde.n_orders), device=u.device)
 
         up = up.reshape(bs, self.pde.grid_size)
-        v = v.reshape(bs, self.pde.grid_size)
-        #vp = vp.reshape(bs, self.pde.grid_size)
+        #v = v.reshape(bs, self.pde.grid_size)
+        vp = vp.reshape(bs, self.pde.grid_size)
         #u, u_t, u_x, u_y, u_tt, u_xx, u_yy
         #(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1), (2, 0, 0), (0, 2, 0), (0, 0, 2)
-        A2 = up.pow(2) + v.pow(2)
-        #A2 = up.pow(2) + vp.pow(2)
+        #A2 = up.pow(2) + v.pow(2)
+        A2 = up.pow(2) + vp.pow(2)
         #u
         #coeffs_u[..., 0] = -(1-up.pow(2)-v.pow(2))
         coeffs_u[..., 0] = (1*params_u[0] + params_u[1]*A2) #+ params_u[2]*A2.pow(2))
         #coeffs_v[..., 0] = params_v[0]
         #u_t
-        coeffs_u[..., 1] = params_v[1]
+        coeffs_u[..., 1] = 1. #params_v[1]
         #coeffs_v[..., 1] = 1.
         #u_xx
         coeffs_u[..., 5] = params_v[0]
@@ -471,8 +471,8 @@ class Model(nn.Module):
 
         #rhs_u = (up.pow(2) +v.pow(2))*v
         #rhs_u = (1*params_w[0] + params_w[1]*A2)*v
-        rhs_u = (params_w[1]*A2)*v
-        #rhs_u = (params_w[1]*A2)*vp
+        #rhs_u = (params_w[1]*A2)*v
+        rhs_u = (params_w[1]*A2)*vp
 
         rhs_loss = None #(rhs_u - rhs_u_true).abs().mean()
 
@@ -500,18 +500,19 @@ class Model(nn.Module):
 
         # u batch, time, x, y
 
-        u_in = torch.cat([u,x,y], dim=1) 
-        v_in = torch.cat([v,x,y], dim=1) 
-        #u_in = u
+        #u_in = torch.cat([u,x,y], dim=1) 
+        #v_in = torch.cat([v,x,y], dim=1) 
+        u_in = u
+        v_in = v
 
-        up = self.rnet1(u_in)
-        vp = None #self.rnet2(v)
+        #up = self.rnet1(u_in)
+        #vp = None #self.rnet2(v)
         #vp = self.rnet2(v_in)
         #up = self.rnet1(u)
         #vp = None #self.rnet2(v)
 
-        #up = self.rnet3d_1(u_in.unsqueeze(1)).squeeze(1)
-        #vp = None #self.rnet2(v_in).squeeze(1)
+        up = self.rnet3d_1(u_in.unsqueeze(1)).squeeze(1)
+        vp = self.rnet3d_2(v_in.unsqueeze(1)).squeeze(1)
         #up = self.fnet1(u_in)
         #vp = self.fnet2(v_in)
 
@@ -600,7 +601,7 @@ def optimize(nepoch=5000):
             batch_u = batch_u.reshape(bs, -1)
             batch_v = batch_v.reshape(bs, -1)
             var_u =var_u.reshape(bs, -1)
-            #var_v =var_v.reshape(bs, -1)
+            var_v =var_v.reshape(bs, -1)
 
             #u_loss = (u- batch_u).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             #v_loss = (v- batch_v).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
@@ -614,8 +615,8 @@ def optimize(nepoch=5000):
             #var_u_loss = (var_u- batch_u).abs().mean(dim=-1)
             #var_u_loss = (var_u- batch_u).abs().mean(dim=-1)
             var_u_loss = (var_u- batch_u).abs().mean(dim=-1)
-            #var_v_loss = (var_v- batch_v).abs().mean(dim=-1)
-            var_v_loss = 0*var_u_loss
+            var_v_loss = (var_v- batch_v).abs().mean(dim=-1)
+            #var_v_loss = 0*var_u_loss
 
             #var_v_loss = (var_v- batch_v).pow(2).mean(dim=-1)
             #var_u_loss = (var_u- batch_u).pow(2).mean(dim=-1)
@@ -626,8 +627,8 @@ def optimize(nepoch=5000):
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.001*param_loss.mean()
             #jloss = u_loss.mean() +  v_loss.mean() + var_u_loss.mean() + var_v_loss.mean()
-            #loss = u_loss.mean() +  var_u_loss.mean() + var_v_loss.mean()
-            loss = u_loss.mean() +  var_u_loss.mean() 
+            loss = u_loss.mean() +  var_u_loss.mean() + var_v_loss.mean()
+            #loss = u_loss.mean() +  var_u_loss.mean() 
             #loss = loss + rhs_loss.mean()
             loss = loss +  0.001*param_loss.mean()
 

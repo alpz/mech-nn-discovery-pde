@@ -15,8 +15,8 @@ double dt;
 //We create then two variables that will give us information about the simulation timesteps
 mgstats mgd1, mgd2;
 
-//int num_cells = 256;
-int num_cells = 128;
+int num_cells = 256;
+//int num_cells = 128;
 double domain_size = 100.0;
 
 int main(){
