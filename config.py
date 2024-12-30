@@ -30,6 +30,7 @@ class PDEConfig:
     ilu_fill_factor= 60.0
     sindpy_data = os.path.join(os.path.expanduser('~'),'data/pysindy/')
     brusselator_dir = os.path.join(os.path.expanduser('~'),'data', 'brusselator')
+    ginzburg_dir = os.path.join(os.path.expanduser('~'),'data', 'ginzburg')
     #relax
     ds = 1e2
 

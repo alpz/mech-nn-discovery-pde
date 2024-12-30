@@ -73,8 +73,8 @@ class ReactDiffDataset(Dataset):
 
         #129,2,64,64
         #data=np.load(os.path.join(PDEConfig.brusselator_dir, 'brusselator_01_1en3.npy'))
-        u_data=np.load(os.path.join(PDEConfig.sindpy_data,'gen', 'rdiff2d_u.npy'))
-        v_data=np.load(os.path.join(PDEConfig.sindpy_data,'gen', 'rdiff2d_v.npy'))
+        u_data=np.load(os.path.join(PDEConfig.ginzburg_dir, 'Ar.npy'))
+        v_data=np.load(os.path.join(PDEConfig.ginzburg_dir, 'Ai.npy'))
         print('rdiff shape', u_data.shape)
 
         #print(data.keys())
@@ -100,6 +100,7 @@ class ReactDiffDataset(Dataset):
         u_data = torch.tensor(u_data, dtype=dtype)#.permute(1,0,2,3) 
         v_data = torch.tensor(v_data, dtype=dtype)#.permute(1,0,2,3) 
 
+
         data_shape = tuple(u_data.shape)
         #self.t = torch.linspace(0,1,self.u_data.shape[0]).reshape(-1,1,1).expand(-1, self.u_data.shape[0],self.u_data.shape[2])       
         #self.x = torch.linspace(0,1,self.u_data.shape[1]).reshape(1,-1,1).expand(self.u_data.shape[0], -1, self.u_data.shape[2])        
@@ -109,8 +110,8 @@ class ReactDiffDataset(Dataset):
         self.y = torch.linspace(0,1,data_shape[2]).reshape(1,-1).expand( data_shape[1], -1)        
         
 
-        self.u_data = u_data[:128]
-        self.v_data = v_data[:128]
+        self.u_data = u_data#[:128]
+        self.v_data = v_data#[:128]
         #self.v_data = data[1]
         print('u,v ', self.u_data.shape, self.v_data.shape)
 
@@ -289,8 +290,8 @@ class Model(nn.Module):
             #nn.ReLU(),
             nn.ReLU(),
             nn.Linear(1024, 1024),
-            nn.ReLU(),
             #nn.ReLU(),
+            nn.ReLU(),
             #two polynomials, second order
             #nn.Linear(1024, 3*2),
             nn.Linear(1024, 2),
@@ -316,8 +317,8 @@ class Model(nn.Module):
 
 
         self.t_step_size = 0.05 #steps[0]
-        self.x_step_size = 0.1 #steps[1]
-        self.y_step_size = 0.1 #steps[2]
+        self.x_step_size = 0.5 #steps[1]
+        self.y_step_size = 0.5 #steps[2]
         #print('steps ', steps)
         ##self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
         ##self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
@@ -598,12 +599,12 @@ def optimize(nepoch=5000):
             #var_v_loss = (var_v- batch_v).pow(2).mean(dim=-1)
 
             #u_loss = (u- batch_u).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
-            u_loss = (u- batch_u).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
+            u_loss = (u- batch_u).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             #u_loss = (u- batch_u).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             v_loss = u_loss #(v- batch_v).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             #var_u_loss = (var_u- batch_u).abs().mean(dim=-1)
             #var_u_loss = (var_u- batch_u).abs().mean(dim=-1)
-            var_u_loss = (var_u- batch_u).pow(2).mean(dim=-1)
+            var_u_loss = (var_u- batch_u).abs().mean(dim=-1)
             var_v_loss = 0*var_u_loss
 
             #var_v_loss = (var_v- batch_v).pow(2).mean(dim=-1)
