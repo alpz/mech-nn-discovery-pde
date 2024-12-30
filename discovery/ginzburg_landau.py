@@ -73,8 +73,11 @@ class ReactDiffDataset(Dataset):
 
         #129,2,64,64
         #data=np.load(os.path.join(PDEConfig.brusselator_dir, 'brusselator_01_1en3.npy'))
-        u_data=np.load(os.path.join(PDEConfig.ginzburg_dir, 'Ar.npy'))
-        v_data=np.load(os.path.join(PDEConfig.ginzburg_dir, 'Ai.npy'))
+        #u_data=np.load(os.path.join(PDEConfig.ginzburg_dir, 'Ar.npy'))
+        #v_data=np.load(os.path.join(PDEConfig.ginzburg_dir, 'Ai.npy'))
+
+        u_data=np.load(os.path.join(PDEConfig.ginzburg_dir, '256', 'Ar_256.npy'))
+        v_data=np.load(os.path.join(PDEConfig.ginzburg_dir, '256', 'Ai_256.npy'))
         print('rdiff shape', u_data.shape)
 
         #print(data.keys())
@@ -110,8 +113,8 @@ class ReactDiffDataset(Dataset):
         self.y = torch.linspace(0,1,data_shape[2]).reshape(1,-1).expand( data_shape[1], -1)        
         
 
-        self.u_data = u_data[32:32+128]
-        self.v_data = v_data[32:32+128]
+        self.u_data = u_data[32:32+128, :128, :128]
+        self.v_data = v_data[32:32+128, :128, :128]
         #self.v_data = data[1]
         print('u,v ', self.u_data.shape, self.v_data.shape)
 
@@ -235,6 +238,7 @@ class Model(nn.Module):
                         #nx = endx
                         lambda nt, nx, ny: (1,0, [1,nx-1,1],[nt-1,nx-1, ny-1]), 
                         lambda nt, nx, ny: (2,0, [1,1,ny-1],[nt-1, nx-2, ny-1]), 
+                        lambda nt, nx, ny: (0,0, [nt-1,1,1],[nt-1, nx-2, ny-2]), 
                         ]
 
 
@@ -259,7 +263,7 @@ class Model(nn.Module):
         #self.rnet1 = N.ResNet(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0]+2)
         #self.rnet2 = N.ResNet(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0]+2)
 
-        self.rnet3d_1 = N.ResNet3D(out_channels=1, in_channels=1)
+        self.rnet3d_1 = N.ResNet3D(out_channels=self.num_multiindex+2, in_channels=1)
         self.rnet3d_2 = N.ResNet3D(out_channels=1, in_channels=1)
         #self.rnet2 = N.ResNet3D(out_channels=1, in_channels=1)
         #self.rhs_net = N.ResNet3D(out_channels=1, in_channels=1)
@@ -369,8 +373,8 @@ class Model(nn.Module):
 
 
         self.t_step_size = 0.05 #steps[0]
-        self.x_step_size = 0.5 #steps[1]
-        self.y_step_size = 0.5 #steps[2]
+        self.x_step_size = 0.35 #steps[1]
+        self.y_step_size = 0.35 #steps[2]
         #print('steps ', steps)
         ##self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
         ##self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
@@ -389,6 +393,8 @@ class Model(nn.Module):
             nn.ReLU(),
             nn.Linear(1024, 1024),
             nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
             nn.Linear(1024, solver_dim[0]-1),
             nn.Sigmoid()
         )
@@ -399,12 +405,16 @@ class Model(nn.Module):
             nn.ReLU(),
             nn.Linear(1024, 1024),
             nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
             nn.Linear(1024, solver_dim[1]-1),
             nn.Sigmoid()
         )
         self.y_steps_net = nn.Sequential(
             nn.Linear(solver_dim[2], 1024),
             #nn.ELU(),
+            nn.ReLU(),
+            nn.Linear(1024, 1024),
             nn.ReLU(),
             nn.Linear(1024, 1024),
             nn.ReLU(),
@@ -441,7 +451,12 @@ class Model(nn.Module):
         z_params =(self.param_net6(self.param_in6)).squeeze()
         #v_params = -2*torch.sigmoid(v_params)
         #v_params = torch.sigmoid(v_params)
-        #u_params = -torch.sigmoid(u_params)
+        #u_params = 2*torch.tanh(u_params)
+        #v_params = 2*torch.tanh(v_params)
+        #w_params = 2*torch.tanh(w_params)
+        #x_params = 2*torch.tanh(x_params)
+        #y_params = 2*torch.tanh(y_params)
+        #z_params = 2*torch.tanh(z_params)
         #params = params.reshape(-1,1,2, 3)
         #params = params.reshape(-1,1,2, 2)
         return u_params, v_params, w_params, x_params, y_params, z_params
@@ -456,10 +471,55 @@ class Model(nn.Module):
 
         u4 = u[:,1:self.coord_dims[0], -1, 1:self.coord_dims[2]].reshape(bs, -1)
         u5 = u[:,1:self.coord_dims[0], 1:self.coord_dims[1]-1, -1].reshape(bs, -1)
+        u6 = u[:,-1, 1:self.coord_dims[1]-1, 1:self.coord_dims[2]-1].reshape(bs, -1)
 
-        ub = torch.cat([u1,u2,u3,u4,u5], dim=-1)
+        ub = torch.cat([u1,u2,u3,u4,u5,u6], dim=-1)
+        #ub = torch.cat([u1,u2,u3,u4,u5], dim=-1)
 
         return ub
+
+    def set_iv(self, coeffs, rhs, up, crvals):
+        bs = rhs.shape[0]
+
+        #crvals shape [bs, t, x, y, n_order+1]
+        rvals = crvals[:, -1,  :, :, :]
+        cvals = crvals[:, :-1, :, :, :].permute(0,2,3,4,1)
+
+        coeffs = coeffs.reshape(bs, *self.coord_dims, self.pde.n_orders)
+        rhs = rhs.reshape(bs, *self.coord_dims)
+        up = up.reshape(bs, *self.coord_dims)
+
+        #b, 
+        #coeffs[:, 0, :, :, :] = cvals[:, 0, :, :, :]
+        #coeffs[:, -1, :, :, :] = cvals[:, -1, :, :, :]
+        #coeffs[:, :, 0,  :, :] = cvals[:, :, 0, :, :]
+        #coeffs[:, :, -1, :, :] = cvals[:, :, -1, :, :]
+        #coeffs[:, :, :, 0,  :] = cvals[:, :, :, 0, : ]
+        #coeffs[:, :, :, -1, :] = cvals[:, :, :, -1, :]
+
+        coeffs[:, 0, :, :, :] = 0.
+        coeffs[:, -1, :, :, :] = 0.
+        coeffs[:, :, 0,  :, :] = 0.
+        coeffs[:, :, -1, :, :] = 0.
+        coeffs[:, :, :, 0,  :] = 0.
+        coeffs[:, :, :, -1, :] = 0.
+
+        coeffs[:, 0, :, :, 0] = up[:, 0, :, :]
+        coeffs[:, -1, :, :, 0] = up[:, -1, :, :]
+        coeffs[:, :, 0,  :, 0] = up[:, :, 0, :]
+        coeffs[:, :, -1, :, 0] = up[:, :,-1, :]
+        coeffs[:, :, :, 0,  0] = up[:,:, :, 0]
+        coeffs[:, :, :, -1, 0] = up[:,:,:, -1]
+
+        #rhs[:, 0, :, :] = rvals[:, 0, :, :]
+        #rhs[:, -1, :, :] = rvals[:, -1, :, :]
+        #rhs[:, :, 0, :] = rvals[:, :, 0, :]
+        #rhs[:, :, -1, :] = rvals[:, :,-1, :]
+        #rhs[:, :, :,  0] = rvals[:,:, :, 0]
+        #rhs[:, :, :, -1] = rvals[:,:,:, -1]
+
+
+        return coeffs, rhs 
 
     def get_steps(self, u, t, x, y):
         x = x.squeeze()
@@ -467,23 +527,23 @@ class Model(nn.Module):
         x = x[:, :, 0]
         y = y[:, 0,:]
 
-        #steps0 = self.steps0.type_as(u).expand(self.bs, self.coord_dims[0]-1)
-        #steps1 = self.steps1.type_as(u).expand(self.bs, self.coord_dims[1]-1)
-        #steps2 = self.steps2.type_as(u).expand(self.bs, self.coord_dims[2]-1)
-        #steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.2)
-        #steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.55)
-        #steps2 = torch.sigmoid(steps1).clip(min=0.005, max=0.55)
+        steps0 = self.steps0.type_as(u).expand(self.bs, self.coord_dims[0]-1)
+        steps1 = self.steps1.type_as(u).expand(self.bs, self.coord_dims[1]-1)
+        steps2 = self.steps2.type_as(u).expand(self.bs, self.coord_dims[2]-1)
+        steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.2)
+        steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.55)
+        steps2 = torch.sigmoid(steps1).clip(min=0.005, max=0.55)
 
-        steps0 = self.t_steps_net(t)
-        steps1 = self.x_steps_net(x)
-        steps2 = self.y_steps_net(y)
+        #steps0 = self.t_steps_net(t)
+        #steps1 = self.x_steps_net(x)
+        #steps2 = self.y_steps_net(y)
 
 
         steps_list = [steps0, steps1, steps2]
 
         return steps_list
 
-    def solve(self, u, v, up, vp, params, steps_list):
+    def solve(self, u, v, up, vp, crvals, params, steps_list):
         bs = u.shape[0]
 
         params_u,params_v,params_w, params_x, params_y, params_z = params
@@ -493,7 +553,7 @@ class Model(nn.Module):
         #vpi = vp.reshape(bs, *self.coord_dims)
         #upi = upi + up2.reshape(bs, *self.coord_dims)
         #upi = upi/2
-        iv_u_rhs = self.get_iv(upi)
+        iv_rhs = self.get_iv(upi)
         #iv_u_rhs = self.get_iv(u)
         #iv_v_rhs = self.get_iv(vpi)
 
@@ -517,7 +577,7 @@ class Model(nn.Module):
         A2 = up.pow(2) + vp.pow(2)
         #u
         #coeffs_u[..., 0] = -(1-up.pow(2)-v.pow(2))
-        coeffs_u[..., 0] = 0 #(1*params_z[0] + params_u[0]*A2) #+ params_u[2]*A2.pow(2))
+        coeffs_u[..., 0] = (1*params_z[0] + params_u[0]*A2) #+ params_u[2]*A2.pow(2))
         #coeffs_v[..., 0] = params_v[0]
         #u_t
         coeffs_u[..., 1] = params_v[1]
@@ -532,13 +592,16 @@ class Model(nn.Module):
         #rhs_u = (up.pow(2) +v.pow(2))*v
         #rhs_u = (1*params_w[0] + params_w[1]*A2)*v
         #rhs_u = (params_w[1]*A2)*v
-        rhs_u = (params_y[0]*A2)*vp + (1- params_z[0]*A2)*up
+        rhs_u = (params_y[0]*A2)*vp #+ (1- params_z[0]*A2)*up
+
 
         rhs_loss = None #(rhs_u - rhs_u_true).abs().mean()
 
         coeffs = coeffs_u #torch.stack([coeffs_u, coeffs_v], dim=0)
         rhs = rhs_u #torch.stack([rhs_u, rhs_v], dim=0)
-        iv_rhs = iv_u_rhs #torch.stack([iv_u_rhs, iv_v_rhs], dim=0)
+        #iv_rhs = torch.empty((self.bs, 0), device=rhs.device)
+
+        #coeffs, rhs = self.set_iv(coeffs, rhs, up, crvals)
 
         u0,_,eps = self.pde(coeffs, rhs, iv_rhs, steps_list)
         #u0_list.append(u0)
@@ -571,8 +634,13 @@ class Model(nn.Module):
         #up = self.rnet1(u)
         #vp = None #self.rnet2(v)
 
-        up = self.rnet3d_1(u_in.unsqueeze(1)).squeeze(1)
+        _up = self.rnet3d_1(u_in.unsqueeze(1))
         vp = self.rnet3d_2(v_in.unsqueeze(1)).squeeze(1)
+        up = _up[:, 0]
+        crvals = _up[:, 1:]
+
+        #up = 3*torch.tanh(up)
+        #vp = 3*torch.tanh(vp)
         #up = self.fnet1(u_in)
         #vp = self.fnet2(v_in)
 
@@ -580,7 +648,7 @@ class Model(nn.Module):
         params = self.get_params()
         steps_list = self.get_steps(u, t,x,y)
 
-        u0, v0, rhs_loss = self.solve(u,v, up, vp, params, steps_list)
+        u0, v0, rhs_loss = self.solve(u,v, up, vp, crvals, params, steps_list)
 
         return u0, v0,up,vp, params, rhs_loss
         #return u0, up,eps, params

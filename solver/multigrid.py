@@ -258,8 +258,8 @@ class MultigridSolver():
             #AtA = [A, P_diag]
 
             #D = torch.sparse.sum(PinvA*A, dim=1)
-            D = torch.sparse.sum(A*A, dim=1)
-            D = D.to_dense()
+            #D = torch.sparse.sum(A*A, dim=1)
+            D =None # D.to_dense()
 
             #P_rhs = P_diag_inv*A_rhs
 
@@ -471,7 +471,10 @@ class MultigridSolver():
 
             iv_list.append(iv)
 
-        iv_rhs = torch.cat(iv_list, dim=-1)
+        if len(iv_list) == 0:
+            iv_rhs = torch.empty(self.bs, 0, device=iv_rhs.device)
+        else:
+            iv_rhs = torch.cat(iv_list, dim=-1)
 
         return iv_rhs
 

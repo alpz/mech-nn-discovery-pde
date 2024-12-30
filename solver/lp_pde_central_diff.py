@@ -36,6 +36,7 @@ class QPVariableSet():
         self.n_coord = len(coord_dims)
 
         self.grid_size = np.prod(self.coord_dims)
+        self.grid_size_excl_edge = np.prod(np.array(self.coord_dims)-2)
 
         #make grid. reshape (grid_size, n_coord)
         self.grid_indices = np.indices(self.coord_dims).reshape((-1,self.grid_size)).transpose((1,0))
@@ -198,6 +199,23 @@ class QPVariableSet():
         
     def is_left_edge_or_adjacent(self, grid_index, coord):
         return grid_index[coord] == 0 or grid_index[coord] == 1
+
+    def is_right_edge_any(self, grid_index):
+        for coord in range(self.n_coord):
+            if self.is_right_edge(grid_index, coord):
+                return True
+        return False
+
+    def is_left_edge_any(self, grid_index):
+        for coord in range(self.n_coord):
+            if self.is_left_edge(grid_index, coord):
+                return True
+        return False
+
+    def is_edge_any(self, grid_index):
+        if self.is_left_edge_any(grid_index) or self.is_right_edge_any(grid_index):
+                return True
+        return False
 
 
     def get_order_counts(self, coord):
@@ -705,6 +723,9 @@ class PDESYSLP(nn.Module):
     def build_equation_constraints(self):
         #for grid_index in self.var_set.grid_indices:
         for grid_num,grid_index in enumerate(self.var_set.grid_indices):
+            #skip constraints on edges. Assumes initial conditions on box
+            if self.var_set.is_edge_any(grid_index):
+                continue
             var_list = []
             val_list = []
             for mi_index in self.var_set.mi_indices:
@@ -1579,10 +1600,49 @@ class PDESYSLP(nn.Module):
 
         return built_values
 
+    def add_pad(self, eq_values):
+        bs = eq_values.shape[0]
+        new_tensor = torch.zeros(self.bs, *self.var_set.coord_dims, device=eq_values.device)
+        new_shape = np.array(self.var_set.coord_dims)-2
+        new_shape = tuple(new_shape)
+        if self.n_coord==3:
+            eq_values = eq_values.reshape(bs, *new_shape)
+            new_tensor[:, 1:-1, 1:-1, 1:-1] = eq_values
+        elif self.n_coord==2:
+            eq_values = eq_values.reshape(bs, *new_shape)
+            new_tensor[:, 1:-1, 1:-1] = eq_values
+        else: 
+            eq_values = eq_values.reshape(bs, *new_shape)
+            new_tensor[:, 1:-1] = eq_values
+        return new_tensor
+
+    def remove_pad(self, eq_values, coeffs=True):
+        if coeffs:
+            eq_values = eq_values.reshape(self.bs, *self.var_set.coord_dims, len(self.var_set.mi_list))
+            if self.n_coord==3:
+                eq_values = eq_values[:, 1:-1, 1:-1, 1:-1, :]
+            elif self.n_coord==2:
+                eq_values = eq_values[:, 1:-1, 1:-1, :]
+            else: 
+                #self.n_coord==1:
+                eq_values = eq_values[:, 1:-1, :]
+        else:
+            eq_values = eq_values.reshape(self.bs, *self.var_set.coord_dims)
+            if self.n_coord==3:
+                eq_values = eq_values[:, 1:-1, 1:-1, 1:-1]
+            elif self.n_coord==2:
+                eq_values = eq_values[:, 1:-1, 1:-1]
+            else: 
+                #self.n_coord==1:
+                eq_values = eq_values[:, 1:-1]
+        return eq_values
 
     def build_equation_tensor(self, eq_values):
         #eq_values = self.build_equation_values(steps).reshape(-1)
         #shape batch, n_eq, n_step, n_vars, order+1
+
+        eq_values = self.remove_pad(eq_values, coeffs=True)
+
         eq_values = eq_values.reshape(-1)
 
         eq_indices = self.eq_A._indices()
@@ -1608,6 +1668,8 @@ class PDESYSLP(nn.Module):
         #self.initial_A = self.initial_A.type_as(derivative_A)
         initial_A = self.initial_A.type_as(derivative_A)
 
+        eq_rhs = self.remove_pad(eq_rhs, coeffs=False).reshape(self.bs, -1)
+
         eq_values = eq_A._values().reshape(self.bs,-1)
         #init_values = self.initial_A._values().reshape(self.bs, -1)
         init_values = initial_A._values().reshape(self.bs, -1)
@@ -1615,6 +1677,7 @@ class PDESYSLP(nn.Module):
 
 
         values = torch.cat([eq_values, init_values, deriv_values], dim=1)
+        #values = torch.cat([eq_values, deriv_values], dim=1)
         values = values.reshape(-1)
 
         #self.A_block_indices = self.A_block_indices.to(values.device)
@@ -1627,6 +1690,7 @@ class PDESYSLP(nn.Module):
         derivative_rhs = self.derivative_rhs.type_as(eq_rhs)
         #rhs = torch.cat([eq_rhs, iv_rhs, self.derivative_rhs], axis=1)
         rhs = torch.cat([eq_rhs, iv_rhs, derivative_rhs], axis=1)
+        #rhs = torch.cat([eq_rhs, derivative_rhs], axis=1)
         rhs = rhs.reshape(-1)
 
         return A_block, rhs
@@ -1635,11 +1699,15 @@ class PDESYSLP(nn.Module):
     def fill_constraints_torch(self, eq_A, eq_rhs, iv_rhs, derivative_A):
         bs = eq_rhs.shape[0]
 
+        eq_rhs = self.remove_pad(eq_rhs, coeffs=False).reshape(self.bs, -1)
+
         initial_A = self.initial_A.type_as(eq_A)
         AG = torch.cat([eq_A, initial_A, derivative_A], dim=1)
+        #AG = torch.cat([eq_A, derivative_A], dim=1)
         #AG = torch.cat([eq_A, initial_A], dim=1)
         #if self.n_iv > 0:
         rhs = torch.cat([eq_rhs, iv_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
+        #rhs = torch.cat([eq_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
         #else:
         #    rhs = torch.cat([eq_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
 
@@ -1650,6 +1718,8 @@ class PDESYSLP(nn.Module):
         """fill without using sparse cat"""
         bs = eq_rhs.shape[0]
 
+        eq_rhs = self.remove_pad(eq_rhs, coeffs=False).reshape(self.bs, -1)
+
         self.initial_A = self.initial_A.to(eq_A.device).coalesce()
         self.batch_A_indices = self.batch_A_indices.to(eq_A.device)
 
@@ -1659,6 +1729,7 @@ class PDESYSLP(nn.Module):
 
         #print('shapes',initial_values.shape, eq_values.shape, eq_A.shape)
         values = torch.cat([eq_values, initial_values, derivative_values], dim=-1)
+        #values = torch.cat([eq_values, derivative_values], dim=-1)
         values = values.reshape(-1)
 
         AG = torch.sparse_coo_tensor(self.batch_A_indices, values, size=self.batch_A_size, 
@@ -1668,6 +1739,7 @@ class PDESYSLP(nn.Module):
         #AG = torch.cat([eq_A, initial_A], dim=1)
         #if self.n_iv > 0:
         rhs = torch.cat([eq_rhs, iv_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
+        #rhs = torch.cat([eq_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
         #else:
         #    rhs = torch.cat([eq_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
 
@@ -1676,11 +1748,15 @@ class PDESYSLP(nn.Module):
     def fill_constraints_torch_dense(self, eq_A, eq_rhs, iv_rhs, derivative_A):
         bs = eq_rhs.shape[0]
 
+        eq_rhs = self.remove_pad(eq_rhs, coeffs=False).reshape(self.bs, -1)
+
         initial_A = self.initial_A.to_dense().type_as(eq_A)
         AG = torch.cat([eq_A, initial_A, derivative_A], dim=1)
+        #AG = torch.cat([eq_A, derivative_A], dim=1)
         #AG = torch.cat([eq_A, initial_A], dim=1)
         if self.n_iv > 0:
             rhs = torch.cat([eq_rhs, iv_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
+            #rhs = torch.cat([eq_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
         else:
             rhs = torch.cat([eq_rhs, self.derivative_rhs.type_as(eq_rhs)], axis=1)
 
@@ -1857,6 +1933,8 @@ class PDESYSLP(nn.Module):
         #x = x[:, 0:self.num_vars+self.n_step]
         x = x[:, 0:self.var_set.num_vars]
 
+
+        
         #######dense
         #_x = _x.reshape(b, 1, -1)
         #y = y.reshape(b, -1, 1)
@@ -1872,7 +1950,7 @@ class PDESYSLP(nn.Module):
         eq_column_counts = self.eq_column_counts.to(x.device)
 
         y_repeat = torch.repeat_interleave(y, eq_row_counts, dim=-1)
-        x_repeat = x #torch.repeat_interleave(x, self.eq_column_counts, dim=-1)
+        x_repeat = torch.repeat_interleave(x, eq_column_counts, dim=-1)
 
         x_repeat = x_repeat.reshape(-1)
         y_repeat = y_repeat.reshape(-1)
@@ -1882,13 +1960,13 @@ class PDESYSLP(nn.Module):
 
         X = torch.sparse_coo_tensor(self.eq_row_sorted, x_repeat, 
                                        #size=(self.num_added_derivative_constraints, self.num_vars), 
-                                       #size=(self.bs, self.num_added_equation_constraints, 
-                                       #     total_vars),
+                                       #size=(self.bs, self.num_added_equation_constraints, total_vars),
+                                       size=(self.bs, self.num_added_equation_constraints, self.var_set.num_vars),
                                        dtype=self.dtype, device=x.device)
 
         Y = torch.sparse_coo_tensor(self.eq_column_sorted, y_repeat, 
                                        #size=(self.num_added_derivative_constraints, self.num_vars), 
-                                       #size=(self.bs, self.num_added_equation_constraints, 
+                                       size=(self.bs, self.num_added_equation_constraints, self.var_set.num_vars),
                                        #     total_vars),
                                        dtype=self.dtype, device=y.device)
 

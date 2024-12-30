@@ -368,7 +368,6 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
             #x = mg.v_cycle_gs_start(AtA_list, rhs_list[0], AL_list, AU_list, L)
 
-            #print('solving direct ata')
             #x = solve_direct_AtA(AtA_list[0], rhs_list[0])
             #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
             mg_args = [AtA_list, AL_list, AU_list, L]
@@ -484,6 +483,8 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             drhs = db[:, :pde.num_added_equation_constraints] #torch.tensor(-dnu.squeeze())
             div_rhs = db[:, pde.num_added_equation_constraints:pde.num_added_equation_constraints + pde.num_added_initial_constraints]#.squeeze(2)
 
+            drhs = pde.add_pad(drhs).reshape(drhs.shape[0], -1)
+            
 
             # eq grad
             dA1 = pde.sparse_grad_eq_constraint(dz,_lam)
@@ -496,7 +497,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             #Workaround: adding sparse matrices directly doubles the nnz. 
             dA_values = (dA1._values() + dA2._values())
-            dA = torch.sparse_coo_tensor(dA1._indices(), dA_values, 
+            dA = torch.sparse_coo_tensor(dA1._indices(), dA_values, size=dA1.size(),
                                        dtype=dA1.dtype, device=dA1.device)
 
             dD_values = (dD1._values() + dD2._values())
