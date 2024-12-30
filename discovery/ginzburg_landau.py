@@ -105,7 +105,7 @@ class ReactDiffDataset(Dataset):
         #self.t = torch.linspace(0,1,self.u_data.shape[0]).reshape(-1,1,1).expand(-1, self.u_data.shape[0],self.u_data.shape[2])       
         #self.x = torch.linspace(0,1,self.u_data.shape[1]).reshape(1,-1,1).expand(self.u_data.shape[0], -1, self.u_data.shape[2])        
         #self.y = torch.linspace(0,1,self.u_data.shape[2]).reshape(1,1,-1).expand(self.u_data.shape[0], self.u_data.shape[1], -1)        
-
+        self.t = torch.linspace(0,1,data_shape[0])
         self.x = torch.linspace(0,1,data_shape[1]).reshape(-1,1).expand( -1, data_shape[2])        
         self.y = torch.linspace(0,1,data_shape[2]).reshape(1,-1).expand( data_shape[1], -1)        
         
@@ -177,13 +177,14 @@ class ReactDiffDataset(Dataset):
         #ylen = self.u_data.shape[2]
 
 
+        t = self.t[t_idx:t_idx+t_step]
         x = self.x[ x_idx:x_idx+x_step,
                              y_idx:y_idx+y_step].unsqueeze(0)
 
         y = self.y[ x_idx:x_idx+x_step,
                              y_idx:y_idx+y_step].unsqueeze(0)
 
-        return u_data, v_data, x, y
+        return u_data, v_data, t, x, y
 
 #%%
 
@@ -378,48 +379,48 @@ class Model(nn.Module):
         self.steps1 = torch.logit(self.x_step_size*torch.ones(1,1))
         self.steps2 = torch.logit(self.y_step_size*torch.ones(1,1))
 
-        self.steps0 = nn.Parameter(self.steps0)
-        self.steps1 = nn.Parameter(self.steps1)
-        self.steps2 = nn.Parameter(self.steps2)
+        #self.steps0 = nn.Parameter(self.steps0)
+        #self.steps1 = nn.Parameter(self.steps1)
+        #self.steps2 = nn.Parameter(self.steps2)
 
-        #self.t_steps_net = nn.Sequential(
-        #    nn.Linear(solver_dim[0]-1, 1024),
-        #    #nn.ELU(),
-        #    nn.ReLU(),
-        #    nn.Linear(1024, 1024),
-        #    nn.ReLU(),
-        #    nn.Linear(1024, solver_dim[0]-1),
-        #    nn.Sigmoid()
-        #)
+        self.t_steps_net = nn.Sequential(
+            nn.Linear(solver_dim[0], 1024),
+            #nn.ELU(),
+            nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, solver_dim[0]-1),
+            nn.Sigmoid()
+        )
 
-        #self.x_steps_net = nn.Sequential(
-        #    nn.Linear(solver_dim[1]-1, 1024),
-        #    #nn.ELU(),
-        #    nn.ReLU(),
-        #    nn.Linear(1024, 1024),
-        #    nn.ReLU(),
-        #    nn.Linear(1024, solver_dim[1]-1),
-        #    nn.Sigmoid()
-        #)
-        #self.y_steps_net = nn.Sequential(
-        #    nn.Linear(solver_dim[2]-1, 1024),
-        #    #nn.ELU(),
-        #    nn.ReLU(),
-        #    nn.Linear(1024, 1024),
-        #    nn.ReLU(),
-        #    nn.Linear(1024, solver_dim[2]-1),
-        #    nn.Sigmoid()
-        #)
+        self.x_steps_net = nn.Sequential(
+            nn.Linear(solver_dim[1], 1024),
+            #nn.ELU(),
+            nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, solver_dim[1]-1),
+            nn.Sigmoid()
+        )
+        self.y_steps_net = nn.Sequential(
+            nn.Linear(solver_dim[2], 1024),
+            #nn.ELU(),
+            nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, solver_dim[2]-1),
+            nn.Sigmoid()
+        )
 
-        #with torch.no_grad():
-        #    self.t_steps_net[-2].weight.data.zero_()
-        #    self.t_steps_net[-2].bias.data.fill_(self.steps0[0].item())
+        with torch.no_grad():
+            self.t_steps_net[-2].weight.data.zero_()
+            self.t_steps_net[-2].bias.data.fill_(self.steps0[0].item())
 
-        #    self.x_steps_net[-2].weight.data.zero_()
-        #    self.x_steps_net[-2].bias.data.fill_(self.steps1[0].item())
+            self.x_steps_net[-2].weight.data.zero_()
+            self.x_steps_net[-2].bias.data.fill_(self.steps1[0].item())
 
-        #    self.y_steps_net[-2].weight.data.zero_()
-        #    self.y_steps_net[-2].bias.data.fill_(self.steps2[0].item())
+            self.y_steps_net[-2].weight.data.zero_()
+            self.y_steps_net[-2].bias.data.fill_(self.steps2[0].item())
 
         #up_coeffs = torch.randn((1, 1, self.num_multiindex), dtype=dtype)
         #self.up_coeffs = nn.Parameter(up_coeffs)
@@ -460,25 +461,30 @@ class Model(nn.Module):
 
         return ub
 
-    def solve(self, u, v, up, vp, params, steps_in):
-        bs = u.shape[0]
+    def get_steps(self, u, t, x, y):
+        x = x.squeeze()
+        y = y.squeeze()
+        x = x[:, :, 0]
+        y = y[:, 0,:]
 
-        steps0 = self.steps0.type_as(u).expand(self.bs, self.coord_dims[0]-1)
-        steps1 = self.steps1.type_as(u).expand(self.bs, self.coord_dims[1]-1)
-        steps2 = self.steps2.type_as(u).expand(self.bs, self.coord_dims[2]-1)
-        steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.2)
-        steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.55)
-        steps2 = torch.sigmoid(steps1).clip(min=0.005, max=0.55)
+        #steps0 = self.steps0.type_as(u).expand(self.bs, self.coord_dims[0]-1)
+        #steps1 = self.steps1.type_as(u).expand(self.bs, self.coord_dims[1]-1)
+        #steps2 = self.steps2.type_as(u).expand(self.bs, self.coord_dims[2]-1)
+        #steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.2)
+        #steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.55)
+        #steps2 = torch.sigmoid(steps1).clip(min=0.005, max=0.55)
 
-        #steps0 = steps_in[0].unsqueeze(0).expand(2, -1, -1)
-        #steps1 = steps_in[1].unsqueeze(0).expand(2, -1, -1)
-        #steps2 = steps_in[2].unsqueeze(0).expand(2, -1, -1)
+        steps0 = self.t_steps_net(t)
+        steps1 = self.x_steps_net(x)
+        steps2 = self.y_steps_net(y)
 
-        #steps0 = steps0.clip(min=0.005, max=0.2)
-        #steps1 = 2*steps1.clip(min=0.05, max=0.6)
-        #steps2 = 2*steps2.clip(min=0.05, max=0.6)
 
         steps_list = [steps0, steps1, steps2]
+
+        return steps_list
+
+    def solve(self, u, v, up, vp, params, steps_list):
+        bs = u.shape[0]
 
         params_u,params_v,params_w, params_x, params_y, params_z = params
 
@@ -511,7 +517,7 @@ class Model(nn.Module):
         A2 = up.pow(2) + vp.pow(2)
         #u
         #coeffs_u[..., 0] = -(1-up.pow(2)-v.pow(2))
-        coeffs_u[..., 0] = 0 #(1*params_u[0] + params_u[1]*A2) #+ params_u[2]*A2.pow(2))
+        coeffs_u[..., 0] = 0 #(1*params_z[0] + params_u[0]*A2) #+ params_u[2]*A2.pow(2))
         #coeffs_v[..., 0] = params_v[0]
         #u_t
         coeffs_u[..., 1] = params_v[1]
@@ -549,7 +555,7 @@ class Model(nn.Module):
 
         return u, v, rhs_loss
     
-    def forward(self, u, v, x,y):
+    def forward(self, u, v, t, x,y):
         bs = u.shape[0]
 
         # u batch, time, x, y
@@ -572,12 +578,9 @@ class Model(nn.Module):
 
 
         params = self.get_params()
+        steps_list = self.get_steps(u, t,x,y)
 
-        steps_t = None #self.t_steps_net(steps_in[0])
-        steps_x = None #self.x_steps_net(steps_in[1])
-        steps_y = None #self.y_steps_net(steps_in[2])
-
-        u0, v0, rhs_loss = self.solve(u,v, up, vp, params, (steps_t, steps_x, steps_y))
+        u0, v0, rhs_loss = self.solve(u,v, up, vp, params, steps_list)
 
         return u0, v0,up,vp, params, rhs_loss
         #return u0, up,eps, params
@@ -641,10 +644,11 @@ def optimize(nepoch=5000):
         #for i, batch_in in enumerate((train_loader)):
             optimizer.zero_grad()
             batch_u, batch_v = batch_in[0], batch_in[1]
-            x,y = batch_in[2], batch_in[3]
+            t,x,y = batch_in[2], batch_in[3], batch_in[4]
             batch_u = batch_u.double().to(device)
             batch_v = batch_v.double().to(device)
 
+            t = t.double().to(device)
             x = x.double().to(device)
             y =y.double().to(device)
 
@@ -652,7 +656,7 @@ def optimize(nepoch=5000):
 
             #optimizer.zero_grad()
             #x0, steps, eps, var,xi = model(index, batch_in)
-            u, v, var_u, var_v, params, rhs_loss = model(batch_u, batch_v, x,y)
+            u, v, var_u, var_v, params, rhs_loss = model(batch_u, batch_v, t, x,y)
 
 
             bs = batch_u.shape[0]
