@@ -580,7 +580,7 @@ class Model(nn.Module):
         coeffs_u[..., 0] = (1*params_z[0] + params_u[0]*A2) #+ params_u[2]*A2.pow(2))
         #coeffs_v[..., 0] = params_v[0]
         #u_t
-        coeffs_u[..., 1] = 1 #params_v[1]
+        coeffs_u[..., 1] =1 # params_v[1]
         #coeffs_v[..., 1] = 1.
         #u_xx
         coeffs_u[..., 5] = params_x[0]
