@@ -405,6 +405,8 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #ctx.D_list = D_list
             #ctx.rhs_list = rhs_list
             ctx.L = L
+            ctx.eqA = eq_constraints
+            
             ctx.save_for_backward(x, lam)
             
             x =x.reshape(bs, -1)
@@ -415,6 +417,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
         def backward(ctx, dl_dzhat):
             _x,_lam = ctx.saved_tensors[0:2]
             A = ctx.A
+            eqA = ctx.eqA
             #AUNB = ctx.AUNB
             #A_kkt = ctx.A_kkt
             #G = ctx.G
@@ -486,9 +489,14 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             drhs = pde.add_pad(drhs).reshape(drhs.shape[0], -1)
             
 
+            mask = torch.sparse_coo_tensor(eqA._indices(), torch.ones_like(eqA._values()), 
+                                           size=eqA.size(), device=eqA.device)
             # eq grad
-            dA1 = pde.sparse_grad_eq_constraint(dz,_lam)
-            dA2 = pde.sparse_grad_eq_constraint(_x,dnu)
+            dA1 = pde.sparse_grad_eq_constraint(dz,_lam, mask)
+            dA2 = pde.sparse_grad_eq_constraint(_x,dnu, mask)
+
+
+            #ipdb.set_trace()
 
             # step gradient
             dD1 = pde.sparse_grad_derivative_constraint(dz,_lam)
@@ -496,9 +504,10 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
 
             #Workaround: adding sparse matrices directly doubles the nnz. 
-            dA_values = (dA1._values() + dA2._values())
-            dA = torch.sparse_coo_tensor(dA1._indices(), dA_values, size=dA1.size(),
-                                       dtype=dA1.dtype, device=dA1.device)
+            #dA_values = (dA1._values() + dA2._values())
+            #dA = torch.sparse_coo_tensor(dA1._indices(), dA_values, size=dA1.size(),
+            #                           dtype=dA1.dtype, device=dA1.device)
+            dA = dA1 + dA2
 
             dD_values = (dD1._values() + dD2._values())
             dD = torch.sparse_coo_tensor(dD1._indices(), dD_values, 
@@ -506,8 +515,8 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
                                        
 
-            print('grad nnz', dA._nnz(), dD._nnz())
-            print('grad shape', dA.shape, dD.shape)
+            #print('grad nnz', dA._nnz(), dD._nnz())
+            #print('grad shape', dA.shape, dD.shape)
 
             #dQ1 = pde.sparse_AtA_grad(dnu, _x)
             ##print('nnz1 ', dQ1._nnz(), AtA_act._nnz())

@@ -580,7 +580,7 @@ class Model(nn.Module):
         coeffs_u[..., 0] = (1*params_z[0] + params_u[0]*A2) #+ params_u[2]*A2.pow(2))
         #coeffs_v[..., 0] = params_v[0]
         #u_t
-        coeffs_u[..., 1] = params_v[1]
+        coeffs_u[..., 1] = 1 #params_v[1]
         #coeffs_v[..., 1] = 1.
         #u_xx
         coeffs_u[..., 5] = params_x[0]
@@ -654,7 +654,7 @@ class Model(nn.Module):
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step, ds.y_step), device=device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
 #optimizer = torch.optim.SGD(model.parameters(), lr=0.0001, momentum =0.9)
@@ -761,7 +761,7 @@ def optimize(nepoch=5000):
             loss = u_loss.mean() +  var_u_loss.mean() + var_v_loss.mean()
             #loss = u_loss.mean() +  var_u_loss.mean() 
             #loss = loss + rhs_loss.mean()
-            #loss = loss +  0.0001*param_loss.mean()
+            loss = loss +  0.001*param_loss.mean()
 
             u_losses.append(u_loss.mean().item())
             v_losses.append(v_loss.mean().item())

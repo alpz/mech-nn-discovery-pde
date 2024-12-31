@@ -60,7 +60,7 @@ class SineDataModule(pl.LightningDataModule):
 class Method(pl.LightningModule):
     def __init__(self):
         super().__init__()
-        self.learning_rate = 0.001
+        self.learning_rate = 0.0001
         self.model = Sine(device=self.device)
         self.model = self.model.double()
         
@@ -274,7 +274,8 @@ class Sine(nn.Module):
         _res = self._dfnn(self.coeffs)
         #_coeffs = 3*self.cf_nn(self.coeffs)
         #_coeffs = 3*self.cf_nn(_res)
-        _coeffs = self.coeffs2 #self.cf_nn(_res)
+        #_coeffs = self.coeffs2 #self.cf_nn(_res)
+        _coeffs = self.cf_nn(_res)
         #print(_coeffs)
         #_coeffs = self.cf_nn(_res)
         #_coeffs[..., -2] = 1.

@@ -1918,11 +1918,12 @@ class PDESYSLP(nn.Module):
 
         return dD
 
-    def sparse_grad_eq_constraint(self, x, y):
+    def sparse_grad_eq_constraint(self, x, y, mask):
         """ sparse x y' for eq constraint"""
         #dx = _dx[:,0:n_step].reshape(bs, n_step,1)
         #dA = dx*nu.reshape(bs, 1,num_coeffs)
         #correct x, y shapes
+
 
 
         b = x.shape[0]
@@ -1933,14 +1934,19 @@ class PDESYSLP(nn.Module):
         #x = x[:, 0:self.num_vars+self.n_step]
         x = x[:, 0:self.var_set.num_vars]
 
+        mx = mask*x.reshape(b, 1, -1)
+        my = mask*y.reshape(b, -1, 1)
+
+        dD = mx*my
+        return dD
 
         
         ########dense
-        #x = x.reshape(b, 1, -1)
-        #y = y.reshape(b, -1, 1)
+        x = x.reshape(b, 1, -1)
+        y = y.reshape(b, -1, 1)
 
-        #dA_dense = y*x#.reshape(b, -1, 1)
-        ##return dA_dense
+        dA_dense = y*x#.reshape(b, -1, 1)
+        #return dA_dense
         #######3
 
         x = x.reshape(b,-1)
@@ -1993,7 +1999,7 @@ class PDESYSLP(nn.Module):
                                             total_vars),
                                        dtype=self.dtype, device=x.device)
 
-        return dD
+        return dD, dA_dense
     
     #def sparse_grad_derivative_constraint(self, x, y, dense=False):
     #    """ sparse x y' for derivative constraint"""
