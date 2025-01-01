@@ -134,7 +134,7 @@ class BurgersDataset(Dataset):
         #mask
         mask = torch.rand_like(self.data)
         #keep only 80% of data
-        mask = (mask>0.5).double()
+        mask = (mask>0.0).double()
         
         self.data = self.data*mask
         self.mask = mask

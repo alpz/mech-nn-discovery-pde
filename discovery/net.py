@@ -109,7 +109,7 @@ class Resnet3dBlock(nn.Module):
         out += self.shortcut(x.view(batchsize, self.in_channels, -1)).view(batchsize, self.in_channels, size_x, size_y, size_z)
         out = self.bn(out)
         if self.activation:
-            out = F.relu(out)
+            out = F.elu(out)
 
         return out
 
@@ -117,8 +117,8 @@ class ResNet3D(nn.Module):
     def __init__(self, output_len=100,in_channels=1, out_channels=32, device=None, **kwargs):
         super().__init__()
 
-        n_layers = 10
-        width = 64
+        n_layers = 8
+        width = 100
         layers = [Resnet3dBlock(width) for i in range(n_layers - 1)]
         self.net = nn.Sequential(*layers)
 

@@ -46,8 +46,8 @@ def ReadDataFile(filename):
 	# Breaking the big chunk of data into separate matrices for each field
 	fields = {}
 	for i, field_name in enumerate(field_names):
-	    temp_array = data_array[i*num_cells:(i+1)*num_cells]
-	    fields[field_name] = temp_array.reshape((nx, ny))
+		temp_array = data_array[i*num_cells:(i+1)*num_cells]
+		fields[field_name] = temp_array.reshape((nx, ny))
 	
 	return fields
 
@@ -88,7 +88,7 @@ def ReadAllDataFilesInFolder(foldername):
 
 			fields_time = {}
 			for f in field_names:
-			    fields_time[f] = np.zeros(shape=(nx, ny, number_snapshots))
+				fields_time[f] = np.zeros(shape=(nx, ny, number_snapshots))
 
 		for f in field_names:
 			fields_time[f][:, :, i_snapshot] = snapshot_data[f]

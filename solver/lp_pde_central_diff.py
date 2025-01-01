@@ -1859,7 +1859,7 @@ class PDESYSLP(nn.Module):
 
     #    return dD
 
-    def sparse_grad_derivative_constraint(self, _x, _y):
+    def sparse_grad_derivative_constraint(self, _x, _y, mask):
         """ sparse x y' for derivative constraint"""
         #dx = _dx[:,0:n_step].reshape(bs, n_step,1)
         #dA = dx*nu.reshape(bs, 1,num_coeffs)
@@ -1870,6 +1870,12 @@ class PDESYSLP(nn.Module):
         y = _y[:, self.num_added_equation_constraints+self.num_added_initial_constraints: self.num_added_equation_constraints+self.num_added_initial_constraints+self.num_added_derivative_constraints]
         x = _x[:, :self.var_set.num_vars+self.var_set.num_added_eps_vars]
 
+
+        mx = mask*x.reshape(b, 1, -1)
+        my = mask*y.reshape(b, -1, 1)
+
+        dD = mx*my
+        return dD
 
         #ipdb.set_trace()
         ####### dense
@@ -1916,7 +1922,7 @@ class PDESYSLP(nn.Module):
                                        #     total_vars),
                                        dtype=self.dtype, device=x.device)
 
-        return dD
+        return dD, dDM
 
     def sparse_grad_eq_constraint(self, x, y, mask):
         """ sparse x y' for eq constraint"""

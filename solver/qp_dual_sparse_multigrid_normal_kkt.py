@@ -368,7 +368,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
             #x = mg.v_cycle_gs_start(AtA_list, rhs_list[0], AL_list, AU_list, L)
 
-            #x = solve_direct_AtA(AtA_list[0], rhs_list[0])
+            #x = solve_direct(AtA_list[0], rhs_list[0].reshape(bs, -1))
             #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
             mg_args = [AtA_list, AL_list, AU_list, L]
 
@@ -406,6 +406,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #ctx.rhs_list = rhs_list
             ctx.L = L
             ctx.eqA = eq_constraints
+            ctx.DA = derivative_constraints
             
             ctx.save_for_backward(x, lam)
             
@@ -418,6 +419,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             _x,_lam = ctx.saved_tensors[0:2]
             A = ctx.A
             eqA = ctx.eqA
+            DA = ctx.DA
             #AUNB = ctx.AUNB
             #A_kkt = ctx.A_kkt
             #G = ctx.G
@@ -444,7 +446,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #dz = mg.full_multigrid_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
 
             #AtA0 = mg.get_AtA_dense(AtA_list[0])
-            #dz = solve_direct(AtA0, grad_list[0])
+            #dz = solve_direct(AtA_list[0], grad_list[0])
 
             #mg_args = [AtA_list, D_list, L, (A.shape[1], A.shape[2])]
             mg_args = [AtA_list, AL_list, AU_list, L]
@@ -498,16 +500,21 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             #ipdb.set_trace()
 
+            Dmask = torch.sparse_coo_tensor(DA._indices(), torch.ones_like(DA._values()), 
+                                           size=DA.size(), device=DA.device)
             # step gradient
-            dD1 = pde.sparse_grad_derivative_constraint(dz,_lam)
-            dD2 = pde.sparse_grad_derivative_constraint(_x,dnu)
+            #dD1 = pde.sparse_grad_derivative_constraint(dz,_lam, Dmask)
+            #dD2 = pde.sparse_grad_derivative_constraint(_x,dnu, Dmask)
+            dD1 = pde.sparse_grad_derivative_constraint(dz,_lam, Dmask)
+            dD2 = pde.sparse_grad_derivative_constraint(_x,dnu, Dmask)
 
+            #ipdb.set_trace()
 
             #Workaround: adding sparse matrices directly doubles the nnz. 
-            #dA_values = (dA1._values() + dA2._values())
-            #dA = torch.sparse_coo_tensor(dA1._indices(), dA_values, size=dA1.size(),
-            #                           dtype=dA1.dtype, device=dA1.device)
-            dA = dA1 + dA2
+            dA_values = (dA1._values() + dA2._values())
+            dA = torch.sparse_coo_tensor(dA1._indices(), dA_values, size=dA1.size(),
+                                       dtype=dA1.dtype, device=dA1.device)
+            #dA = dA1 + dA2
 
             dD_values = (dD1._values() + dD2._values())
             dD = torch.sparse_coo_tensor(dD1._indices(), dD_values, 
