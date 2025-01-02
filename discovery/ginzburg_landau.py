@@ -113,11 +113,11 @@ class ReactDiffDataset(Dataset):
         self.y = torch.linspace(0,1,data_shape[2]).reshape(1,1,-1).expand(data_shape[0], data_shape[1], -1)        
         
 
-        #self.u_data = u_data[32:32+128, :128, :128]
-        #self.v_data = v_data[32:32+128, :128, :128]
-
         self.u_data = u_data[32:32+128, :128, :128]
         self.v_data = v_data[32:32+128, :128, :128]
+
+        #self.u_data = u_data[5:, :128, :128]
+        #self.v_data = v_data[5:, :128, :128]
         #self.v_data = data[1]
         print('u,v ', self.u_data.shape, self.v_data.shape)
 
@@ -266,8 +266,10 @@ class Model(nn.Module):
         #self.rnet1 = N.ResNet(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0]+2)
         #self.rnet2 = N.ResNet(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0]+2)
 
-        self.rnet3d_1 = N.ResNet3D(out_channels=1, in_channels=4)
-        self.rnet3d_2 = N.ResNet3D(out_channels=1, in_channels=4)
+        self.rnet3d_1 = N.ResNet3D(out_channels=1, in_channels=1)
+        self.rnet3d_2 = N.ResNet3D(out_channels=1, in_channels=1)
+        #self.rnet2d_1 = N.ResNet2D(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0]+2)
+        #self.rnet2d_2 = N.ResNet2D(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0]+2)
         #self.rnet2 = N.ResNet3D(out_channels=1, in_channels=1)
         #self.rhs_net = N.ResNet3D(out_channels=1, in_channels=1)
 
@@ -411,8 +413,8 @@ class Model(nn.Module):
 
 
         self.t_step_size = 0.05 #steps[0]
-        self.x_step_size = 0.35 #steps[1]
-        self.y_step_size = 0.35 #steps[2]
+        self.x_step_size = 0.05 #steps[1]
+        self.y_step_size = 0.05 #steps[2]
         #print('steps ', steps)
         ##self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
         ##self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
@@ -421,9 +423,9 @@ class Model(nn.Module):
         self.steps1 = torch.logit(self.x_step_size*torch.ones(1,1))
         self.steps2 = torch.logit(self.y_step_size*torch.ones(1,1))
 
-        #self.steps0 = nn.Parameter(self.steps0)
-        #self.steps1 = nn.Parameter(self.steps1)
-        #self.steps2 = nn.Parameter(self.steps2)
+        self.steps0 = nn.Parameter(self.steps0)
+        self.steps1 = nn.Parameter(self.steps1)
+        self.steps2 = nn.Parameter(self.steps2)
 
         self.t_steps_net = nn.Sequential(
             nn.Linear(solver_dim[0], 1024),
@@ -590,13 +592,16 @@ class Model(nn.Module):
         #params_u,params_v,params_w, params_x, params_y, params_z = params
 
         upi = up.reshape(bs, *self.coord_dims)
-        #ui = u.reshape(bs, *self.coord_dims)
+        vpi = vp.reshape(bs, *self.coord_dims)
+        ui = u.reshape(bs, *self.coord_dims)
+        vi = v.reshape(bs, *self.coord_dims)
         #vpi = vp.reshape(bs, *self.coord_dims)
         #upi = upi + up2.reshape(bs, *self.coord_dims)
         #upi = upi/2
-        iv_rhs = self.get_iv(upi)
+        iv_rhs_u = self.get_iv(upi)
         #iv_rhs = self.get_iv(ui)
-        #iv_v_rhs = self.get_iv(vpi)
+        #iv_rhs_v = self.get_iv(vi)
+
 
 
         #basis = torch.stack([torch.ones_like(up), up, up**2, up.pow(3), up.pow(4)], dim=-1)
@@ -621,41 +626,42 @@ class Model(nn.Module):
         #u
         #coeffs_u[..., 0] = -(1-up.pow(2)-v.pow(2))
         #coeffs_u[..., 0] = (1*params_u[0] + params_u[1]*A2) #+ params_u[2]*A2.pow(2))
-        coeffs_u[..., 0] = (params_list[0][0] + params_list[0][1]*A2) #+ params_u[2]*A2.pow(2))
+        #coeffs_u[..., 0] = (params_list[0][0] + params_list[0][1]*A2) #+ params_u[2]*A2.pow(2))
+        coeffs_u[..., 0] = (params_list[0][1]*A2) #+ params_u[2]*A2.pow(2))
         #coeffs_u[..., 0] = (-1 + A2) #+ params_u[2]*A2.pow(2))
-        #coeffs_v[..., 0] = params_v[0]
+        #coeffs_v[..., 0] = (params_list[4][1]*A2) #+ params_u[2]*A2.pow(2))
         #u_t
-        coeffs_u[..., 1] =  params_list[1][1]
+        coeffs_u[..., 1] = params_list[1][1]
+        #coeffs_v[..., 1] = params_list[1][0]
         #coeffs_u[..., 1] = t_params
         #coeffs_v[..., 1] = 1.
         #u_tt
         #coeffs_u[..., 4] = params_list[1][1]
         #u_xx
         coeffs_u[..., 5] = params_list[2][0]#+ params_list[3][1]*A2
+        #coeffs_v[..., 5] = params_list[5][0]#+ params_list[3][1]*A2
         #coeffs_v[..., 5] = params_v[1]
         #u_yy
-        coeffs_u[..., 6] = params_list[4][0]#+ params_list[5][1]*A2
+        coeffs_u[..., 6] = params_list[2][0]#+ params_list[5][1]*A2
+        #coeffs_v[..., 6] = params_list[5][0]#+ params_list[5][1]*A2
         #coeffs_v[..., 6] = params_v[1]
 
-        #rhs_u = (up.pow(2) +v.pow(2))*v
-        #rhs_u = (1*params_w[0] + params_w[1]*A2)*v
-        #rhs_u = (params_w[1]*A2)*v
-        #rhs_u = (params_y[0] + params_y[1]*A2)*vp #+ (1*params_u[0]+ params_u[1]*A2)*up
-        #rhs_u = (params_z[0] + params_y[1]*A2)*vp #+ (1*params_u[0]+ params_u[1]*A2)*up
-        #rhs_u = (params_list[6][0] + params_list[7][1]*vp.pow(2) + params_list[6][1]*up.pow(2))*vp #+ (1*params_u[0]+ params_u[1]*A2)*up
         #rhs_u = (params_list[7][1]*A2)*vp #+ (1*params_u[0]+ params_u[1]*A2)*up
-        rhs_u = (params_list[6][0] +params_list[7][1]*A2)*vp #+ (1*params_u[0]+ params_u[1]*A2)*up
+        #rhs_u = (params_list[6][0] +params_list[7][1]*A2)*vp #+ (1*params_list[0][0]+ params_list[0][1]*A2)*up
+        rhs_u = (params_list[3][0] + params_list[3][1]*A2)*vp #+ (1*params_list[0][0]+ params_list[0][1]*A2)*up
+        #rhs_v = (params_list[6][0] + params_list[6][1]*A2)*up #+ (1*params_list[0][0]+ params_list[0][1]*A2)*up
 
 
         rhs_loss = None #(rhs_u - rhs_u_true).abs().mean()
 
-        coeffs = coeffs_u #torch.stack([coeffs_u, coeffs_v], dim=0)
-        rhs = rhs_u #torch.stack([rhs_u, rhs_v], dim=0)
+        #coeffs = coeffs_u #torch.stack([coeffs_u, coeffs_v], dim=0)
+        #rhs = rhs_u #torch.stack([rhs_u, rhs_v], dim=0)
         #iv_rhs = torch.empty((self.bs, 0), device=rhs.device)
 
         #coeffs, rhs = self.set_iv(coeffs, rhs, up, crvals)
 
-        u0,_,eps = self.pde(coeffs, rhs, iv_rhs, steps_list)
+        u0,_,eps = self.pde(coeffs_u, rhs_u, iv_rhs_u, steps_list)
+        #v0,_,eps = self.pde(coeffs_v, rhs_v, iv_rhs_v, steps_list)
         #u0_list.append(u0)
         #eps_list.append(eps)
 
@@ -666,7 +672,7 @@ class Model(nn.Module):
         #u = u0[0]
         #v = u0[1]
         u = u0
-        v = None#u0[1]
+        v = 0*u0 #v0 #None#u0[1]
 
         return u, v, rhs_loss
     
@@ -675,8 +681,11 @@ class Model(nn.Module):
 
         # u batch, time, x, y
 
-        u_in = torch.stack([u,t, x,y], dim=1) 
-        v_in = torch.stack([v,t, x,y], dim=1) 
+        u_in = u.unsqueeze(1) #torch.stack([u,t, x,y], dim=1) 
+        v_in = v.unsqueeze(1) #torch.stack([v,t, x,y], dim=1) 
+
+        #u_in = torch.cat([u, x[:,[0]],y[:,[0]]], dim=1) 
+        #v_in = torch.cat([v, x[:,[0]],y[:,[0]]], dim=1) 
         #u_in = u
         #v_in = v
 
@@ -686,12 +695,12 @@ class Model(nn.Module):
         #up = self.rnet1(u)
         #vp = None #self.rnet2(v)
 
-        #up = self.rnet3d_1(u_in.unsqueeze(1)).squeeze(1)
-        #vp = self.rnet3d_2(v_in.unsqueeze(1)).squeeze(1)
+        #up = self.rnet2d_1(u_in)
+        #vp = self.rnet2d_2(v_in)
         up = self.rnet3d_1(u_in)
         vp = self.rnet3d_2(v_in)
 
-        t_params =self.t_param_net(t)
+        t_params =self.t_param_net(t[:, :, 0, 0])
         #up = 2*torch.tanh(up)
         #vp = 2*torch.tanh(vp)
         #up = self.fnet1(u_in)
@@ -786,7 +795,7 @@ def optimize(nepoch=5000):
             #u_loss = (u- batch_u).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             u_loss = (u- batch_u).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             #u_loss = (u- batch_u).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
-            v_loss = u_loss #(v- batch_v).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
+            v_loss = 0*u_loss #(v- batch_v).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             #var_u_loss = (var_u- batch_u).abs().mean(dim=-1)
             #var_u_loss = (var_u- batch_u).abs().mean(dim=-1)
             var_u_loss = (var_u- batch_u).abs().mean(dim=-1)
@@ -803,11 +812,8 @@ def optimize(nepoch=5000):
 
             t_params_loss = 0*(t_params-1).abs().mean()
             #t_params_loss = (params[1][1]-1).abs().mean()
-            #param_loss = param_loss + (params[1][1]-1).abs().mean()
-            #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
-            #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
-            #loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.001*param_loss.mean()
             #jloss = u_loss.mean() +  v_loss.mean() + var_u_loss.mean() + var_v_loss.mean()
+            #loss = u_loss.mean() + v_loss.mean() +  var_u_loss.mean() + var_v_loss.mean() + t_params_loss
             loss = u_loss.mean() +  var_u_loss.mean() + var_v_loss.mean() + t_params_loss
             #loss = u_loss.mean() +  var_u_loss.mean() 
             #loss = loss + rhs_loss.mean()
@@ -853,7 +859,9 @@ def optimize(nepoch=5000):
                uloss {_u_loss:.3E} vloss {_v_loss:.3E} \
                var_u_loss {_var_u_loss:.3E} var_v_loss {_var_v_loss:.3E}  \
                t_loss {t_loss:.3E}')
-
+        print('steps ', torch.sigmoid(model.steps0).squeeze().item(), 
+                        torch.sigmoid(model.steps1).squeeze().item(), 
+                        torch.sigmoid(model.steps2).squeeze().item())
 
 if __name__ == "__main__":
     train()

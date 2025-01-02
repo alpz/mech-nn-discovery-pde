@@ -449,11 +449,11 @@ class Model(nn.Module):
 
         rhs = rhs.reshape(bs, self.pde.grid_size)
         ux = ux.reshape(bs, *self.coord_dims)
-        upx = upx.reshape(bs, *self.coord_dims)
+        #upx = upx.reshape(bs, *self.coord_dims)
 
         #iv_rhs = None #self.get_iv(u_chunks)
-        #iv_rhs = self.get_iv(ux)
-        iv_rhs = self.get_iv(upx)
+        iv_rhs = self.get_iv(ux)
+        #iv_rhs = self.get_iv(upx)
         #iv_rhs = self.iv_net(self.iv_params)
 
         u0,u,eps = self.pde(coeffs, rhs, iv_rhs, steps_list)
@@ -483,13 +483,13 @@ class Model(nn.Module):
 
         rhs = self.rnet3d_1(u_in.unsqueeze(1)).squeeze(1)
         vp = self.rnet3d_2(v_in.unsqueeze(1)).squeeze(1)
-        up = self.rnet3d_3(u_in.unsqueeze(1)).squeeze(1)
+        #jup = self.rnet3d_3(u_in.unsqueeze(1)).squeeze(1)
 
         #coeffs = coeffs.permute(0,2,1)
         #vp = None #self.rnet2(v_in).squeeze(1)
         #up = self.fnet1(u_in)
         #vp = self.fnet2(v_in)
-        up_dict = self.solve_expr(rhs, u_in, up, None)
+        up_dict = self.solve_expr(rhs, u_in, None, None)
 
 
         #v = v.reshape(bs, self.pde.grid_size)
@@ -597,7 +597,7 @@ def optimize(nepoch=5000):
             v_loss = (v- batch_v).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             #u_loss = (u- batch_u).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             param_loss = params[0].abs().mean() + params[1].abs().mean() + params[2].abs().mean()
-            loss = u_loss.mean() + v_loss.mean() +  expr_loss.mean()
+            loss = u_loss.mean() + v_loss.mean() #+  expr_loss.mean()
             #loss = loss + rhs_loss.mean()
             loss = loss +  0.001*param_loss.mean()
 

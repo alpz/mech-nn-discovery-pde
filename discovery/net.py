@@ -91,10 +91,60 @@ class ResNet(nn.Module):
 
         return x
 
+class Resnet2dBlock(nn.Module):
+    def __init__(self, in_channels, activation=True):
+        super().__init__()
+        pm = 'zeros'
+        self.conv = nn.Conv2d(in_channels=in_channels, out_channels=in_channels, kernel_size=5, stride=1, padding=2, padding_mode=pm)
+        self.shortcut = nn.Conv1d(in_channels, in_channels, 1)
+        self.bn = torch.nn.BatchNorm2d(in_channels)
+        self.activation = activation
+        self.in_channels = in_channels
+
+    def forward(self, x):
+        batchsize = x.shape[0]
+        size_x, size_y = x.shape[2], x.shape[3]
+
+        out = self.conv(x)
+        out += self.shortcut(x.view(batchsize, self.in_channels, -1)).view(batchsize, self.in_channels, size_x, size_y)
+        out = self.bn(out)
+        if self.activation:
+            out = F.elu(out)
+
+        return out
+
+class ResNet2D(nn.Module):
+    def __init__(self, output_len=100,in_channels=1, out_channels=32, device=None, **kwargs):
+        super().__init__()
+
+        n_layers = 10
+        width = 100
+        layers = [Resnet2dBlock(width) for i in range(n_layers - 1)]
+        self.net = nn.Sequential(*layers)
+
+        self.fc0 = nn.Linear(in_channels, width)
+        self.fc1 = nn.Linear(width, 128)
+        self.fc2 = nn.Linear(128, out_channels)
+
+    def forward(self, x):
+        x = x.permute(0,2,3,1)
+        x = self.fc0(x)
+        x = x.permute(0,3,1,2)
+
+        x = self.net(x)
+
+        x = x.permute(0,2,3,1)
+        x = self.fc1(x)
+        x = torch.relu(x)
+        x = self.fc2(x)
+        x = x.permute(0,3,1,2)
+
+        return x
+
 class Resnet3dBlock(nn.Module):
     def __init__(self, in_channels, activation=True):
         super().__init__()
-        pm = 'circular'
+        pm = 'zeros'
         self.conv = nn.Conv3d(in_channels=in_channels, out_channels=in_channels, kernel_size=5, stride=1, padding=2, padding_mode=pm)
         self.shortcut = nn.Conv1d(in_channels, in_channels, 1)
         self.bn = torch.nn.BatchNorm3d(in_channels)
@@ -118,7 +168,7 @@ class ResNet3D(nn.Module):
         super().__init__()
 
         n_layers = 8
-        width = 100
+        width = 64
         layers = [Resnet3dBlock(width) for i in range(n_layers - 1)]
         self.net = nn.Sequential(*layers)
 
