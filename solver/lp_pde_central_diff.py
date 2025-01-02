@@ -217,6 +217,14 @@ class QPVariableSet():
                 return True
         return False
 
+    def is_boundary_or_initial(self, grid_index):
+        for coord in range(self.n_coord):
+            if coord==0 and self.is_left_edge(grid_index, coord):
+                return True
+            if coord!=0: 
+                if self.is_left_edge(grid_index, coord) or self.is_right_edge(grid_index, coord):
+                    return True
+        return False
 
     def get_order_counts(self, coord):
         """Create counts"""
@@ -724,7 +732,8 @@ class PDESYSLP(nn.Module):
         #for grid_index in self.var_set.grid_indices:
         for grid_num,grid_index in enumerate(self.var_set.grid_indices):
             #skip constraints on edges. Assumes initial conditions on box
-            if self.var_set.is_edge_any(grid_index):
+            #if self.var_set.is_edge_any(grid_index):
+            if self.var_set.is_boundary_or_initial(grid_index):
                 continue
             var_list = []
             val_list = []
@@ -1604,6 +1613,23 @@ class PDESYSLP(nn.Module):
         bs = eq_values.shape[0]
         new_tensor = torch.zeros(self.bs, *self.var_set.coord_dims, device=eq_values.device)
         new_shape = np.array(self.var_set.coord_dims)-2
+        new_shape[0] = new_shape[0]+1
+        new_shape = tuple(new_shape)
+        if self.n_coord==3:
+            eq_values = eq_values.reshape(bs, *new_shape)
+            new_tensor[:, 1:, 1:-1, 1:-1] = eq_values
+        elif self.n_coord==2:
+            eq_values = eq_values.reshape(bs, *new_shape)
+            new_tensor[:, 1:, 1:-1] = eq_values
+        else: 
+            eq_values = eq_values.reshape(bs, *new_shape)
+            new_tensor[:, 1:] = eq_values
+        return new_tensor
+
+    def add_pad_old(self, eq_values):
+        bs = eq_values.shape[0]
+        new_tensor = torch.zeros(self.bs, *self.var_set.coord_dims, device=eq_values.device)
+        new_shape = np.array(self.var_set.coord_dims)-2
         new_shape = tuple(new_shape)
         if self.n_coord==3:
             eq_values = eq_values.reshape(bs, *new_shape)
@@ -1616,7 +1642,7 @@ class PDESYSLP(nn.Module):
             new_tensor[:, 1:-1] = eq_values
         return new_tensor
 
-    def remove_pad(self, eq_values, coeffs=True):
+    def remove_pad_old(self, eq_values, coeffs=True):
         if coeffs:
             eq_values = eq_values.reshape(self.bs, *self.var_set.coord_dims, len(self.var_set.mi_list))
             if self.n_coord==3:
@@ -1635,6 +1661,27 @@ class PDESYSLP(nn.Module):
             else: 
                 #self.n_coord==1:
                 eq_values = eq_values[:, 1:-1]
+        return eq_values
+
+    def remove_pad(self, eq_values, coeffs=True):
+        if coeffs:
+            eq_values = eq_values.reshape(self.bs, *self.var_set.coord_dims, len(self.var_set.mi_list))
+            if self.n_coord==3:
+                eq_values = eq_values[:, 1:, 1:-1, 1:-1, :]
+            elif self.n_coord==2:
+                eq_values = eq_values[:, 1:, 1:-1, :]
+            else: 
+                #self.n_coord==1:
+                eq_values = eq_values[:, 1:, :]
+        else:
+            eq_values = eq_values.reshape(self.bs, *self.var_set.coord_dims)
+            if self.n_coord==3:
+                eq_values = eq_values[:, 1:, 1:-1, 1:-1]
+            elif self.n_coord==2:
+                eq_values = eq_values[:, 1:, 1:-1]
+            else: 
+                #self.n_coord==1:
+                eq_values = eq_values[:, 1:]
         return eq_values
 
     def build_equation_tensor(self, eq_values):

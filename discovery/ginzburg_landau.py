@@ -241,7 +241,7 @@ class Model(nn.Module):
                         #nx = endx
                         lambda nt, nx, ny: (1,0, [1,nx-1,1],[nt-1,nx-1, ny-1]), 
                         lambda nt, nx, ny: (2,0, [1,1,ny-1],[nt-1, nx-2, ny-1]), 
-                        lambda nt, nx, ny: (0,0, [nt-1,1,1],[nt-1, nx-2, ny-2]), 
+                        #lambda nt, nx, ny: (0,0, [nt-1,1,1],[nt-1, nx-2, ny-2]), 
                         ]
 
 
@@ -421,9 +421,9 @@ class Model(nn.Module):
         self.steps1 = torch.logit(self.x_step_size*torch.ones(1,1))
         self.steps2 = torch.logit(self.y_step_size*torch.ones(1,1))
 
-        self.steps0 = nn.Parameter(self.steps0)
-        self.steps1 = nn.Parameter(self.steps1)
-        self.steps2 = nn.Parameter(self.steps2)
+        #self.steps0 = nn.Parameter(self.steps0)
+        #self.steps1 = nn.Parameter(self.steps1)
+        #self.steps2 = nn.Parameter(self.steps2)
 
         self.t_steps_net = nn.Sequential(
             nn.Linear(solver_dim[0], 1024),
@@ -497,8 +497,8 @@ class Model(nn.Module):
         #z_params = 2*torch.tanh(z_params)
         #params = params.reshape(-1,1,2, 3)
         #params = params.reshape(-1,1,2, 2)
-        params_list = [2*torch.tanh(net()).squeeze() for net in self.param_net_list]
-        #params_list = [(net()).squeeze() for net in self.param_net_list]
+        #params_list = [2*torch.tanh(net()).squeeze() for net in self.param_net_list]
+        params_list = [(net()).squeeze() for net in self.param_net_list]
         #return u_params, v_params, w_params, x_params, y_params, z_params
         return params_list
 
@@ -514,8 +514,8 @@ class Model(nn.Module):
         u5 = u[:,1:self.coord_dims[0], 1:self.coord_dims[1]-1, -1].reshape(bs, -1)
         u6 = u[:,-1, 1:self.coord_dims[1]-1, 1:self.coord_dims[2]-1].reshape(bs, -1)
 
-        ub = torch.cat([u1,u2,u3,u4,u5,u6], dim=-1)
-        #ub = torch.cat([u1,u2,u3,u4,u5], dim=-1)
+        #ub = torch.cat([u1,u2,u3,u4,u5,u6], dim=-1)
+        ub = torch.cat([u1,u2,u3,u4,u5], dim=-1)
 
         return ub
 
@@ -616,25 +616,25 @@ class Model(nn.Module):
         #u, u_t, u_x, u_y, u_tt, u_xx, u_yy
         #(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1), (2, 0, 0), (0, 2, 0), (0, 0, 2)
         #A2 = up.pow(2) + v.pow(2)
-        #A2 = up.pow(2) + vp.pow(2)
-        A2 = u.pow(2) + v.pow(2)
+        A2 = up.pow(2) + vp.pow(2)
+        #A2 = u.pow(2) + v.pow(2)
         #u
         #coeffs_u[..., 0] = -(1-up.pow(2)-v.pow(2))
         #coeffs_u[..., 0] = (1*params_u[0] + params_u[1]*A2) #+ params_u[2]*A2.pow(2))
-        #coeffs_u[..., 0] = (params_list[0][0] + params_list[0][1]*A2) #+ params_u[2]*A2.pow(2))
-        coeffs_u[..., 0] = (-1 + A2) #+ params_u[2]*A2.pow(2))
+        coeffs_u[..., 0] = (params_list[0][0] + params_list[0][1]*A2) #+ params_u[2]*A2.pow(2))
+        #coeffs_u[..., 0] = (-1 + A2) #+ params_u[2]*A2.pow(2))
         #coeffs_v[..., 0] = params_v[0]
         #u_t
-        coeffs_u[..., 1] =  1 #params_list[1][1]
+        coeffs_u[..., 1] =  params_list[1][1]
         #coeffs_u[..., 1] = t_params
         #coeffs_v[..., 1] = 1.
         #u_tt
         #coeffs_u[..., 4] = params_list[1][1]
         #u_xx
-        coeffs_u[..., 5] = -1 #params_list[2][0]#+ params_list[3][1]*A2
+        coeffs_u[..., 5] = params_list[2][0]#+ params_list[3][1]*A2
         #coeffs_v[..., 5] = params_v[1]
         #u_yy
-        coeffs_u[..., 6] = -1 #params_list[4][0]#+ params_list[5][1]*A2
+        coeffs_u[..., 6] = params_list[4][0]#+ params_list[5][1]*A2
         #coeffs_v[..., 6] = params_v[1]
 
         #rhs_u = (up.pow(2) +v.pow(2))*v
@@ -801,8 +801,8 @@ def optimize(nepoch=5000):
             #param_loss = param_loss + params[4].abs().mean() + params[5].abs().mean() 
             param_loss = torch.stack(params).abs().sum()
 
-            #t_params_loss = 0*(t_params-1).abs().mean()
-            t_params_loss = (params[1][1]-1).abs().mean()
+            t_params_loss = 0*(t_params-1).abs().mean()
+            #t_params_loss = (params[1][1]-1).abs().mean()
             #param_loss = param_loss + (params[1][1]-1).abs().mean()
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
