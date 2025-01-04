@@ -48,6 +48,7 @@ from torch.autograd import gradcheck
 class MultigridSolver():
     #def __init__(self, coord_dims):
     def __init__(self, bs, order, n_ind_dim, n_iv, init_index_mi_list, coord_dims, n_iv_steps, solver_dbl=True, 
+                    evolution=False,
                     gamma=0.5, alpha=0.1, double_ret=False, n_grid=2, device=None):
         super().__init__()
         dtype = torch.float64 if solver_dbl else torch.float32
@@ -67,6 +68,7 @@ class MultigridSolver():
         self.device = device
         self.solver_dbl = solver_dbl
         self.init_index_mi_list = init_index_mi_list
+        self.evolution=evolution
 
         
         interp_modes={1:'linear', 2:'bilinear', 3:'trilinear'}
@@ -80,6 +82,9 @@ class MultigridSolver():
             print("Using double precision solver")
         else:
             print("Using single precision solver")
+
+        if self.evolution:
+            print('building evolution equation')
 
 
         self.dim_list = []
@@ -97,6 +102,7 @@ class MultigridSolver():
         self.pde_list: List[PDESYSLPEPS] = []
         for dim in self.dim_list:
             pde = PDESYSLPEPS(bs=bs*self.n_ind_dim, n_equations=self.n_equations, n_auxiliary=0, 
+                        evolution=self.evolution,
                         coord_dims=dim, step_size=self.step_size, order=self.order,
                         n_iv=self.n_iv, init_index_mi_list=init_index_mi_list, n_iv_steps=self.n_iv_steps, 
                         dtype=dtype, device=self.device)
@@ -867,6 +873,7 @@ class MultigridSolver():
 class MultigridLayer(nn.Module):
     """ Multigrid layer """
     def __init__(self, bs, order, n_ind_dim, n_iv, init_index_mi_list, coord_dims, n_iv_steps, solver_dbl=True, 
+                    evolution=False,
                     gamma=0.5, alpha=0.1, double_ret=False,n_grid=2, device=None):
         super().__init__()
         # placeholder step size
@@ -886,6 +893,7 @@ class MultigridLayer(nn.Module):
         #self.n_coeff = self.n_step * (self.order + 1)
         self.device = device
         self.solver_dbl = solver_dbl
+        self.evolution=evolution
         #dtype = torch.float64 if DBL else torch.float32
 
         if solver_dbl:
@@ -897,6 +905,7 @@ class MultigridLayer(nn.Module):
 
         self.mg_solver = MultigridSolver(bs, order, n_ind_dim, n_iv, init_index_mi_list, coord_dims, 
                                     n_iv_steps, solver_dbl=True, n_grid=n_grid,
+                                    evolution=self.evolution,
                                     gamma=0.5, alpha=0.1, double_ret=False, 
                                     device=None)
         #self.pde = PDESYSLPEPS(bs=bs*self.n_ind_dim, n_equations=self.n_equations, n_auxiliary=0, coord_dims=self.coord_dims, step_size=self.step_size, order=self.order,

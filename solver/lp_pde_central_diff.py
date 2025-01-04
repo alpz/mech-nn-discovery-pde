@@ -31,15 +31,23 @@ class Const(IntEnum):
 
 
 class QPVariableSet():
-    def __init__(self, coord_dims, order):
+    def __init__(self, coord_dims, order, evolution=False):
         self.coord_dims = coord_dims
+        #if evolution:
+        #    #add extra time dim
+        #    self.coord_dims[0] = self.coord_dims[0]+1
+        #    self.coord_dims_spatial = coord_dims
         self.n_coord = len(coord_dims)
 
         self.grid_size = np.prod(self.coord_dims)
-        self.grid_size_excl_edge = np.prod(np.array(self.coord_dims)-2)
 
         #make grid. reshape (grid_size, n_coord)
         self.grid_indices = np.indices(self.coord_dims).reshape((-1,self.grid_size)).transpose((1,0))
+
+        #if evolution:
+        #    self.grid_size_spatial = np.prod(self.coord_dims_spatial)
+        #    self.grid_indices_spatial = np.indices(self.coord_dims)[:,1:].reshape((-1,self.grid_size_spatial)).transpose((1,0))
+
         #make grid ready only
         self.grid_indices.setflags(write=False)
         #total order (1 or 2)
@@ -303,6 +311,8 @@ class QPVariableSet():
             #self.taylor_mi_list = l0+l1
 
             self.mi_indices = list(range(len(self.mi_list)))
+            #time derivative mi index
+            self.t_deriv_mi_index = [self.mi_indices[len(l0)], self.mi_indices[len(l0)+len(l1)]]
             #self.taylor_mi_indices = list(range(len(l0+l1)))
             self.taylor_mi_indices = list(range(len(l0)))
             #self.central_mi_indices = [] #list(range(len(l0+l1)))
@@ -318,6 +328,8 @@ class QPVariableSet():
             #self.taylor_mi_list = l0
 
             self.mi_indices = list(range(len(self.mi_list)))
+            #time derivative mi index
+            self.t_deriv_mi_index = [self.mi_indices[1]]
             self.taylor_mi_indices = list(range(len(l0)))
             #self.central_mi_indices = [] #list(range(len(l0+l1)))
             #self.maximal_mi_indices = list(range(len(l0), len(l)))
@@ -336,7 +348,9 @@ class QPVariableSet():
 
 
 class PDESYSLP(nn.Module):
-    def __init__(self, bs=1, coord_dims=(5,6), n_iv=1, init_index_mi_list=[], n_auxiliary=0, n_equations=1, step_size=0.25, order=2, dtype=torch.float32, n_iv_steps=1, step_list = None, build=True, device=None):
+    def __init__(self, bs=1, coord_dims=(5,6), n_iv=1, init_index_mi_list=[], 
+                 n_auxiliary=0, n_equations=1, step_size=0.25, order=2, evolution=False,
+                 dtype=torch.float32, n_iv_steps=1, step_list = None, build=True, device=None):
         super().__init__()
         
         #dimension of each coordinate
@@ -363,7 +377,7 @@ class PDESYSLP(nn.Module):
 
             #self.step_grid_expand_shape[i] = tuple(expand_shape)
 
-        self.forward_backward_shape = lambda coord, coord_dims: [d if i!=coord else d-1 for i,d in enumerate(coord_dims)]
+        #self.forward_backward_shape = lambda coord, coord_dims: [d if i!=coord else d-1 for i,d in enumerate(coord_dims)]
 
         #placeholder step
         self.step_size = step_size
@@ -393,11 +407,12 @@ class PDESYSLP(nn.Module):
         #total order
         self.order = order
 
-        self.var_set = QPVariableSet(self.coord_dims, self.order)
+        self.evolution = evolution
+        self.var_set = QPVariableSet(self.coord_dims, self.order, evolution=evolution)
 
 
         #grid constraint list for row permutation. assumes order
-        self.grid_constraint_list = [list() for i in range(self.var_set.grid_size)]
+        #self.grid_constraint_list = [list() for i in range(self.var_set.grid_size)]
 
         #### sparse constraint arrays
         # constraint coefficients
@@ -512,7 +527,7 @@ class PDESYSLP(nn.Module):
 
         ###########store list of constraints per grid num##
         #print(self.var_set.grid_indices[grid_num], var_index)
-        self.grid_constraint_list[grid_num].append(self.num_added_constraints)
+        #self.grid_constraint_list[grid_num].append(self.num_added_constraints)
         ###########
 
         self.num_added_constraints = self.num_added_constraints+1
@@ -523,153 +538,153 @@ class PDESYSLP(nn.Module):
         elif constraint_type == ConstraintType.Derivative:
             self.num_added_derivative_constraints += 1
 
-    def compute_constraint_grid_sizes_and_shapes(self):
-        #keep order
-        #equation
-        grid_size = np.prod(self.coord_dims)
-        #coord_dims_up = np.array(self.coord_dims)*2
-        #coord_dims_down = np.array(self.coord_dims)//2
+    #def compute_constraint_grid_sizes_and_shapes(self):
+    #    #keep order
+    #    #equation
+    #    grid_size = np.prod(self.coord_dims)
+    #    #coord_dims_up = np.array(self.coord_dims)*2
+    #    #coord_dims_down = np.array(self.coord_dims)//2
 
-        #count central constraint grids over mi over coord
-        #central
-        self.central_grid_shapes = []
-        self.central_grid_sizes = []
-        for coord in range(self.n_coord):
-            nmi = len(self.var_set.sorted_central_mi_indices[coord])
-            size = self.var_set.grid_size*nmi
-            shape = list(self.coord_dims) + [nmi]
+    #    #count central constraint grids over mi over coord
+    #    #central
+    #    self.central_grid_shapes = []
+    #    self.central_grid_sizes = []
+    #    for coord in range(self.n_coord):
+    #        nmi = len(self.var_set.sorted_central_mi_indices[coord])
+    #        size = self.var_set.grid_size*nmi
+    #        shape = list(self.coord_dims) + [nmi]
 
-            self.central_grid_shapes.append(shape)
-            self.central_grid_sizes.append(size)
+    #        self.central_grid_shapes.append(shape)
+    #        self.central_grid_sizes.append(size)
 
-        #ccshape = (self.n_coord, )
-        #ccount = len([1 for coord in range(self.n_coord) for mi in self.var_set.sorted_central_mi_indices[coord]])
-        #self.num_grids_equation_central = ccount+1
+    #    #ccshape = (self.n_coord, )
+    #    #ccount = len([1 for coord in range(self.n_coord) for mi in self.var_set.sorted_central_mi_indices[coord]])
+    #    #self.num_grids_equation_central = ccount+1
 
-        self.forward_grid_shapes = []
-        self.forward_grid_sizes = []
-        #forward
-        for coord in range(self.n_coord):
-            coord_dims = list(self.coord_dims)
-            coord_dims[coord] -= 1
-            grid_size = np.prod(coord_dims)
+    #    self.forward_grid_shapes = []
+    #    self.forward_grid_sizes = []
+    #    #forward
+    #    for coord in range(self.n_coord):
+    #        coord_dims = list(self.coord_dims)
+    #        coord_dims[coord] -= 1
+    #        grid_size = np.prod(coord_dims)
 
-            self.forward_grid_shapes.append(coord_dims)
-            self.forward_grid_sizes.append(grid_size)
-
-
-        self.backward_grid_shapes = []
-        self.backward_grid_sizes = []
-        #backward
-        for coord in range(self.n_coord):
-            coord_dims = list(self.coord_dims)
-            coord_dims[coord] -= 1
-            grid_size = np.prod(coord_dims)
-
-            self.backward_grid_shapes.append(coord_dims)
-            self.backward_grid_sizes.append(grid_size)
-
-        #initial/boundary shapes and sizes
-        self.initial_grid_shapes = []
-        self.initial_grid_sizes = []
-        #initial
-        for init_num, f in enumerate(self.init_index_mi_list):
-            pair = f(*self.coord_dims)
-            range_begin = np.array(pair[2])
-            range_end = np.array(pair[3])
-            coord_dims = range_end+1 - range_begin
-            grid_size = np.prod(coord_dims)
-
-            self.initial_grid_shapes.append(coord_dims)
-            self.initial_grid_sizes.append(grid_size)
-
-    def lambda_flat_to_grid_set(self, z):
-        """converts a flat Lagrange multiplier vector to a set of grids for interpolation/downsampling"""
-        bs = z.shape[0]
-        len0 = 0
-
-        len0 = len0 + self.var_set.grid_size
-        offset = len0
-
-        eq_grid = z[:, :len0].reshape(bs, *self.coord_dims)
+    #        self.forward_grid_shapes.append(coord_dims)
+    #        self.forward_grid_sizes.append(grid_size)
 
 
-        #forward backward grid shapes. TODO Assumes same
-        #coord_dims = list(self.coord_dims)
-        #coord_dims[0] -= 1
-        #fb_grid_size = np.prod(coord_dims)
+    #    self.backward_grid_shapes = []
+    #    self.backward_grid_sizes = []
+    #    #backward
+    #    for coord in range(self.n_coord):
+    #        coord_dims = list(self.coord_dims)
+    #        coord_dims[coord] -= 1
+    #        grid_size = np.prod(coord_dims)
 
-        #len1 = len0 + self.num_grids_forward_backward*self.var_set.grid_size
-        #fb_grids = z[:, :len1].reshape(bs, self.num_grids_forward_backward, *self.coord_dims)
-        initial_grids = []
-        for grid_shape, grid_size in zip(self.initial_grid_shapes,self.initial_grid_sizes):
-            len0 = offset + grid_size
-            grid = z[:, offset:len0].reshape(bs, *grid_shape)
-            offset = len0
-            initial_grids.append(grid)
+    #        self.backward_grid_shapes.append(coord_dims)
+    #        self.backward_grid_sizes.append(grid_size)
 
-        central_grids = []
-        for grid_shape, grid_size in zip(self.central_grid_shapes,self.central_grid_sizes):
-            len0 = offset + grid_size
-            print(offset, len0, grid_shape )
-            grid = z[:, offset:len0].reshape(bs, *tuple(grid_shape))
-            offset = len0
-            central_grids.append(grid)
+    #    #initial/boundary shapes and sizes
+    #    self.initial_grid_shapes = []
+    #    self.initial_grid_sizes = []
+    #    #initial
+    #    for init_num, f in enumerate(self.init_index_mi_list):
+    #        pair = f(*self.coord_dims)
+    #        range_begin = np.array(pair[2])
+    #        range_end = np.array(pair[3])
+    #        coord_dims = range_end+1 - range_begin
+    #        grid_size = np.prod(coord_dims)
 
-        forward_grids = []
-        for grid_shape, grid_size in zip(self.forward_grid_shapes,self.forward_grid_sizes):
-            len0 = len0 + grid_size
-            grid = z[:, offset:len0].reshape(bs, *grid_shape)
-            offset = len0
-            forward_grids.append(grid)
+    #        self.initial_grid_shapes.append(coord_dims)
+    #        self.initial_grid_sizes.append(grid_size)
 
-        backward_grids = []
-        for grid_shape, grid_size in zip(self.backward_grid_shapes,self.backward_grid_sizes):
-            len0 = len0 + grid_size
-            grid = z[:, offset:len0].reshape(bs, *grid_shape)
-            offset = len0
-            backward_grids.append(grid)
+    #def lambda_flat_to_grid_set(self, z):
+    #    """converts a flat Lagrange multiplier vector to a set of grids for interpolation/downsampling"""
+    #    bs = z.shape[0]
+    #    len0 = 0
+
+    #    len0 = len0 + self.var_set.grid_size
+    #    offset = len0
+
+    #    eq_grid = z[:, :len0].reshape(bs, *self.coord_dims)
 
 
-        return eq_grid, initial_grids, central_grids, forward_grids, backward_grids
+    #    #forward backward grid shapes. TODO Assumes same
+    #    #coord_dims = list(self.coord_dims)
+    #    #coord_dims[0] -= 1
+    #    #fb_grid_size = np.prod(coord_dims)
 
-    def lambda_grids_to_flat(self, eq_grid,initial_grids, central_grids, forward_grids, backward_grids):
-        bs = eq_grid.shape[0]
-        #eq_central_grids, forward_grids, backward_grids, initial_grids = self.lambda_flat_to_grid_set(z)
+    #    #len1 = len0 + self.num_grids_forward_backward*self.var_set.grid_size
+    #    #fb_grids = z[:, :len1].reshape(bs, self.num_grids_forward_backward, *self.coord_dims)
+    #    initial_grids = []
+    #    for grid_shape, grid_size in zip(self.initial_grid_shapes,self.initial_grid_sizes):
+    #        len0 = offset + grid_size
+    #        grid = z[:, offset:len0].reshape(bs, *grid_shape)
+    #        offset = len0
+    #        initial_grids.append(grid)
 
-        eq_grid = eq_grid.reshape(bs, -1)
+    #    central_grids = []
+    #    for grid_shape, grid_size in zip(self.central_grid_shapes,self.central_grid_sizes):
+    #        len0 = offset + grid_size
+    #        print(offset, len0, grid_shape )
+    #        grid = z[:, offset:len0].reshape(bs, *tuple(grid_shape))
+    #        offset = len0
+    #        central_grids.append(grid)
 
-        initial_grids = [grid.reshape(bs, -1) for grid in initial_grids]
-        central_grids = [grid.reshape(bs, -1) for grid in central_grids]
-        forward_grids = [grid.reshape(bs, -1) for grid in forward_grids]
-        backward_grids = [grid.reshape(bs, -1) for grid in backward_grids]
+    #    forward_grids = []
+    #    for grid_shape, grid_size in zip(self.forward_grid_shapes,self.forward_grid_sizes):
+    #        len0 = len0 + grid_size
+    #        grid = z[:, offset:len0].reshape(bs, *grid_shape)
+    #        offset = len0
+    #        forward_grids.append(grid)
 
-        zp = torch.cat([eq_grid] +initial_grids+central_grids+forward_grids+backward_grids, dim=1)
+    #    backward_grids = []
+    #    for grid_shape, grid_size in zip(self.backward_grid_shapes,self.backward_grid_sizes):
+    #        len0 = len0 + grid_size
+    #        grid = z[:, offset:len0].reshape(bs, *grid_shape)
+    #        offset = len0
+    #        backward_grids.append(grid)
 
-        return zp
 
-    def test_grid_transfer(self, z):
-        bs = z.shape[0]
+    #    return eq_grid, initial_grids, central_grids, forward_grids, backward_grids
 
-        eq_grid, initial_grids, central_grids, forward_grids, backward_grids = self.lambda_flat_to_grid_set(z)
+    #def lambda_grids_to_flat(self, eq_grid,initial_grids, central_grids, forward_grids, backward_grids):
+    #    bs = eq_grid.shape[0]
+    #    #eq_central_grids, forward_grids, backward_grids, initial_grids = self.lambda_flat_to_grid_set(z)
 
-        eq_grid = eq_grid.reshape(bs, -1)
+    #    eq_grid = eq_grid.reshape(bs, -1)
 
-        central_grids = [grid.reshape(bs, -1) for grid in central_grids]
-        forward_grids = [grid.reshape(bs, -1) for grid in forward_grids]
-        backward_grids = [grid.reshape(bs, -1) for grid in backward_grids]
-        initial_grids = [grid.reshape(bs, -1) for grid in initial_grids]
+    #    initial_grids = [grid.reshape(bs, -1) for grid in initial_grids]
+    #    central_grids = [grid.reshape(bs, -1) for grid in central_grids]
+    #    forward_grids = [grid.reshape(bs, -1) for grid in forward_grids]
+    #    backward_grids = [grid.reshape(bs, -1) for grid in backward_grids]
 
-        zp = torch.cat([eq_grid]+initial_grids+central_grids+forward_grids+backward_grids, dim=1)
+    #    zp = torch.cat([eq_grid] +initial_grids+central_grids+forward_grids+backward_grids, dim=1)
 
-        diff = (z-zp).pow(2).sum()
-        print('constraint diff check', diff)
+    #    return zp
 
-        assert(diff < 1e-4)
+    #def test_grid_transfer(self, z):
+    #    bs = z.shape[0]
 
-        return
-        #fb_grids = z[:, :len1].reshape(bs, self.num_grids_forward_backward, *self.coord_dims)
-        
+    #    eq_grid, initial_grids, central_grids, forward_grids, backward_grids = self.lambda_flat_to_grid_set(z)
+
+    #    eq_grid = eq_grid.reshape(bs, -1)
+
+    #    central_grids = [grid.reshape(bs, -1) for grid in central_grids]
+    #    forward_grids = [grid.reshape(bs, -1) for grid in forward_grids]
+    #    backward_grids = [grid.reshape(bs, -1) for grid in backward_grids]
+    #    initial_grids = [grid.reshape(bs, -1) for grid in initial_grids]
+
+    #    zp = torch.cat([eq_grid]+initial_grids+central_grids+forward_grids+backward_grids, dim=1)
+
+    #    diff = (z-zp).pow(2).sum()
+    #    print('constraint diff check', diff)
+
+    #    assert(diff < 1e-4)
+
+    #    return
+    #    #fb_grids = z[:, :len1].reshape(bs, self.num_grids_forward_backward, *self.coord_dims)
+    #    
 
     #build constraint string representations for check
     def repr_eq(self, rows=None, cols=None, rhs=None, values=None, type=ConstraintType.Equation):
@@ -738,7 +753,12 @@ class PDESYSLP(nn.Module):
             var_list = []
             val_list = []
             for mi_index in self.var_set.mi_indices:
-                var_list.append((grid_index, mi_index))
+                if self.evolution and mi_index in self.var_set.t_deriv_mi_index:
+                    #use time derivatives from pervious time step
+                    prev_grid_index = self.var_set.prev_adjacent_grid_index(grid_index, coord=0)
+                    var_list.append((prev_grid_index, mi_index))
+                else:
+                    var_list.append((grid_index, mi_index))
                 val_list.append(Const.PH)
             self.add_constraint(var_list = var_list, values=val_list, rhs=Const.PH, constraint_type=ConstraintType.Equation,
                                 grid_num=grid_num)
@@ -1118,12 +1138,12 @@ class PDESYSLP(nn.Module):
         self.initial_A =  initial_A
         self.derivative_A =  derivative_A
 
-        #build permutation
-        perm_list = [torch.tensor(row) for row in self.grid_constraint_list]
-        self.row_perm_inv = torch.cat(perm_list)
+        ##build permutation
+        #perm_list = [torch.tensor(row) for row in self.grid_constraint_list]
+        #self.row_perm_inv = torch.cat(perm_list)
 
-        self.row_perm = torch.empty_like(self.row_perm_inv)
-        self.row_perm[self.row_perm_inv] = torch.arange(self.row_perm_inv.shape[0])
+        #self.row_perm = torch.empty_like(self.row_perm_inv)
+        #self.row_perm[self.row_perm_inv] = torch.arange(self.row_perm_inv.shape[0])
 
 
     #def apply_sparse_row_perm(self, M, permutation):
