@@ -17,7 +17,7 @@ mgstats mgd1, mgd2;
 
 int num_cells = 256;
 //int num_cells = 128;
-double domain_size = 100.0;
+double domain_size = 10.0;
 
 int main(){
     //We initialize the parameter
@@ -66,8 +66,8 @@ event integration (i++){
 event movies (i += 3; t <= 150){
     fprintf(stderr, "Time: %g, Maximum value of A: %g\n", t, sqrt(normf(A2).max));
 
-    output_ppm(Ai, spread = 2, linear=true, file = "Ai.mp4");
-    output_ppm(A2, spread = 2, linear=true, file = "A2.mp4");
+    output_ppm(Ai, spread = 2, linear=true, file = "Ai_10.mp4");
+    output_ppm(A2, spread = 2, linear=true, file = "A2_10.mp4");
 }
 
 event output_binary_files(t+=1) {
