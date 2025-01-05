@@ -115,8 +115,8 @@ class ReactDiffDataset(Dataset):
         self.y = torch.linspace(0,1,data_shape[2]).reshape(1,1,-1).expand(data_shape[0], data_shape[1], -1)        
         
 
-        self.u_data = u_data[32:32+128, :128, :128]
-        self.v_data = v_data[32:32+128, :128, :128]
+        self.u_data = u_data[:100, :128, :128]
+        self.v_data = v_data[:100, :128, :128]
 
         #self.u_data = u_data[5:, :128, :128]
         #self.v_data = v_data[5:, :128, :128]
@@ -258,7 +258,7 @@ class Model(nn.Module):
 
 
         self.pde = MultigridLayer(bs=bs, coord_dims=self.coord_dims, order=2, n_ind_dim=self.n_ind_dim, n_iv=1, 
-                        n_grid=n_grid, evolution=True,
+                        n_grid=n_grid, evolution=False,
                         init_index_mi_list=self.iv_list,  n_iv_steps=1, double_ret=True, solver_dbl=True)
 
         # u, u_t, u_tt, u_x, u_xx
@@ -313,90 +313,6 @@ class Model(nn.Module):
             self.param_net_list.append(ParamNet())
 
 
-        #self.param_in2 = nn.Parameter(torch.randn(1,256))
-        #self.param_net2 = nn.Sequential(
-        #    nn.Linear(256, 1024),
-        #    nn.ELU(),
-        #    #nn.ReLU(),
-        #    nn.Linear(1024, 1024),
-        #    #nn.ReLU(),
-        #    nn.ELU(),
-        #    nn.Linear(1024, 1024),
-        #    #nn.ReLU(),
-        #    nn.ELU(),
-        #    #two polynomials, second order
-        #    #nn.Linear(1024, 3*2),
-        #    nn.Linear(1024, 2),
-        #    #nn.Tanh()
-        #)
-
-        #self.param_in3 = nn.Parameter(torch.randn(1,256))
-        #self.param_net3 = nn.Sequential(
-        #    nn.Linear(256, 1024),
-        #    #nn.ELU(),
-        #    nn.ELU(),
-        #    nn.Linear(1024, 1024),
-        #    nn.ELU(),
-        #    #nn.ELU(),
-        #    nn.Linear(1024, 1024),
-        #    #nn.ELU(),
-        #    nn.ELU(),
-        #    #two polynomials, second order
-        #    #nn.Linear(1024, 3*2),
-        #    nn.Linear(1024, 2),
-        #    #nn.Tanh()
-        #)
-
-        #self.param_in4 = nn.Parameter(torch.randn(1,256))
-        #self.param_net4 = nn.Sequential(
-        #    nn.Linear(256, 1024),
-        #    #nn.ELU(),
-        #    nn.ELU(),
-        #    nn.Linear(1024, 1024),
-        #    nn.ELU(),
-        #    #nn.ELU(),
-        #    nn.Linear(1024, 1024),
-        #    #nn.ELU(),
-        #    nn.ELU(),
-        #    #two polynomials, second order
-        #    #nn.Linear(1024, 3*2),
-        #    nn.Linear(1024, 2),
-        #    #nn.Tanh()
-        #)
-
-        #self.param_in5 = nn.Parameter(torch.randn(1,256))
-        #self.param_net5 = nn.Sequential(
-        #    nn.Linear(256, 1024),
-        #    #nn.ELU(),
-        #    nn.ELU(),
-        #    nn.Linear(1024, 1024),
-        #    nn.ELU(),
-        #    #nn.ELU(),
-        #    nn.Linear(1024, 1024),
-        #    #nn.ELU(),
-        #    nn.ELU(),
-        #    #two polynomials, second order
-        #    #nn.Linear(1024, 3*2),
-        #    nn.Linear(1024, 2),
-        #    #nn.Tanh()
-        #)
-
-        #self.param_in6 = nn.Parameter(torch.randn(1,256))
-        #self.param_net6 = nn.Sequential(
-        #    nn.Linear(256, 1024),
-        #    #nn.ELU(),
-        #    nn.ELU(),
-        #    nn.Linear(1024, 1024),
-        #    nn.ELU(),
-        #    #nn.ELU(),
-        #    nn.Linear(1024, 1024),
-        #    #nn.ELU(),
-        #    nn.ELU(),
-        #    #two polynomials, second order
-        #    #nn.Linear(1024, 3*2),
-        #    nn.Linear(1024, 2),
-        #    #nn.Tanh()
-        #)
 
         self.t_param_net = nn.Sequential(
             nn.Linear(solver_dim[0], 1024),
@@ -416,8 +332,8 @@ class Model(nn.Module):
 
 
         self.t_step_size = 0.05 #steps[0]
-        self.x_step_size = 0.1 #steps[1]
-        self.y_step_size = 0.1 #steps[2]
+        self.x_step_size = 0.15 #steps[1]
+        self.y_step_size = 0.15 #steps[2]
         #print('steps ', steps)
         ##self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
         ##self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
@@ -621,7 +537,7 @@ class Model(nn.Module):
         u = u.reshape(bs, self.pde.grid_size)
         v = v.reshape(bs, self.pde.grid_size)
         vp = vp.reshape(bs, self.pde.grid_size)
-        uvp = uvp.reshape(bs, self.pde.grid_size)
+        #uvp = uvp.reshape(bs, self.pde.grid_size)
         #u, u_t, u_x, u_y, u_tt, u_xx, u_yy
         #(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1), (2, 0, 0), (0, 2, 0), (0, 0, 2)
         #A2 = up.pow(2) + v.pow(2)
@@ -636,7 +552,7 @@ class Model(nn.Module):
         #coeffs_u[..., 0] = (-1 + A2) #+ params_u[2]*A2.pow(2))
         #coeffs_v[..., 0] = (params_list[4][1]*A2) #+ params_u[2]*A2.pow(2))
         #u_t
-        coeffs_u[..., 1] = params_list[1][1]
+        coeffs_u[..., 1] = 1 #params_list[1][1]
         #coeffs_v[..., 1] = params_list[1][0]
         #coeffs_u[..., 1] = t_params
         #coeffs_v[..., 1] = 1.
@@ -808,7 +724,7 @@ def optimize(nepoch=5000):
             #var_u_loss = (var_u- batch_u).abs().mean(dim=-1)
             #var_u_loss = (var_u- batch_u).abs().mean(dim=-1)
             #var_u_loss = (var_u- batch_u).pow(2).mean(dim=-1)
-            var_u_loss = (var_u-u).pow(2).mean(dim=-1)
+            var_u_loss = (var_u-batch_u).pow(2).mean(dim=-1)
             var_v_loss = (var_v- batch_v).pow(2).mean(dim=-1)
             #var_v_loss = 0*var_u_loss
 
