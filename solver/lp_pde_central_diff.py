@@ -1941,7 +1941,18 @@ class PDESYSLP(nn.Module):
         mx = mask*x.reshape(b, 1, -1)
         my = mask*y.reshape(b, -1, 1)
 
-        dD = mx*my
+        #dD = mx*my
+
+        X = mx.coalesce()
+        Y = my.coalesce()
+        #assert((X._indices()==Y._indices()).all())
+
+        dD_values = X._values()*Y._values()
+
+        dD = torch.sparse_coo_tensor(X._indices(), dD_values, 
+                                       #size=(self.num_added_derivative_constraints, self.num_vars), 
+                                       size=X.size(), 
+                                       dtype=self.dtype, device=x.device)
         return dD
 
         #ipdb.set_trace()
@@ -2010,7 +2021,18 @@ class PDESYSLP(nn.Module):
         mx = mask*x.reshape(b, 1, -1)
         my = mask*y.reshape(b, -1, 1)
 
-        dD = mx*my
+        #dD = mx*my
+
+        X = mx.coalesce()
+        Y = my.coalesce()
+        #assert((X._indices()==Y._indices()).all())
+
+        dD_values = X._values()*Y._values()
+
+        dD = torch.sparse_coo_tensor(X._indices(), dD_values, 
+                                       #size=(self.num_added_derivative_constraints, self.num_vars), 
+                                       size=X.size(), 
+                                       dtype=self.dtype, device=x.device)
         return dD
 
         

@@ -33,10 +33,12 @@ fields
 # %%
 Ai =np.transpose(times['Ai'], (2,0,1))
 Ar =np.transpose(times['Ar'], (2,0,1))
+A2 =np.transpose(times['A2'], (2,0,1))
 # %%
 Ai.shape
 Ar.shape
 # %%
-np.save('Ai_256.npy', Ai)
-np.save('Ar_256.npy', Ar)
+np.save('Ai_256_0_05.npy', Ai)
+np.save('Ar_256_0_05.npy', Ar)
+np.save('A2_256_0_05.npy', A2)
 # %%

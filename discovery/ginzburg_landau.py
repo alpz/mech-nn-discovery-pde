@@ -80,9 +80,9 @@ class ReactDiffDataset(Dataset):
         #v_data=np.load(os.path.join(PDEConfig.ginzburg_dir, '256', 'Ai_256_300.npy'))
         #uv_data=np.load(os.path.join(PDEConfig.ginzburg_dir, '256', 'A2_256_300.npy'))
 
-        u_data=np.load(os.path.join(PDEConfig.ginzburg_dir, '256', 'Ar_256_dt_01.npy'))
-        v_data=np.load(os.path.join(PDEConfig.ginzburg_dir, '256', 'Ai_256_dt_01.npy'))
-        uv_data=np.load(os.path.join(PDEConfig.ginzburg_dir, '256', 'A2_256_dt_01.npy'))
+        u_data=np.load(os.path.join(PDEConfig.ginzburg_dir, '256', 'Ar_256_0_05.npy'))
+        v_data=np.load(os.path.join(PDEConfig.ginzburg_dir, '256', 'Ai_256_0_05.npy'))
+        uv_data=np.load(os.path.join(PDEConfig.ginzburg_dir, '256', 'A2_256_0_05.npy'))
         print('rdiff shape', u_data.shape)
 
         #print(data.keys())
@@ -267,7 +267,7 @@ class Model(nn.Module):
 
 
         self.pde = MultigridLayer(bs=bs, coord_dims=self.coord_dims, order=2, n_ind_dim=self.n_ind_dim, n_iv=1, 
-                        n_grid=n_grid, evolution=True,
+                        n_grid=n_grid, evolution=False,
                         init_index_mi_list=self.iv_list,  n_iv_steps=1, double_ret=True, solver_dbl=True)
 
         # u, u_t, u_tt, u_x, u_xx
@@ -292,9 +292,9 @@ class Model(nn.Module):
         class ParamNet(nn.Module):
             def __init__(self):
                 super().__init__()
-                self.input = nn.Parameter(torch.randn(1,128))
+                self.input = nn.Parameter(torch.randn(1,512))
                 self.net = nn.Sequential(
-                    nn.Linear(128, 1024),
+                    nn.Linear(512, 1024),
                     nn.ReLU(),
                     nn.Linear(1024, 1024),
                     nn.ReLU(),
@@ -424,9 +424,9 @@ class Model(nn.Module):
         )
 
 
-        self.t_step_size = 0.1 #steps[0]
-        self.x_step_size = 0.39 #steps[1]
-        self.y_step_size = 0.39 #steps[2]
+        self.t_step_size = 0.05 #steps[0]
+        self.x_step_size = 0.3906 #steps[1]
+        self.y_step_size = 0.3906 #steps[2]
         #print('steps ', steps)
         ##self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
         ##self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
@@ -435,9 +435,9 @@ class Model(nn.Module):
         self.steps1 = torch.logit(self.x_step_size*torch.ones(1,1))
         self.steps2 = torch.logit(self.y_step_size*torch.ones(1,1))
 
-        self.steps0 = nn.Parameter(self.steps0)
-        self.steps1 = nn.Parameter(self.steps1)
-        self.steps2 = nn.Parameter(self.steps2)
+        #self.steps0 = nn.Parameter(self.steps0)
+        #self.steps1 = nn.Parameter(self.steps1)
+        #self.steps2 = nn.Parameter(self.steps2)
 
         self.t_steps_net = nn.Sequential(
             nn.Linear(solver_dim[0], 1024),
@@ -610,8 +610,8 @@ class Model(nn.Module):
         #vpi = vp.reshape(bs, *self.coord_dims)
         upi = up[:,0].reshape(bs, *self.coord_dims)
         #upi = upi/2
-        iv_rhs_u = self.get_iv(upi)
-        #iv_rhs_u = self.get_iv(ui)
+        #iv_rhs_u = self.get_iv(upi)
+        iv_rhs_u = self.get_iv(ui)
         #iv_rhs_v = self.get_iv(vi)
 
 
@@ -640,7 +640,7 @@ class Model(nn.Module):
         #u
         #coeffs_u[..., 0] = -(1-up.pow(2)-v.pow(2))
         #coeffs_u[..., 0] = (1*params_u[0] + params_u[1]*A2) #+ params_u[2]*A2.pow(2))
-        coeffs_u[..., 0] = 0 #(params_list[0][0] + params_list[0][1]*A2) #+ params_u[2]*A2.pow(2))
+        coeffs_u[..., 0] = 0 #(params_list[0][0]+ params_list[0][1]*A2[:,0]) #+ params_u[2]*A2.pow(2))
         #coeffs_u[..., 0] = (params_list[0][1]*A2) #+ params_u[2]*A2.pow(2))
         #coeffs_u[..., 0] = (-1 + A2) #+ params_u[2]*A2.pow(2))
         #coeffs_v[..., 0] = (params_list[4][1]*A2) #+ params_u[2]*A2.pow(2))
@@ -662,7 +662,8 @@ class Model(nn.Module):
 
         #rhs_u = (params_list[7][1]*A2)*vp #+ (1*params_u[0]+ params_u[1]*A2)*up
         #rhs_u = (params_list[6][0] +params_list[7][1]*A2)*vp #+ (1*params_list[0][0]+ params_list[0][1]*A2)*up
-        rhs_u = (params_list[3][0]*vp[:,0] + params_list[3][1]*A2[:,0]*vp[:,1]) + \
+        #rhs_u = (params_list[3][0]*vp[:,0] + params_list[3][1]*A2[:,0]*vp[:,0])
+        rhs_u = (params_list[3][0]*vp[:,0] + params_list[3][1]*A2[:,1]*vp[:,1]) + \
                 (1*params_list[0][0]*up[:,0] + params_list[0][1]*A2[:,1]*up[:,1])
         #rhs_u = (params_list[3][1]*A2*vp) + (1-params_list[0][1]*A2)*up
         #rhs_v = (params_list[6][0] + params_list[6][1]*A2)*up #+ (1*params_list[0][0]+ params_list[0][1]*A2)*up
@@ -815,15 +816,15 @@ def optimize(nepoch=5000):
             #var_v_loss = (var_v- batch_v).pow(2).mean(dim=-1)
 
             #u_loss = (u- batch_u).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
-            u_loss = (u- batch_u).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
+            u_loss = (u- batch_u).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             #u_loss = (u- batch_u).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             v_loss = 0*u_loss #(v- batch_v).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             #var_u_loss = (var_u- batch_u).abs().mean(dim=-1)
             #var_u_loss = (var_u- batch_u).abs().mean(dim=-1)
             #var_u_loss = (var_u- batch_u).pow(2).mean(dim=-1)
-            var_u_loss = (var_u- batch_u.unsqueeze(1)).pow(2).mean(dim=-1)
-            var_v_loss = (var_v- batch_v.unsqueeze(1)).pow(2).mean(dim=-1)
-            var_uv_loss = (var_uv- batch_uv.unsqueeze(1)).pow(2).mean(dim=-1)
+            var_u_loss = (var_u- batch_u.unsqueeze(1)).abs().mean(dim=-1)
+            var_v_loss = (var_v- batch_v.unsqueeze(1)).abs().mean(dim=-1)
+            var_uv_loss = (var_uv- batch_uv.unsqueeze(1)).abs().mean(dim=-1)
             #var_v_loss = 0*var_u_loss
 
             #var_v_loss = (var_v- batch_v).pow(2).mean(dim=-1)
@@ -864,7 +865,7 @@ def optimize(nepoch=5000):
             #print('mem after',torch.cuda.mem_get_info(), (torch.cuda.mem_get_info()[1]-torch.cuda.mem_get_info()[0])/1e9)
             #print('mem allocated {:.3f}MB'.format(torch.cuda.memory_allocated()/1024**2))
 
-            #del loss,u,u_loss,v,v_loss,var_u,var_v,var_u_loss,var_v_loss,var_uv_loss, params#, t_params_loss
+            del loss,u,u_loss,v,v_loss,var_u,var_v,var_u_loss,var_v_loss,var_uv_loss, params#, t_params_loss
             #xi = xi.detach().cpu().numpy()
             #alpha = alpha.squeeze().item() #.detach().cpu().numpy()
             #beta = beta.squeeze().item()
