@@ -294,15 +294,15 @@ class Model(nn.Module):
                 super().__init__()
                 self.input = nn.Parameter(torch.randn(1,512))
                 self.net = nn.Sequential(
-                    nn.Linear(512, 1024),
+                    nn.Linear(512, 512),
                     nn.ReLU(),
-                    nn.Linear(1024, 1024),
+                    nn.Linear(512, 512),
                     nn.ReLU(),
-                    nn.Linear(1024, 1024),
+                    nn.Linear(512, 512),
                     nn.ReLU(),
                     #two polynomials, second order
                     #nn.Linear(1024, 3*2),
-                    nn.Linear(1024, 2),
+                    nn.Linear(512, 2),
                     #nn.Tanh()
                 )
             def forward(self):
@@ -587,7 +587,7 @@ class Model(nn.Module):
         steps2 = self.steps2.type_as(u).expand(self.bs, self.coord_dims[2]-1)
         steps0 = torch.sigmoid(steps0)#.clip(min=0.01, max=0.8)
         steps1 = torch.sigmoid(steps1)#.clip(min=0.01, max=0.55)
-        steps2 = torch.sigmoid(steps1)#.clip(min=0.01, max=0.55)
+        steps2 = torch.sigmoid(steps2)#.clip(min=0.01, max=0.55)
 
         #steps0 = self.t_steps_net(t)
         #steps1 = self.x_steps_net(x)
@@ -610,8 +610,8 @@ class Model(nn.Module):
         #vpi = vp.reshape(bs, *self.coord_dims)
         upi = up[:,0].reshape(bs, *self.coord_dims)
         #upi = upi/2
-        #iv_rhs_u = self.get_iv(upi)
-        iv_rhs_u = self.get_iv(ui)
+        iv_rhs_u = self.get_iv(upi)
+        #iv_rhs_u = self.get_iv(ui)
         #iv_rhs_v = self.get_iv(vi)
 
 
@@ -634,8 +634,8 @@ class Model(nn.Module):
         #u, u_t, u_x, u_y, u_tt, u_xx, u_yy
         #(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1), (2, 0, 0), (0, 2, 0), (0, 0, 2)
         #A2 = up.pow(2) + v.pow(2)
-        #A2 = up.pow(2) + vp.pow(2)
-        A2 = uvp
+        A2 = up.pow(2) + vp.pow(2)
+        #A2 = uvp
         #A2 = u.pow(2) + v.pow(2)
         #u
         #coeffs_u[..., 0] = -(1-up.pow(2)-v.pow(2))
@@ -656,15 +656,15 @@ class Model(nn.Module):
         #coeffs_v[..., 5] = params_list[5][0]#+ params_list[3][1]*A2
         #coeffs_v[..., 5] = params_v[1]
         #u_yy
-        coeffs_u[..., 6] = params_list[2][0]#+ params_list[5][1]*A2
+        coeffs_u[..., 6] = params_list[2][1]#+ params_list[5][1]*A2
         #coeffs_v[..., 6] = params_list[5][0]#+ params_list[5][1]*A2
         #coeffs_v[..., 6] = params_v[1]
 
         #rhs_u = (params_list[7][1]*A2)*vp #+ (1*params_u[0]+ params_u[1]*A2)*up
         #rhs_u = (params_list[6][0] +params_list[7][1]*A2)*vp #+ (1*params_list[0][0]+ params_list[0][1]*A2)*up
         #rhs_u = (params_list[3][0]*vp[:,0] + params_list[3][1]*A2[:,0]*vp[:,0])
-        rhs_u = (params_list[3][0]*vp[:,0] + params_list[3][1]*A2[:,1]*vp[:,1]) + \
-                (1*params_list[0][0]*up[:,0] + params_list[0][1]*A2[:,1]*up[:,1])
+        rhs_u = (params_list[3][0]*vp[:,0] + params_list[3][1]*A2[:,0]*vp[:,0]) + \
+                (1*params_list[0][0]*up[:,0] + params_list[0][1]*A2[:,0]*up[:,0])
         #rhs_u = (params_list[3][1]*A2*vp) + (1-params_list[0][1]*A2)*up
         #rhs_v = (params_list[6][0] + params_list[6][1]*A2)*up #+ (1*params_list[0][0]+ params_list[0][1]*A2)*up
 
