@@ -60,6 +60,7 @@ batch_size= 8
 threshold = 0.1
 
 noise =False
+downsample=2
 
 L.info(f'Solver dim {solver_dim} ')
 
@@ -83,7 +84,12 @@ class ReactDiffDataset(Dataset):
         u_data=np.load(os.path.join(PDEConfig.ginzburg_dir, '256', 'Ar_256_0_05.npy'))
         v_data=np.load(os.path.join(PDEConfig.ginzburg_dir, '256', 'Ai_256_0_05.npy'))
         uv_data=np.load(os.path.join(PDEConfig.ginzburg_dir, '256', 'A2_256_0_05.npy'))
-        print('rdiff shape', u_data.shape)
+        #downsample time
+        u_data = u_data[::downsample]
+        v_data = v_data[::downsample]
+        uv_data = uv_data[::downsample]
+        L.info(f'rdiff shape {u_data.shape}')
+        L.info(f'downsample {downsample}')
 
         #print(data.keys())
         #t = torch.tensor(np.array(data['t'])).squeeze()
@@ -100,10 +106,13 @@ class ReactDiffDataset(Dataset):
 
 
         if noise:
-            print('adding noise')
-            rmse = mean_squared_error(data, np.zeros(data.shape), squared=False)
+            L.info('adding 20% noise')
+            #rmse = mean_squared_error(u_data, np.zeros(u_data.shape), squared=False)
+            rmse = np.sqrt(np.mean(u_data**2))
             # add 20% noise (note the impact on derivatives depends on step size...)
-            data = data + np.random.normal(0, rmse / 5.0, data.shape) 
+            u_data = u_data + np.random.normal(0, rmse / 5.0, u_data.shape) 
+            v_data = v_data + np.random.normal(0, rmse / 5.0, v_data.shape) 
+            uv_data = uv_data + np.random.normal(0, rmse / 5.0, uv_data.shape) 
 
         u_data = torch.tensor(u_data, dtype=dtype)#.permute(1,0,2,3) 
         v_data = torch.tensor(v_data, dtype=dtype)#.permute(1,0,2,3) 
@@ -292,7 +301,7 @@ class Model(nn.Module):
         class ParamNet(nn.Module):
             def __init__(self):
                 super().__init__()
-                self.input = nn.Parameter(torch.randn(1,512))
+                self.input = nn.Parameter(torch.randn(1,512)*4) #*(2/(4*512)))
                 self.net = nn.Sequential(
                     nn.Linear(512, 512),
                     nn.ReLU(),
@@ -424,7 +433,7 @@ class Model(nn.Module):
         )
 
 
-        self.t_step_size = 0.05 #steps[0]
+        self.t_step_size = 0.05*downsample #steps[0]
         self.x_step_size = 0.3906 #steps[1]
         self.y_step_size = 0.3906 #steps[2]
         #print('steps ', steps)
@@ -630,7 +639,7 @@ class Model(nn.Module):
         u = u.reshape(bs, self.pde.grid_size)
         v = v.reshape(bs, self.pde.grid_size)
         vp = vp.reshape(bs, 2, self.pde.grid_size)
-        uvp = uvp.reshape(bs,2, self.pde.grid_size)
+        #uvp = uvp.reshape(bs,2, self.pde.grid_size)
         #u, u_t, u_x, u_y, u_tt, u_xx, u_yy
         #(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1), (2, 0, 0), (0, 2, 0), (0, 0, 2)
         #A2 = up.pow(2) + v.pow(2)
@@ -645,7 +654,7 @@ class Model(nn.Module):
         #coeffs_u[..., 0] = (-1 + A2) #+ params_u[2]*A2.pow(2))
         #coeffs_v[..., 0] = (params_list[4][1]*A2) #+ params_u[2]*A2.pow(2))
         #u_t
-        coeffs_u[..., 1] =  params_list[1][1]
+        coeffs_u[..., 1] =  1 #params_list[1][1]
         #coeffs_v[..., 1] = params_list[1][0]
         #coeffs_u[..., 1] = t_params
         #coeffs_v[..., 1] = 1.
@@ -717,7 +726,7 @@ class Model(nn.Module):
         #vp = self.rnet2d_2(v_in)
         up = u_in + self.rnet3d_1(u_in)
         vp = v_in + self.rnet3d_2(v_in)
-        uvp = uv_in+ self.rnet3d_3(uv_in)
+        uvp = None #uv_in+ self.rnet3d_3(uv_in)
 
         t_params =self.t_param_net(t[:, :, 0, 0])
         #up = 2*torch.tanh(up)
@@ -787,7 +796,7 @@ def optimize(nepoch=5000):
             t,x,y = batch_in[3], batch_in[4], batch_in[5]
             batch_u = batch_u.double().to(device)
             batch_v = batch_v.double().to(device)
-            batch_uv = batch_uv.double().to(device)
+            #batch_uv = batch_uv.double().to(device)
 
             t = t.double().to(device)
             x = x.double().to(device)
@@ -805,10 +814,10 @@ def optimize(nepoch=5000):
             #v = v.reshape(bs, -1)
             batch_u = batch_u.reshape(bs, -1)
             batch_v = batch_v.reshape(bs, -1)
-            batch_uv = batch_uv.reshape(bs, -1)
+            #batch_uv = batch_uv.reshape(bs, -1)
             var_u =var_u.reshape(bs,2, -1)
             var_v =var_v.reshape(bs,2, -1)
-            var_uv =var_uv.reshape(bs,2, -1)
+            #var_uv =var_uv.reshape(bs,2, -1)
 
             #u_loss = (u- batch_u).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             #v_loss = (v- batch_v).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
@@ -822,9 +831,9 @@ def optimize(nepoch=5000):
             #var_u_loss = (var_u- batch_u).abs().mean(dim=-1)
             #var_u_loss = (var_u- batch_u).abs().mean(dim=-1)
             #var_u_loss = (var_u- batch_u).pow(2).mean(dim=-1)
-            var_u_loss = (var_u- batch_u.unsqueeze(1)).abs().mean(dim=-1)
+            var_u_loss = (var_u- u.unsqueeze(1)).abs().mean(dim=-1)
             var_v_loss = (var_v- batch_v.unsqueeze(1)).abs().mean(dim=-1)
-            var_uv_loss = (var_uv- batch_uv.unsqueeze(1)).abs().mean(dim=-1)
+            var_uv_loss = 0*var_u_loss #(var_uv- batch_uv.unsqueeze(1)).pow(2).mean(dim=-1)
             #var_v_loss = 0*var_u_loss
 
             #var_v_loss = (var_v- batch_v).pow(2).mean(dim=-1)
@@ -839,7 +848,7 @@ def optimize(nepoch=5000):
             t_params_loss = 0*(params[1][1]-1).abs().mean()
             #jloss = u_loss.mean() +  v_loss.mean() + var_u_loss.mean() + var_v_loss.mean()
             #loss = u_loss.mean() + v_loss.mean() +  var_u_loss.mean() + var_v_loss.mean() + t_params_loss
-            loss = u_loss.mean() +  var_u_loss.mean() + var_v_loss.mean() + var_uv_loss.mean()#+ t_params_loss
+            loss = u_loss.mean() +  var_u_loss.mean() + var_v_loss.mean() #+ var_uv_loss.mean()#+ t_params_loss
             #loss = u_loss.mean() +  var_u_loss.mean() 
             #loss = loss + rhs_loss.mean()
             loss = loss +  0.0001*param_loss.mean()
