@@ -31,6 +31,7 @@ class PDEConfig:
     sindpy_data = os.path.join(os.path.expanduser('~'),'data/pysindy/')
     brusselator_dir = os.path.join(os.path.expanduser('~'),'data', 'brusselator')
     ginzburg_dir = os.path.join(os.path.expanduser('~'),'data', 'ginzburg')
+    euler_dir = os.path.join(os.path.expanduser('~'),'data', 'euler')
     #relax
     ds = 1e2
 
