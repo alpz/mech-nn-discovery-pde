@@ -145,7 +145,7 @@ class Resnet3dBlock(nn.Module):
     def __init__(self, in_channels, activation=True):
         super().__init__()
         pm = 'zeros'
-        self.conv = nn.Conv3d(in_channels=in_channels, out_channels=in_channels, kernel_size=5, stride=1, padding=2, padding_mode=pm)
+        self.conv = nn.Conv3d(in_channels=in_channels, out_channels=in_channels, kernel_size=5, stride=1, padding=2)
         self.shortcut = nn.Conv1d(in_channels, in_channels, 1)
         self.bn = torch.nn.BatchNorm3d(in_channels)
         self.activation = activation
@@ -159,7 +159,7 @@ class Resnet3dBlock(nn.Module):
         out += self.shortcut(x.view(batchsize, self.in_channels, -1)).view(batchsize, self.in_channels, size_x, size_y, size_z)
         out = self.bn(out)
         if self.activation:
-            out = F.elu(out)
+            out = F.relu(out)
 
         return out
 
@@ -169,6 +169,9 @@ class ResNet3D(nn.Module):
 
         n_layers = 8
         width = 64
+        pm = 'zeros'
+        self.in_conv = nn.Conv3d(in_channels, width, kernel_size=5, stride=1, padding=2)
+        self.out_conv = nn.Conv3d(width, out_channels, kernel_size=5, stride=1, padding=2)
         layers = [Resnet3dBlock(width) for i in range(n_layers - 1)]
         self.net = nn.Sequential(*layers)
 
@@ -177,17 +180,20 @@ class ResNet3D(nn.Module):
         self.fc2 = nn.Linear(128, out_channels)
 
     def forward(self, x):
-        x = x.permute(0,2,3,4,1)
-        x = self.fc0(x)
-        x = x.permute(0,4,1,2,3)
+        #x = x.permute(0,2,3,4,1)
+        #x = self.fc0(x)
+        #x = x.permute(0,4,1,2,3)
+        x = self.in_conv(x)
+        x = torch.relu(x)
 
         x = self.net(x)
+        x = self.out_conv(x)
 
-        x = x.permute(0,2,3,4,1)
-        x = self.fc1(x)
-        x = torch.relu(x)
-        x = self.fc2(x)
-        x = x.permute(0,4,1,2,3)
+        #x = x.permute(0,2,3,4,1)
+        #x = self.fc1(x)
+        #x = torch.relu(x)
+        #x = self.fc2(x)
+        #x = x.permute(0,4,1,2,3)
 
         return x
 
