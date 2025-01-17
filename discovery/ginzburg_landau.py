@@ -210,7 +210,7 @@ class ReactDiffDataset(Dataset):
         y = self.y[t_idx:t_idx+t_step, x_idx:x_idx+x_step,
                              y_idx:y_idx+y_step]#.unsqueeze(0)
 
-        return u_data, v_data,uv_data, t, x, y
+        return v_data, u_data,uv_data, t, x, y
 
 #%%
 
