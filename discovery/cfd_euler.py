@@ -292,7 +292,8 @@ class Model(nn.Module):
         class ParamNet(nn.Module):
             def __init__(self):
                 super().__init__()
-                self.input = nn.Parameter(torch.randn(1,512)*4) #*(2/(4*512)))
+                self.input = nn.Parameter(torch.randn(1,512, requires_grad=False)*1)
+                #self.input = torch.ones(1,512) *(4/(4*512))
                 #self.p = nn.Parameter(torch.randn(1,2)) #*(2/(4*512)))
                 self.net = nn.Sequential(
                     nn.Linear(512, 512),
@@ -309,7 +310,7 @@ class Model(nn.Module):
             def forward(self):
                 #return self.p
                 y = self.net(self.input)
-                #return y
+                return y
 
 
         self.param_net_list = nn.ModuleList() 
@@ -618,12 +619,12 @@ model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step, 
 
 params = [p for name, p in model.named_parameters() if 'param_net' in name]
 others = [p for name, p in model.named_parameters() if 'param_net' not in name]
-#optimizer = torch.optim.Adam([
-#                {'params': others},
-#                {'params': params, 'lr':0.001}
-#            ], lr=0.00001)
+optimizer = torch.optim.Adam([
+                {'params': others},
+                {'params': params, 'lr':0.00001}
+            ], lr=0.00001)
 
-optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
+#optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
 #optimizer = torch.optim.SGD(model.parameters(), lr=0.0001, momentum =0.9)
