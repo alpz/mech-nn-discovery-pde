@@ -180,20 +180,20 @@ class ResNet3D(nn.Module):
         self.fc2 = nn.Linear(128, out_channels)
 
     def forward(self, x):
-        x = x.permute(0,2,3,4,1)
-        x = self.fc0(x)
-        x = x.permute(0,4,1,2,3)
-        #x = self.in_conv(x)
-        #x = torch.relu(x)
+        #x = x.permute(0,2,3,4,1)
+        #x = self.fc0(x)
+        #x = x.permute(0,4,1,2,3)
+        x = self.in_conv(x)
+        x = torch.relu(x)
 
         x = self.net(x)
-        #x = self.out_conv(x)
+        x = self.out_conv(x)
 
-        x = x.permute(0,2,3,4,1)
-        x = self.fc1(x)
-        x = torch.relu(x)
-        x = self.fc2(x)
-        x = x.permute(0,4,1,2,3)
+        #x = x.permute(0,2,3,4,1)
+        #x = self.fc1(x)
+        #x = torch.relu(x)
+        #x = self.fc2(x)
+        #x = x.permute(0,4,1,2,3)
 
         return x
 
