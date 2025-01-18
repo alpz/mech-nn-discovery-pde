@@ -292,16 +292,17 @@ class Model(nn.Module):
         class ParamNet(nn.Module):
             def __init__(self):
                 super().__init__()
-                self.input = nn.Parameter(torch.randn(1,512, requires_grad=False)*1)
+                #self.input = nn.Parameter(torch.randn(1,512, requires_grad=False)*1)
+                self.input = nn.Parameter(torch.randn(1,512)*2)
                 #self.input = torch.ones(1,512) *(4/(4*512))
                 #self.p = nn.Parameter(torch.randn(1,2)) #*(2/(4*512)))
                 self.net = nn.Sequential(
                     nn.Linear(512, 512),
-                    nn.ELU(),
+                    nn.ReLU(),
                     nn.Linear(512, 512),
-                    nn.ELU(),
+                    nn.ReLU(),
                     nn.Linear(512, 512),
-                    nn.ELU(),
+                    nn.ReLU(),
                     #two polynomials, second order
                     #nn.Linear(1024, 3*2),
                     nn.Linear(512, 2),
@@ -617,14 +618,14 @@ class Model(nn.Module):
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step, ds.y_step), device=device)
 
-params = [p for name, p in model.named_parameters() if 'param_net' in name]
-others = [p for name, p in model.named_parameters() if 'param_net' not in name]
-optimizer = torch.optim.Adam([
-                {'params': others},
-                {'params': params, 'lr':0.00001}
-            ], lr=0.00001)
+#params = [p for name, p in model.named_parameters() if 'param_net' in name]
+#others = [p for name, p in model.named_parameters() if 'param_net' not in name]
+#optimizer = torch.optim.Adam([
+#                {'params': others},
+#                {'params': params, 'lr':0.00001}
+#            ], lr=0.00001)
 
-#optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
 #optimizer = torch.optim.SGD(model.parameters(), lr=0.0001, momentum =0.9)
