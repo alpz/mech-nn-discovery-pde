@@ -1,5 +1,5 @@
 # %%
-from pde import PDE, FieldCollection, PlotTracker, ScalarField, UnitGrid, MemoryStorage
+from pde import PDE, FieldCollection, PlotTracker, ScalarField, UnitGrid, MemoryStorage, CartesianGrid
 
 # define the PDE
 a, b = 1, 3
@@ -9,11 +9,12 @@ eq = PDE(
         "u": f"{d0} * laplace(u) + {a} - ({b} + 1) * u + u**2 * v",
         "v": f"{d1} * laplace(v) + {b} * u - u**2 * v",
     },
-    bc='auto_periodic_dirichlet'
+    #bc='auto_periodic_dirichlet'
 )
 
 # initialize state
-grid = UnitGrid([64, 64])
+#grid = UnitGrid([64, 64])
+grid = CartesianGrid([[-10,10],[-10,10]],[128, 128])
 u = ScalarField(grid, a, label="Field $u$")
 v = b / a + 0.1 * ScalarField.random_normal(grid, label="Field $v$")
 state = FieldCollection([u, v])
@@ -23,7 +24,7 @@ state = FieldCollection([u, v])
 
 storage = MemoryStorage()  # store intermediate information of the simulation
 #sol = eq.solve(state, t_range=20, dt=1e-3, tracker=tracker)
-sol = eq.solve(state, t_range=128, dt=1e-2, tracker=storage.tracker(1))
+sol = eq.solve(state, t_range=128, dt=5e-3, tracker=storage.tracker(1))
 # %%
 print(sol.data.shape)
 print((sol.grid.cell_coords[:,:,0]))
