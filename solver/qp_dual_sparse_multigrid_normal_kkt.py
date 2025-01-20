@@ -368,14 +368,14 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #x = mg.v_cycle_jacobi_start(AtA_list, rhs_list, D_list, L)
             #x = mg.v_cycle_gs_start(AtA_list, rhs_list[0], AL_list, AU_list, L)
 
-            #x = solve_direct(AtA_list[0], rhs_list[0].reshape(bs, -1))
-            #x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
-            mg_args = [AtA_list, AL_list, AU_list, L]
+            x = solve_direct(AtA_list[0].unsqueeze(0), rhs_list[0].reshape(1, -1))
+            ##x = mg.full_multigrid_jacobi_start(AtA_list, rhs_list, D_list, L)
+            #mg_args = [AtA_list, AL_list, AU_list, L]
 
-            x,_ = cg.fgmres_matvec(AtA, 
-                            rhs_list[0].reshape(-1),
-                            x0=torch.zeros_like(rhs_list[0]).reshape(-1),
-                            MG=mg, MG_args=mg_args, restart=40, maxiter=80)
+            #x,_ = cg.fgmres_matvec(AtA, 
+            #                rhs_list[0].reshape(-1),
+            #                x0=torch.zeros_like(rhs_list[0]).reshape(-1),
+            #                MG=mg, MG_args=mg_args, restart=40, maxiter=80)
             #x,_ = cg.fgmres(AtA_list[0].unsqueeze(0), 
             #                rhs_list[0].unsqueeze(0),
             #                x0=torch.zeros_like(rhs_list[0]).unsqueeze(0), 
@@ -446,14 +446,14 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #dz = mg.full_multigrid_jacobi_start(AtA_list, grad_list, D_list, L, back=True)
 
             #AtA0 = mg.get_AtA_dense(AtA_list[0])
-            #dz = solve_direct(AtA_list[0], grad_list[0])
+            dz = solve_direct(AtA_list[0].unsqueeze(0), grad_list[0].reshape(1,-1))
 
-            #mg_args = [AtA_list, D_list, L, (A.shape[1], A.shape[2])]
-            mg_args = [AtA_list, AL_list, AU_list, L]
-            dz,_ = cg.fgmres_matvec(AtA_list[0], 
-                             grad_list[0].reshape(-1),
-                             x0=torch.zeros_like(grad_list[0]).reshape(-1),
-                           MG=mg, MG_args=mg_args, restart=40, maxiter=80, back=True)
+            ##mg_args = [AtA_list, D_list, L, (A.shape[1], A.shape[2])]
+            #mg_args = [AtA_list, AL_list, AU_list, L]
+            #dz,_ = cg.fgmres_matvec(AtA_list[0], 
+            #                 grad_list[0].reshape(-1),
+            #                 x0=torch.zeros_like(grad_list[0]).reshape(-1),
+            #               MG=mg, MG_args=mg_args, restart=40, maxiter=80, back=True)
 
             #dz,_ = cg.fgmres(AtA_list[0].unsqueeze(0), 
             #                 grad_list[0].unsqueeze(0),

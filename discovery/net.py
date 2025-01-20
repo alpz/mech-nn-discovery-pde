@@ -101,6 +101,7 @@ class Resnet2dBlock(nn.Module):
         self.activation = activation
         self.in_channels = in_channels
 
+
     def forward(self, x):
         batchsize = x.shape[0]
         size_x, size_y = x.shape[2], x.shape[3]
@@ -109,7 +110,7 @@ class Resnet2dBlock(nn.Module):
         out += self.shortcut(x.view(batchsize, self.in_channels, -1)).view(batchsize, self.in_channels, size_x, size_y)
         out = self.bn(out)
         if self.activation:
-            out = F.elu(out)
+            out = F.relu(out)
 
         return out
 
@@ -122,6 +123,9 @@ class ResNet2D(nn.Module):
         layers = [Resnet2dBlock(width) for i in range(n_layers - 1)]
         self.net = nn.Sequential(*layers)
 
+        self.in_conv = nn.Conv2d(in_channels, width, kernel_size=5, stride=1, padding=2)
+        self.out_conv = nn.Conv2d(width, out_channels, kernel_size=5, stride=1, padding=2)
+
         self.fc0 = nn.Linear(in_channels, width)
         self.fc1 = nn.Linear(width, 128)
         self.fc2 = nn.Linear(128, out_channels)
@@ -131,7 +135,11 @@ class ResNet2D(nn.Module):
         x = self.fc0(x)
         x = x.permute(0,3,1,2)
 
+        #x = self.in_conv(x)
+        #x = torch.relu(x)
         x = self.net(x)
+        #x = self.out_conv(x)
+
 
         x = x.permute(0,2,3,1)
         x = self.fc1(x)

@@ -339,9 +339,9 @@ class Model(nn.Module):
         params2 =(self.param_net2(self.param_in2))
         #params = params.reshape(-1,1,2, 3)
         #params = params.reshape(-1,1,2, 2)
+        params = 2+ 2*torch.sigmoid(params)
         params = torch.stack([params, params2], dim=-2)
         #range 2,4
-        params = 2+ 2*torch.sigmoid(params)
         return params
 
     def get_iv(self, u):
@@ -405,7 +405,7 @@ class Model(nn.Module):
         coeffs = torch.zeros((bs*n_patches, self.pde.grid_size, self.pde.n_orders), device=u.device)
         #u, u_t, u_x, u_tt, u_xx
         #u_t
-        coeffs[..., 1] = 1.
+        coeffs[..., 1] = 1. #params[...,1,0]
         #u_x
         #coeffs[..., 2] = p
         #u_xx
@@ -463,10 +463,12 @@ class Model(nn.Module):
         #up = self.data_conv2d(cin).squeeze(1)
         #up2 = self.data_conv2d2(cin).squeeze(1)
 
-        up = self.rnet1(cin).squeeze(1)
+        up =self.rnet1(cin)#.squeeze(1)
         up2 = self.rnet2(cin).squeeze(1)
 
-        up=torch.sigmoid(up)
+        up =cin + torch.sigmoid(up)
+        up = up.squeeze(1)
+        #up=torch.sigmoid(up)
 
         #iv = self.iv_conv2d(u)
         #iv = iv.reshape(-1, self.n_patches, 13*32)
@@ -543,6 +545,7 @@ def optimize(nepoch=5000):
         u_losses = []
         var_losses = []
         var2_losses = []
+        udx_check_losses = []
         losses = []
         total_loss = 0
         for i, batch_in in enumerate(tqdm(train_loader)):
@@ -576,7 +579,6 @@ def optimize(nepoch=5000):
             u0 = u0.reshape(bs, -1)
             u0x = u0x.reshape(bs, -1)
             batch_u = batch_u.reshape(bs, -1)
-            batch_u_x = batch_u_x.reshape(bs, -1)
 
             var =var.reshape(bs, -1)
             var2 =var2.reshape(bs, -1)
@@ -585,7 +587,7 @@ def optimize(nepoch=5000):
             #x_loss = (x0- batch_in).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
             u_loss = (u0- batch_u).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
 
-            var_loss = (var- u0).abs().mean(dim=-1) #+ (var**2- batch_in**2).pow(2).mean(dim=-1)
+            var_loss = (var- batch_u).abs().mean(dim=-1) #+ (var**2- batch_in**2).pow(2).mean(dim=-1)
             var2_loss = (var2- u0x).abs().mean(dim=-1) #+ (var**2- batch_in**2).pow(2).mean(dim=-1)
 
             #loss = x_loss + var_loss + time_loss
@@ -594,6 +596,10 @@ def optimize(nepoch=5000):
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.001*param_loss.mean()
             loss = u_loss.mean() + var_loss.mean()  +  0.001*param_loss.mean()
+
+            batch_u_x = batch_u_x.reshape(bs, -1)
+            udx_loss_check = (u0x - batch_u_x).abs().mean()
+            
             #loss = x_loss.mean() + var_loss.mean() + 0.001*param_loss.mean()
             #loss = x_loss.mean() #+ 0.01*param_loss.mean()
             #loss = var_loss.mean()
@@ -603,9 +609,10 @@ def optimize(nepoch=5000):
             #var_losses.append(var_loss + var2_loss)
             var_losses.append(var_loss)
             var2_losses.append(var2_loss)
+            udx_check_losses.append(udx_loss_check)
             #var_losses.append(var_loss )
             losses.append(loss)
-            total_loss = total_loss + loss
+            #total_loss = total_loss + loss
             
 
             loss.backward()
