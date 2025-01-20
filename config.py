@@ -32,6 +32,7 @@ class PDEConfig:
     brusselator_dir = os.path.join(os.path.expanduser('~'),'data', 'brusselator')
     ginzburg_dir = os.path.join(os.path.expanduser('~'),'data', 'ginzburg')
     euler_dir = os.path.join(os.path.expanduser('~'),'data', 'euler')
+    porous_dir = os.path.join(os.path.expanduser('~'),'data', 'porous')
     #relax
     ds = 1e2
 
