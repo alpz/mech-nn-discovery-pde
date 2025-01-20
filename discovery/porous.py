@@ -70,8 +70,8 @@ class PorousDataset(Dataset):
         self.down_sample = 1
 
         #data=loadmat(os.path.join(PDEConfig.sindpy_data, 'burgers.mat'))
-        data=np.load(os.path.join(PDEConfig.porous_data, 'porous_70_64_m3_u.npy'))
-        data_ux=np.load(os.path.join(PDEConfig.porous_data, 'porous_70_64_m3_ux.npy'))
+        data=np.load(os.path.join(PDEConfig.porous_dir, 'porous_70_64_m_3_u.npy'))
+        data_ux=np.load(os.path.join(PDEConfig.porous_dir, 'porous_70_64_m_3_ux.npy'))
 
         #print(data.keys())
         #t = torch.tensor(np.array(data['t'])).squeeze()
@@ -380,9 +380,11 @@ class Model(nn.Module):
         #upi = u.reshape(bs, *self.coord_dims)
         #upi = up.reshape(bs*n_patches, *self.coord_dims)
         upi = up.reshape(bs*n_patches, *self.coord_dims)
+        ui = u.reshape(bs*n_patches, *self.coord_dims)
         #upi = upi + up2.reshape(bs, *self.coord_dims)
         #upi = upi/2
         iv_rhs = self.get_iv(upi)
+        #iv_rhs = self.get_iv(ui)
         #iv_rhs = upi + up2.reshape(bs, *self.coord_dims)
         #iv_rhs = iv_rhs.reshape(bs, n_patches*self.iv_len)
         #iv_rhs = self.iv_mlp(iv_rhs)
@@ -449,7 +451,7 @@ class Model(nn.Module):
 
         return merged
 
-    def forward(self, u, t, x):
+    def forward(self, u):
         bs = u.shape[0]
         #up = self.data_net(u)
         #up = up.reshape(bs, self.pde.grid_size)
@@ -463,6 +465,8 @@ class Model(nn.Module):
 
         up = self.rnet1(cin).squeeze(1)
         up2 = self.rnet2(cin).squeeze(1)
+
+        up=torch.sigmoid(up)
 
         #iv = self.iv_conv2d(u)
         #iv = iv.reshape(-1, self.n_patches, 13*32)
@@ -548,8 +552,8 @@ def optimize(nepoch=5000):
             batch_u,batch_u_x = batch_in[0], batch_in[1]
             batch_u = batch_u.double().to(device)
             batch_u_x = batch_u_x.double().to(device)
-            t = t.double().to(device)
-            x = x.double().to(device)
+            #t = t.double().to(device)
+            #x = x.double().to(device)
             #time = time.to(device)
             #print(batch_in.shape)
             data_shape = batch_u.shape
@@ -629,7 +633,7 @@ def optimize(nepoch=5000):
         L.info(f'parameters\n{params}')
             #pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item():.3E}  xloss {x_loss:.3E} max eps {meps}\n')
         #print(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E}  xloss {_x_loss:.3E} vloss {_v_loss:.3E} max eps {meps}\n')
-        L.info(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E} max eps {meps:.3E} 
+        L.info(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E} max eps {meps:.3E}  \
                xloss {_u_loss.item():.3E} vloss {_v_loss.item():.3E} vxloss {_vx_loss.item():.3E}')
 
 
