@@ -60,8 +60,10 @@ batch_size= 8
 threshold = 0.1
 
 noise =False
+setmask =False
 downsample=2
 
+L.info(f'Ginzburg')
 L.info(f'Solver dim {solver_dim} ')
 
 
@@ -157,13 +159,19 @@ class ReactDiffDataset(Dataset):
         #self.length = self.num_t_idx*self.num_x_idx
         self.length = self.num_t_idx*self.num_x_idx*self.num_y_idx
 
-        ##mask
-        #mask = torch.rand_like(self.data)
-        ##keep only 80% of data
-        #mask = (mask>0.5).double()
+        if setmask:
+            ##mask
+            mask = torch.rand_like(self.u_data)
+            ##keep only 80% of data
+            mask = (mask>0.2).double()
+            L.info(f'20% mask')
+        else:
+            mask = torch.ones_like(self.u_data)
+
         
-        #self.data = self.data*mask
-        #self.mask = mask
+        self.u_data = self.u_data*mask
+        self.v_data = self.v_data*mask
+        self.mask = mask
         
 
 
@@ -197,6 +205,9 @@ class ReactDiffDataset(Dataset):
         uv_data = self.uv_data[t_idx:t_idx+t_step, 
                              x_idx:x_idx+x_step,
                              y_idx:y_idx+y_step]
+        mask = self.mask[t_idx:t_idx+t_step, 
+                             x_idx:x_idx+x_step,
+                             y_idx:y_idx+y_step]
 
         #tlen = self.u_data.shape[0]
         #xlen = self.u_data.shape[1]
@@ -210,7 +221,7 @@ class ReactDiffDataset(Dataset):
         y = self.y[t_idx:t_idx+t_step, x_idx:x_idx+x_step,
                              y_idx:y_idx+y_step]#.unsqueeze(0)
 
-        return v_data, u_data,uv_data, t, x, y
+        return u_data, v_data,uv_data, t, x, y, mask
 
 #%%
 
@@ -286,11 +297,11 @@ class Model(nn.Module):
         #self.rnet1 = N.ResNet(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0]+2)
         #self.rnet2 = N.ResNet(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0]+2)
 
-        self.rnet3d_1 = N.ResNet3D(out_channels=2, in_channels=1)
-        self.rnet3d_2 = N.ResNet3D(out_channels=2, in_channels=1)
-        self.rnet3d_3 = N.ResNet3D(out_channels=2, in_channels=1)
-        #self.rnet2d_1 = N.ResNet2D(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0]+2)
-        #self.rnet2d_2 = N.ResNet2D(out_channels=self.coord_dims[0], in_channels=self.coord_dims[0]+2)
+        #self.rnet3d_1 = N.ResNet3D(out_channels=3, in_channels=1)
+        #self.rnet3d_2 = N.ResNet3D(out_channels=3, in_channels=1)
+        #self.rnet3d_3 = N.ResNet3D(out_channels=3, in_channels=1)
+        self.rnet2d_1 = N.ResNet2D(out_channels=1, in_channels=1)
+        self.rnet2d_2 = N.ResNet2D(out_channels=1, in_channels=1)
         #self.rnet2 = N.ResNet3D(out_channels=1, in_channels=1)
         #self.rhs_net = N.ResNet3D(out_channels=1, in_channels=1)
 
@@ -301,17 +312,17 @@ class Model(nn.Module):
         class ParamNet(nn.Module):
             def __init__(self):
                 super().__init__()
-                self.input = nn.Parameter(torch.randn(1,512)*4) #*(2/(4*512)))
+                self.input = nn.Parameter(torch.randn(1,512)) #*(2/(4*512)))
                 self.net = nn.Sequential(
-                    nn.Linear(512, 512),
+                    nn.Linear(512, 1024),
                     nn.ReLU(),
-                    nn.Linear(512, 512),
+                    nn.Linear(1024, 1024),
                     nn.ReLU(),
-                    nn.Linear(512, 512),
-                    nn.ReLU(),
+                    #nn.Linear(512, 512),
+                    #nn.ReLU(),
                     #two polynomials, second order
                     #nn.Linear(1024, 3*2),
-                    nn.Linear(512, 2),
+                    nn.Linear(1024, 10),
                     #nn.Tanh()
                 )
             def forward(self):
@@ -327,7 +338,7 @@ class Model(nn.Module):
         #self.param_net7= ParamNet()
 
         self.param_net_list = nn.ModuleList() 
-        for i in range(8):
+        for i in range(4):
             self.param_net_list.append(ParamNet())
 
 
@@ -624,56 +635,74 @@ class Model(nn.Module):
         #iv_rhs_v = self.get_iv(vi)
 
 
+        up = up.reshape(bs, 1, self.pde.grid_size)
+        u = u.reshape(bs, self.pde.grid_size)
+        v = v.reshape(bs, self.pde.grid_size)
+        vp = vp.reshape(bs, 1, self.pde.grid_size)
+        
+        up0 = up[:,0]
+        #up1 = up[:,1]
+        #up2 = up[:,2]
 
-        #basis = torch.stack([torch.ones_like(up), up, up**2, up.pow(3), up.pow(4)], dim=-1)
-        #basis2 = torch.stack([torch.ones_like(up), up, up**2, up.pow(3), up.pow(4)], dim=-1)
+        vp0 = vp[:,0]
+        #vp1 = vp[:,1]
+        #vp2 = vp[:,2]
 
-        #p = (basis*params[...,0,:]).sum(dim=-1)
+        #basis1 = torch.stack([torch.ones_like(up0), up0, up0.pow(2), up0.pow(3), vp0, vp0.pow(2), vp0.pow(3), up0*vp0, up0.pow(2)*vp0, up0*vp0.pow(2)], dim=-1)
+        basis0 = torch.stack([torch.ones_like(up0), up0, up0.pow(2), vp0, vp0.pow(2), up0*vp0], dim=-1)
+        basis2= torch.stack([torch.ones_like(up0), up0, up0.pow(2)], dim=-1)
+        basis3 = torch.stack([vp0, vp0.pow(2), vp0.pow(3)], dim=-1)
+
+        #basis2 = torch.stack([torch.ones_like(up1), up1, up1.pow(2), up1.pow(3), vp1, vp1.pow(2), vp1.pow(3), up1*vp1, up1.pow(2)*vp1, up1*vp1.pow(2)], dim=-1)
+        #basis3 = torch.stack([torch.ones_like(up2), up2, up2.pow(2), up2.pow(3), vp2, vp2.pow(2), vp2.pow(3), up2*vp2, up2.pow(2)*vp2, up2*vp2.pow(2)], dim=-1)
+
+        p0 = (basis0*params_list[0][:6]).sum(dim=-1)
+        p1 = (basis2*params_list[1][:3]).sum(dim=-1)
+        p2 = (basis2*params_list[2][:3]).sum(dim=-1)
+        p3 = (basis3*params_list[3][:3]).sum(dim=-1)
+        #p4 = (basis*params_list[3]).sum(dim=-1)
         #q = (basis2*params[...,1,:]).sum(dim=-1)
 
 
         coeffs_u = torch.zeros((bs, self.pde.grid_size, self.pde.n_orders), device=u.device)
         #coeffs_v = torch.zeros((bs, self.pde.grid_size, self.pde.n_orders), device=u.device)
 
-        up = up.reshape(bs, 2, self.pde.grid_size)
-        u = u.reshape(bs, self.pde.grid_size)
-        v = v.reshape(bs, self.pde.grid_size)
-        vp = vp.reshape(bs, 2, self.pde.grid_size)
         #uvp = uvp.reshape(bs,2, self.pde.grid_size)
         #u, u_t, u_x, u_y, u_tt, u_xx, u_yy
         #(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1), (2, 0, 0), (0, 2, 0), (0, 0, 2)
         #A2 = up.pow(2) + v.pow(2)
-        A2 = up.pow(2) + vp.pow(2)
+        #A2 = up.pow(2) + vp.pow(2)
         #A2 = uvp
         #A2 = u.pow(2) + v.pow(2)
         #u
         #coeffs_u[..., 0] = -(1-up.pow(2)-v.pow(2))
         #coeffs_u[..., 0] = (1*params_u[0] + params_u[1]*A2) #+ params_u[2]*A2.pow(2))
-        coeffs_u[..., 0] = 0 #(params_list[0][0]+ params_list[0][1]*A2[:,0]) #+ params_u[2]*A2.pow(2))
+        coeffs_u[..., 0] = p0 #(params_list[0][0]+ params_list[0][1]*A2[:,0]) #+ params_u[2]*A2.pow(2))
         #coeffs_u[..., 0] = (params_list[0][1]*A2) #+ params_u[2]*A2.pow(2))
         #coeffs_u[..., 0] = (-1 + A2) #+ params_u[2]*A2.pow(2))
         #coeffs_v[..., 0] = (params_list[4][1]*A2) #+ params_u[2]*A2.pow(2))
         #u_t
-        coeffs_u[..., 1] =  1 #params_list[1][1]
+        coeffs_u[..., 1] =  1. #params_list[3][0]
         #coeffs_v[..., 1] = params_list[1][0]
         #coeffs_u[..., 1] = t_params
         #coeffs_v[..., 1] = 1.
         #u_tt
         #coeffs_u[..., 4] = params_list[1][1]
         #u_xx
-        coeffs_u[..., 5] = params_list[2][0]#+ params_list[3][1]*A2
+        coeffs_u[..., 5] = p1 #params_list[2][0]#+ params_list[3][1]*A2
         #coeffs_v[..., 5] = params_list[5][0]#+ params_list[3][1]*A2
         #coeffs_v[..., 5] = params_v[1]
         #u_yy
-        coeffs_u[..., 6] = params_list[2][1]#+ params_list[5][1]*A2
+        coeffs_u[..., 6] = p2 #params_list[2][1]#+ params_list[5][1]*A2
         #coeffs_v[..., 6] = params_list[5][0]#+ params_list[5][1]*A2
         #coeffs_v[..., 6] = params_v[1]
 
         #rhs_u = (params_list[7][1]*A2)*vp #+ (1*params_u[0]+ params_u[1]*A2)*up
         #rhs_u = (params_list[6][0] +params_list[7][1]*A2)*vp #+ (1*params_list[0][0]+ params_list[0][1]*A2)*up
         #rhs_u = (params_list[3][0]*vp[:,0] + params_list[3][1]*A2[:,0]*vp[:,0])
-        rhs_u = (params_list[3][0]*vp[:,0] + params_list[3][1]*A2[:,0]*vp[:,0]) + \
-                (1*params_list[0][0]*up[:,0] + params_list[0][1]*A2[:,0]*up[:,0])
+        #rhs_u = (params_list[3][0]*vp[:,0] + params_list[3][1]*A2[:,0]*vp[:,0]) + \
+        #        (1*params_list[0][0]*up[:,0] + params_list[0][1]*A2[:,0]*up[:,0])
+        rhs_u = p3 
         #rhs_u = (params_list[3][1]*A2*vp) + (1-params_list[0][1]*A2)*up
         #rhs_v = (params_list[6][0] + params_list[6][1]*A2)*up #+ (1*params_list[0][0]+ params_list[0][1]*A2)*up
 
@@ -704,6 +733,7 @@ class Model(nn.Module):
     
     def forward(self, u, v, uv, t, x,y):
         bs = u.shape[0]
+        ts = solver_dim[0]
 
         # u batch, time, x, y
 
@@ -715,6 +745,8 @@ class Model(nn.Module):
         #v_in = torch.cat([v, x[:,[0]],y[:,[0]]], dim=1) 
         #u_in = u
         #v_in = v
+        u_in = u_in.reshape(bs*ts, 1, solver_dim[1], solver_dim[2])
+        v_in = v_in.reshape(bs*ts, 1, solver_dim[1], solver_dim[2])
 
         #up = self.rnet1(u_in)
         #vp = None #self.rnet2(v)
@@ -722,10 +754,13 @@ class Model(nn.Module):
         #up = self.rnet1(u)
         #vp = None #self.rnet2(v)
 
-        #up = self.rnet2d_1(u_in)
-        #vp = self.rnet2d_2(v_in)
-        up = u_in + self.rnet3d_1(u_in)
-        vp = v_in + self.rnet3d_2(v_in)
+        up = u_in+ self.rnet2d_1(u_in)
+        vp = v_in + self.rnet2d_2(v_in)
+
+        up = up.reshape(bs,1, *solver_dim)
+        vp = vp.reshape(bs,1, *solver_dim)
+        #up = u_in + self.rnet3d_1(u_in)
+        #vp = v_in + self.rnet3d_2(v_in)
         uvp = None #uv_in+ self.rnet3d_3(uv_in)
 
         t_params =self.t_param_net(t[:, :, 0, 0])
@@ -793,9 +828,10 @@ def optimize(nepoch=5000):
         #for i, batch_in in enumerate((train_loader)):
             optimizer.zero_grad()
             batch_u, batch_v, batch_uv = batch_in[0], batch_in[1], batch_in[2]
-            t,x,y = batch_in[3], batch_in[4], batch_in[5]
+            t,x,y,mask = batch_in[3], batch_in[4], batch_in[5], batch_in[6]
             batch_u = batch_u.double().to(device)
             batch_v = batch_v.double().to(device)
+            mask = mask.double().to(device)
             #batch_uv = batch_uv.double().to(device)
 
             t = t.double().to(device)
@@ -815,8 +851,9 @@ def optimize(nepoch=5000):
             batch_u = batch_u.reshape(bs, -1)
             batch_v = batch_v.reshape(bs, -1)
             #batch_uv = batch_uv.reshape(bs, -1)
-            var_u =var_u.reshape(bs,2, -1)
-            var_v =var_v.reshape(bs,2, -1)
+            var_u =var_u.reshape(bs,1, -1)
+            var_v =var_v.reshape(bs,1, -1)
+            mask =mask.reshape(bs, -1)
             #var_uv =var_uv.reshape(bs,2, -1)
 
             #u_loss = (u- batch_u).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
@@ -831,7 +868,7 @@ def optimize(nepoch=5000):
             #var_u_loss = (var_u- batch_u).abs().mean(dim=-1)
             #var_u_loss = (var_u- batch_u).abs().mean(dim=-1)
             #var_u_loss = (var_u- batch_u).pow(2).mean(dim=-1)
-            var_u_loss = (var_u- u.unsqueeze(1)).abs().mean(dim=-1)
+            var_u_loss = (var_u- batch_u.unsqueeze(1)).abs().mean(dim=-1)
             var_v_loss = (var_v- batch_v.unsqueeze(1)).abs().mean(dim=-1)
             var_uv_loss = 0*var_u_loss #(var_uv- batch_uv.unsqueeze(1)).pow(2).mean(dim=-1)
             #var_v_loss = 0*var_u_loss

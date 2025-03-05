@@ -70,8 +70,11 @@ class PorousDataset(Dataset):
         self.down_sample = 1
 
         #data=loadmat(os.path.join(PDEConfig.sindpy_data, 'burgers.mat'))
-        data=np.load(os.path.join(PDEConfig.porous_dir, 'porous_70_64_m_3_u.npy'))
-        data_ux=np.load(os.path.join(PDEConfig.porous_dir, 'porous_70_64_m_3_ux.npy'))
+        #data=np.load(os.path.join(PDEConfig.porous_dir, 'porous_70_64_m_3_u.npy'))
+        #data_ux=np.load(os.path.join(PDEConfig.porous_dir, 'porous_70_64_m_3_ux.npy'))
+
+        data=np.load(os.path.join(PDEConfig.porous_dir, 'porous_70_64_m_2.675_u.npy'))
+        data_ux=np.load(os.path.join(PDEConfig.porous_dir, 'porous_70_64_m_2.675_ux.npy'))
 
         #print(data.keys())
         #t = torch.tensor(np.array(data['t'])).squeeze()
@@ -339,7 +342,8 @@ class Model(nn.Module):
         params2 =(self.param_net2(self.param_in2))
         #params = params.reshape(-1,1,2, 3)
         #params = params.reshape(-1,1,2, 2)
-        params = 2+ 2*torch.sigmoid(params)
+        #params = 2+ 2*torch.sigmoid(params)
+        params = 6*torch.sigmoid(params)
         params = torch.stack([params, params2], dim=-2)
         #range 2,4
         return params
@@ -400,6 +404,11 @@ class Model(nn.Module):
         #q = (basis2*params[...,1,:]).sum(dim=-1)
 
         m = (params[...,0,0])
+        m1 = (params[...,0,1])
+        m2 = (params[...,0,2])
+
+        c1 = (params[...,1,0])
+        c2 = (params[...,1,1])
 
 
         coeffs = torch.zeros((bs*n_patches, self.pde.grid_size, self.pde.n_orders), device=u.device)
@@ -409,12 +418,14 @@ class Model(nn.Module):
         #u_x
         #coeffs[..., 2] = p
         #u_xx
-        coeffs[..., 4] = -m*up.pow(m-1)
+        #coeffs[..., 4] = -m*up.pow(m-1)
+        coeffs[..., 4] = c1*up.pow(m1)
 
         #up = up.reshape(bs, *self.coord_dims)
 
         #rhs = torch.zeros(bs*n_patches, *self.coord_dims, device=u.device)
-        rhs = m*(m-1)*up.pow(m-2)*up2.pow(2)
+        #rhs = m*(m-1)*up.pow(m-2)*up2.pow(2)
+        rhs = c2*up.pow(m2)*up2.pow(2)
 
         u0,u_all,eps = self.pde(coeffs, rhs, iv_rhs, steps_list)
         u0x = u_all[...,2]
@@ -465,6 +476,7 @@ class Model(nn.Module):
 
         up =self.rnet1(cin)#.squeeze(1)
         up2 = self.rnet2(cin).squeeze(1)
+        #up2 = 20*torch.tanh(up2)
 
         up =cin + torch.sigmoid(up)
         up = up.squeeze(1)
@@ -585,17 +597,17 @@ def optimize(nepoch=5000):
             #x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
             #x_loss = (x0- batch_in).abs().mean(dim=-1)/batch_in.abs().mean(dim=-1)#.mean()
             #x_loss = (x0- batch_in).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
-            u_loss = (u0- batch_u).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
+            u_loss = (u0- batch_u).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
 
-            var_loss = (var- batch_u).abs().mean(dim=-1) #+ (var**2- batch_in**2).pow(2).mean(dim=-1)
-            var2_loss = (var2- u0x).abs().mean(dim=-1) #+ (var**2- batch_in**2).pow(2).mean(dim=-1)
+            var_loss = (var- u0).pow(2).mean(dim=-1) #+ (var**2- batch_in**2).pow(2).mean(dim=-1)
+            var2_loss = (var2- u0x).pow(2).mean(dim=-1) #+ (var**2- batch_in**2).pow(2).mean(dim=-1)
 
             #loss = x_loss + var_loss + time_loss
             param_loss = params.abs()
             #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.001*param_loss.mean()
-            loss = u_loss.mean() + var_loss.mean()  +  0.001*param_loss.mean()
+            loss = u_loss.mean() + var_loss.mean() + var2_loss.mean()  #+  0.001*param_loss.mean()
 
             batch_u_x = batch_u_x.reshape(bs, -1)
             udx_loss_check = (u0x - batch_u_x).abs().mean()
