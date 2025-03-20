@@ -1926,6 +1926,48 @@ class PDESYSLP(nn.Module):
 
     #    return dD
 
+    def dense_grad_derivative_constraint(self, _x, _y):
+        """ dense x y' for derivative constraint"""
+        #dx = _dx[:,0:n_step].reshape(bs, n_step,1)
+        #dA = dx*nu.reshape(bs, 1,num_coeffs)
+        #correct x, y shapes
+
+        b = _x.shape[0]
+        #copy x across columns. copy y across rows
+        y = _y[:, self.num_added_equation_constraints+self.num_added_initial_constraints: self.num_added_equation_constraints+self.num_added_initial_constraints+self.num_added_derivative_constraints]
+        x = _x[:, :self.var_set.num_vars+self.var_set.num_added_eps_vars]
+
+
+        mx = x.reshape(b, 1, -1)
+        my = y.reshape(b, -1, 1)
+
+        dD = mx*my
+
+        return dD
+
+    def dense_grad_eq_constraint(self, x, y):
+        """ dense x y' for eq constraint"""
+        #dx = _dx[:,0:n_step].reshape(bs, n_step,1)
+        #dA = dx*nu.reshape(bs, 1,num_coeffs)
+        #correct x, y shapes
+
+
+
+        b = x.shape[0]
+        #copy x across columns. copy y across rows
+        y = y[:, 0:self.num_added_equation_constraints]
+        #y = y[:, 1:self.num_vars]
+        #_x = x[:, 0:self.num_vars+self.num_added_eps_vars]
+        #x = x[:, 0:self.num_vars+self.n_step]
+        x = x[:, 0:self.var_set.num_vars]
+
+        mx = x.reshape(b, 1, -1)
+        my = y.reshape(b, -1, 1)
+
+        dD = mx*my
+
+        return dD
+
     def sparse_grad_derivative_constraint(self, _x, _y, mask):
         """ sparse x y' for derivative constraint"""
         #dx = _dx[:,0:n_step].reshape(bs, n_step,1)
