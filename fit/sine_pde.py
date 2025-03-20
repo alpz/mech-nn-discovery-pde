@@ -3,7 +3,8 @@ import torch.nn as nn
 import torch
 
 #from solver.ode_layer import ODEINDLayer
-from solver.pde_layer import PDEINDLayer
+#from solver.pde_layer import PDEINDLayer
+from solver.pde_layer_dense import PDEDenseLayer
 from torch.nn.parameter import Parameter
 import numpy as np
 
@@ -128,7 +129,8 @@ class Sine(nn.Module):
         self.n_iv = 4
         self.iv_list = [(0,0), (0,1),(1,0),(1,0)]
 
-        self.pde = PDEINDLayer(bs=bs, coord_dims=self.coord_dims, order=self.order, n_ind_dim=self.n_dim, n_iv=self.n_iv, init_index_mi_list=self.iv_list,  
+        #self.pde = PDEINDLayer(bs=bs, coord_dims=self.coord_dims, order=self.order, n_ind_dim=self.n_dim, n_iv=self.n_iv, init_index_mi_list=self.iv_list,  
+        self.pde = PDEDenseLayer(bs=bs, coord_dims=self.coord_dims, order=self.order, n_ind_dim=self.n_dim, n_iv=self.n_iv, init_index_mi_list=self.iv_list,  
                                     n_iv_steps=1, gamma=0.5, alpha=0., double_ret=True, solver_dbl=True)
 
         #_coeffs = torch.tensor(np.random.random((self.n_dim, self.pde.grid_size, self.pde.n_orders)), dtype=dtype)

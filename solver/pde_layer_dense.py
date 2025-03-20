@@ -38,9 +38,9 @@ import solver.qp_dual_dense_normal_kkt as MGS #import QPFunction as QPFunctionSy
 #import solver.qp_dual_sparse_multigrid_normal2 as MGS #import QPFunction as QPFunctionSys
 #import solver.qp_dual_sparse_multigrid_normal_dense as MGS #import QPFunction as QPFunctionSys
 from config import PDEConfig as config
-import solver.cg as CG
+#import solver.cg as CG
 
-from torch.autograd import gradcheck
+#from torch.autograd import gradcheck
 # set of KKT matrices
 #torch.autograd.detect_anomaly()
 
@@ -95,7 +95,8 @@ class PDEDenseLayer(nn.Module):
         self.step_grid_shape = self.pde.step_grid_shape
         #self.iv_grid_size = self.pde.t0_grid_size
 
-        self.qpf = MGS.QPFunction(self.pde, self.mg_solver, self.n_iv, gamma=gamma, alpha=alpha, double_ret=double_ret)
+        #self.qpf = MGS.QPFunction(self.pde, self.n_iv, gamma=gamma, alpha=alpha, double_ret=double_ret)
+        self.qpf = MGS.QPFunction(self.pde, double_ret=double_ret)
 
     def forward(self, coeffs, rhs, iv_rhs, steps_list):
         #interpolate and fill grids: coeffs, rhs, iv_rhs, steps

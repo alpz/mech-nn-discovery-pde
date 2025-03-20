@@ -114,7 +114,7 @@ def solve_direct(A, b):
     lam = lam.squeeze(2)
     return lam
 
-def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
+def QPFunction(pde, double_ret=True):
     class QPFunctionFn(Function):
         #csr_rows = None
         #csr_cols = None
@@ -146,7 +146,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #AtA,D, AtPrhs,A_L, A_U,AtA_act,G = mg.make_AtA(pde, A, A_rhs, derivative_weights, save=True)
             #AtA,D, AtPrhs,A_L, A_U = mg.make_AtA(pde, A, A_rhs)
 
-            A = torch.to_dense(A)
+            A = A.to_dense()
             At = A.transpose(1,2)
             AtA = torch.bmm(At, A)
             AtPrhs = torch.bmm(At, A_rhs.unsqueeze(2)).squeeze(2)
@@ -191,8 +191,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             #mg_args = [AtA_list, AL_list, AU_list, L]
 
             L,info = torch.linalg.cholesky_ex(AtA,upper=False, check_errors=True)
-            x = torch.cholesky_solve(AtPrhs.unsqueeze(2), L)
-            x = x.squeeze(2)
+            x = torch.cholesky_solve(AtPrhs.unsqueeze(2), L).squeeze(2)
 
             #x,_ = cg.fgmres_matvec(AtA, 
             #                rhs_list[0].reshape(-1),
@@ -273,7 +272,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             ##mg_args = [AtA_list, D_list, L, (A.shape[1], A.shape[2])]
 
-            dz = torch.cholesky_solve(dl_dzhat.unsqueeze(2), L)
+            dz = torch.cholesky_solve(dl_dzhat.unsqueeze(2), L).squeeze(2)
             #mg_args = [AtA_list, AL_list, AU_list, L]
             #dz,_ = cg.fgmres_matvec(AtA_list[0], 
             #                 grad_list[0].reshape(-1),
