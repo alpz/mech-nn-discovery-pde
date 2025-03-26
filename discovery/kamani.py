@@ -243,7 +243,11 @@ class Model(nn.Module):
 
     def get_params(self):
         params = self.params_net()
-        return params
+        params_exp = self.params_exp_net()
+
+        #[-2,2]
+        params_exp = 2*torch.tanh(params_exp)
+        return [params, params_exp]
 
     def get_iv(self, u):
         bs = u.shape[0]
@@ -251,12 +255,7 @@ class Model(nn.Module):
 
         return ub
 
-    def get_steps(self, u, t, x, y):
-        x = x.squeeze()
-        y = y.squeeze()
-        x = x[:, :, 0]
-        y = y[:, 0,:]
-
+    def get_steps(self, u, t):
         steps0 = self.steps0.type_as(u).expand(self.bs, self.coord_dims[0]-1)
         steps0 = torch.sigmoid(steps0)
 
@@ -287,8 +286,8 @@ class Model(nn.Module):
         ss_d = shear_list[1]
         ss_dd = shear_list[2]
 
-        pr0 = params_list[0]
-        er1 = params_list[1]
+        pr0 = params_list[0].reshape(3, -1)
+        er1 = params_list[1].reshape(3, -1)
 
         #basis1 = torch.stack([torch.ones_like(up0), up0, up0.pow(2), up0.pow(3), vp0, vp0.pow(2), vp0.pow(3), up0*vp0, up0.pow(2)*vp0, up0*vp0.pow(2)], dim=-1)
         basis0 = torch.stack([pr[0,0]*torch.ones_like(ss_d), pr[0,1]*ss_d.abs().pow(er[0,0]), pr[0,2]*ss_d.abs().pow(er[0,1])  ], dim=-1)
@@ -328,7 +327,7 @@ class Model(nn.Module):
         u_in = u_in.reshape(bs*ts, 1, solver_dim[1], solver_dim[2])
 
 
-        up = self.unn(u_in)
+        up = self.transform(u_in)
 
         up = up.reshape(bs,*solver_dim)
 
@@ -342,7 +341,7 @@ class Model(nn.Module):
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step, ds.y_step), device=device)
+model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step), device=device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
