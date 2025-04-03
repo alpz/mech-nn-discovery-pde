@@ -56,7 +56,7 @@ solver_dim=(100,)
 #solver_dim=(64,64,64)
 #solver_dim=(50,64)
 #solver_dim=(32,48)
-n_grid=3
+#n_grid=3
 batch_size= 8
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
@@ -93,6 +93,7 @@ class KamaniDataset(Dataset):
 
         #todo
         self.t_step = t_data[1]-t_data[0]
+        L.info(f'time step {self.t_step}')
 
         u_data = torch.tensor(u_data, dtype=dtype)#.permute(1,0,2,3) 
         t_data = torch.tensor(t_data, dtype=dtype)#.permute(1,0,2,3) 
@@ -148,6 +149,9 @@ class KamaniDataset(Dataset):
 ds = KamaniDataset(solver_dim=solver_dim)#.generate()
 
 # %%
+ds.amp_data
+
+# %%
 #import matplotlib.pyplot as plt
 #u = ds.data.cpu().numpy().T
 #t = ds._t.cpu().numpy()
@@ -198,13 +202,13 @@ class Model(nn.Module):
                                 double_ret=True, solver_dbl=True)
 
         # u, u_t, u_tt, u_x, u_xx
-        self.num_multiindex = self.pde.n_orders
+        self.num_multiindex = self.ode.n_orders
 
 
         #self.params_u = nn.Parameter(0.5*torch.randn(1,4))
         class ParamNet(nn.Module):
-            def __init__(self):
-                super().__init__(n_out=10)
+            def __init__(self, n_out=10):
+                super().__init__()
                 self.input = nn.Parameter(torch.randn(1,512)) #*(2/(4*512)))
                 self.net = nn.Sequential(
                     nn.Linear(512, 1024),
@@ -251,9 +255,8 @@ class Model(nn.Module):
 
     def get_iv(self, u):
         bs = u.shape[0]
-        #TODO
 
-        return ub
+        return u[:, 0]
 
     def get_steps(self, u, t):
         steps0 = self.steps0.type_as(u).expand(self.bs, self.coord_dims[0]-1)
@@ -286,8 +289,8 @@ class Model(nn.Module):
         ss_d = shear_list[1]
         ss_dd = shear_list[2]
 
-        pr0 = params_list[0].reshape(3, -1)
-        er1 = params_list[1].reshape(3, -1)
+        pr = params_list[0].reshape(3, -1)
+        er = params_list[1].reshape(3, -1)
 
         #basis1 = torch.stack([torch.ones_like(up0), up0, up0.pow(2), up0.pow(3), vp0, vp0.pow(2), vp0.pow(3), up0*vp0, up0.pow(2)*vp0, up0*vp0.pow(2)], dim=-1)
         basis0 = torch.stack([pr[0,0]*torch.ones_like(ss_d), pr[0,1]*ss_d.abs().pow(er[0,0]), pr[0,2]*ss_d.abs().pow(er[0,1])  ], dim=-1)
@@ -304,7 +307,7 @@ class Model(nn.Module):
         #q = (basis2*params[...,1,:]).sum(dim=-1)
 
 
-        coeffs_u = torch.zeros((bs, self.pde.grid_size, self.pde.n_orders), device=u.device)
+        coeffs_u = torch.zeros((bs, self.ode.grid_size, self.ode.n_orders), device=u.device)
 
         #u
         coeffs_u[..., 0] = 1 #p0 
@@ -313,7 +316,7 @@ class Model(nn.Module):
 
         rhs_u = p1*ss_d + p2*ss_dd
 
-        u0,_,eps = self.pde(coeffs_u, rhs_u, iv_rhs_u, steps_list)
+        u0,_,eps = self.ode(coeffs_u, rhs_u, iv_rhs_u, steps_list)
         u = u0
 
         return u
@@ -354,12 +357,32 @@ model=model.to(device)
 
 
 def print_eq(stdout=False):
-    #print learned equation
-    params = model.get_params()
-    params = [p.squeeze().detach().cpu().numpy() for p in params]
+    tau = 94
+    k = 27.93
+    n = 0.416
+    G = 430
+    eta = 23
+    true_params = [[tau/G, k/G, eta/G],
+                    [tau/G, k/G,0],
+                    [tau/G * eta/G, k/G * eta/G, 0]
+                    ]
+    true_exp = [[-1, n-1], [-1, n-1], [-1, n-1]]
 
-    for i,p in enumerate(params):
-        L.info(f'param {i}\n{p}')
+    #print learned params
+    params,exps = model.get_params()
+    params = params.reshape(3, -1)
+    exps = exps.reshape(3, -1)
+    params = params.squeeze().detach().cpu().numpy()
+    exps = exps.squeeze().detach().cpu().numpy()
+
+    params = params.reshape(3,-1)
+    exps = exps.reshape(3,-1)
+
+    L.info(f'param {params}')
+    L.info(f'exps {exps}')
+
+    L.info(f'True param {true_params}')
+    L.info(f'True exp {true_exp}')
     #print(params)
     #return code
 
@@ -378,11 +401,7 @@ def optimize(nepoch=5000):
         #pbar.update(1)
         #for i, (time, batch_in) in enumerate(train_loader):
         u_losses = []
-        v_losses = []
         var_u_losses = []
-        var_v_losses = []
-        var_uv_losses = []
-        t_losses = []
         losses = []
         total_loss = 0
         for i, batch_in in enumerate(tqdm(train_loader)):
@@ -434,11 +453,7 @@ def optimize(nepoch=5000):
             del loss,u,u_loss,var_u,var_u_loss,params#, t_params_loss
 
         _u_loss = torch.tensor(u_losses).mean().item()
-        _v_loss = torch.tensor(v_losses).mean().item()
         _var_u_loss = torch.tensor(var_u_losses).mean().item()
-        _var_v_loss = torch.tensor(var_v_losses).mean().item()
-        _var_uv_loss = torch.tensor(var_uv_losses).mean().item()
-        t_loss = torch.tensor(t_losses).mean().item()
 
         mean_loss = torch.tensor(losses).mean().item()
 
@@ -447,13 +462,8 @@ def optimize(nepoch=5000):
             #pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item():.3E}  xloss {x_loss:.3E} max eps {meps}\n')
         #print(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E}  xloss {_x_loss:.3E} vloss {_v_loss:.3E} max eps {meps}\n')
         L.info(f'run {run_id} epoch {epoch}, loss {mean_loss:.3E}  \
-               uloss {_u_loss:.3E} vloss {_v_loss:.3E} \
-               var_u_loss {_var_u_loss:.3E} var_v_loss {_var_v_loss:.3E}  \
-               var_uv_loss {_var_uv_loss:.3E}  \ t_loss {t_loss:.3E}')
-        print('steps ', torch.sigmoid(model.steps0).squeeze().item(), 
-                        torch.sigmoid(model.steps1).squeeze().item(), 
-                        torch.sigmoid(model.steps2).squeeze().item())
-
+               uloss {_u_loss:.3E} var_u_loss {_var_u_loss:.3E}')
+               
 if __name__ == "__main__":
     train()
 
