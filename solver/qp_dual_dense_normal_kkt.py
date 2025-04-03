@@ -233,7 +233,7 @@ def QPFunction(pde, double_ret=True):
             ctx.save_for_backward(x, lam)
             
             x =x.reshape(bs, -1)
-            print('qpf', x.shape)
+            #print('qpf', x.shape)
             return x#,out
         
         @staticmethod

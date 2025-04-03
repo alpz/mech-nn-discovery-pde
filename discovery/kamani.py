@@ -57,7 +57,7 @@ solver_dim=(100,)
 #solver_dim=(50,64)
 #solver_dim=(32,48)
 #n_grid=3
-batch_size= 8
+batch_size= 64
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
 
@@ -128,7 +128,7 @@ class KamaniDataset(Dataset):
         (amp_idx, t_idx) = np.unravel_index(idx, (self.num_amp_idx, self.num_t_idx))
 
         t_idx = t_idx*solver_dim[0]
-        assert(t_idx <= self.data_dim[1])
+        assert(t_idx <= self.data_dim[0])
 
         t_step = solver_dim[0]
 
@@ -222,16 +222,16 @@ class Model(nn.Module):
                 return y
 
         class TransformNet(nn.Module):
-            def __init__(self):
+            def __init__(self, n_time):
                 super().__init__()
                 self.net = nn.Sequential(
-                    nn.Linear(self.n_time, 1024),
+                    nn.Linear(n_time, 1024),
                     nn.ReLU(),
                     nn.Linear(1024, 1024),
                     nn.ReLU(),
                     nn.Linear(1024, 1024),
                     nn.ReLU(),
-                    nn.Linear(1024, self.n_time),
+                    nn.Linear(1024, n_time),
                 )
             def forward(self, x):
                 y = self.net(x)
@@ -239,18 +239,24 @@ class Model(nn.Module):
 
         self.param_net = ParamNet(n_out=9)
         self.param_exp_net = ParamNet(n_out=6)
-        self.transform = TransformNet()
+        self.transform = TransformNet(self.n_time)
 
         self.t_step_size = ds.t_step #0.05*downsample #steps[0]
         print('step size ', self.t_step_size)
         self.steps0 = torch.logit(self.t_step_size*torch.ones(1,1))
 
     def get_params(self):
-        params = self.params_net()
-        params_exp = self.params_exp_net()
+        params = self.param_net()
+        params_exp = self.param_exp_net()
 
         #[-2,2]
         params_exp = 2*torch.tanh(params_exp)
+
+        params_exp = params_exp.reshape(3, -1)
+        ex1 = -1
+        ex2 = 0.416-1
+        params_exp[:, 0] = ex1
+        params_exp[:, 1] = ex2
         return [params, params_exp]
 
     def get_iv(self, u):
@@ -266,10 +272,10 @@ class Model(nn.Module):
 
         return steps_list
 
-    def solve(self, u, up, vp, params_list, shear_list, steps_list):
+    def solve(self, u, up, params_list, shear_list, steps_list):
         bs = u.shape[0]
 
-        ui = u.reshape(bs, *self.coord_dims)
+        #ui = u.reshape(bs, *self.coord_dims)
         upi = up.reshape(bs, *self.coord_dims)
         iv_rhs_u = self.get_iv(upi)
 
@@ -281,7 +287,7 @@ class Model(nn.Module):
         #up1 = up[:,1]
         #up2 = up[:,2]
 
-        vp0 = vp[:,0]
+        #vp0 = vp[:,0]
         #vp1 = vp[:,1]
         #vp2 = vp[:,2]
 
@@ -292,13 +298,16 @@ class Model(nn.Module):
         pr = params_list[0].reshape(3, -1)
         er = params_list[1].reshape(3, -1)
 
-        #basis1 = torch.stack([torch.ones_like(up0), up0, up0.pow(2), up0.pow(3), vp0, vp0.pow(2), vp0.pow(3), up0*vp0, up0.pow(2)*vp0, up0*vp0.pow(2)], dim=-1)
-        basis0 = torch.stack([pr[0,0]*torch.ones_like(ss_d), pr[0,1]*ss_d.abs().pow(er[0,0]), pr[0,2]*ss_d.abs().pow(er[0,1])  ], dim=-1)
-        basis1 = torch.stack([pr[1,0]*torch.ones_like(ss_d), pr[1,1]*ss_d.abs().pow(er[1,0]), pr[1,2]*ss_d.abs().pow(er[1,1])  ], dim=-1)
-        basis2 = torch.stack([pr[2,0]*torch.ones_like(ss_d), pr[2,1]*ss_d.abs().pow(er[2,0]), pr[2,2]*ss_d.abs().pow(er[2,1])  ], dim=-1)
+        #basis0 = torch.stack([pr[0,0]*torch.ones_like(ss_d), pr[0,1]*ss_d.abs().pow(er[0,0]), pr[0,2]*ss_d.abs().pow(er[0,1])  ], dim=-1)
+        #basis1 = torch.stack([pr[1,0]*torch.ones_like(ss_d), pr[1,1]*ss_d.abs().pow(er[1,0]), pr[1,2]*ss_d.abs().pow(er[1,1])  ], dim=-1)
+        #basis2 = torch.stack([pr[2,0]*torch.ones_like(ss_d), pr[2,1]*ss_d.abs().pow(er[2,0]), pr[2,2]*ss_d.abs().pow(er[2,1])  ], dim=-1)
 
-        #basis2 = torch.stack([torch.ones_like(up1), up1, up1.pow(2), up1.pow(3), vp1, vp1.pow(2), vp1.pow(3), up1*vp1, up1.pow(2)*vp1, up1*vp1.pow(2)], dim=-1)
-        #basis3 = torch.stack([torch.ones_like(up2), up2, up2.pow(2), up2.pow(3), vp2, vp2.pow(2), vp2.pow(3), up2*vp2, up2.pow(2)*vp2, up2*vp2.pow(2)], dim=-1)
+
+
+        basis0 = torch.stack([pr[0,0]*torch.ones_like(ss_d), pr[0,1]*ss_d.abs().pow(er[0,0]), pr[0,2]*ss_d.abs().pow(er[0,1])  ], dim=-1)
+        basis1 = torch.stack([0*pr[1,0]*torch.ones_like(ss_d), pr[1,1]*ss_d.abs().pow(er[1,0]), pr[1,2]*ss_d.abs().pow(er[1,1])  ], dim=-1)
+        basis2 = torch.stack([0*pr[2,0]*torch.ones_like(ss_d), pr[2,1]*ss_d.abs().pow(er[2,0]), pr[2,2]*ss_d.abs().pow(er[2,1])  ], dim=-1)
+
 
         p0 = (basis0).sum(dim=-1)
         p1 = (basis1).sum(dim=-1)
@@ -326,11 +335,11 @@ class Model(nn.Module):
         ts = solver_dim[0]
 
         # u batch, time, x, y
+        u_in = u
 
-        u_in = u_in.reshape(bs*ts, 1, solver_dim[1], solver_dim[2])
+        #u_in = u_in.reshape(bs*ts, 1, solver_dim[1], solver_dim[2])
 
-
-        up = self.transform(u_in)
+        up = u_in# self.transform(u_in)
 
         up = up.reshape(bs,*solver_dim)
 
@@ -362,9 +371,11 @@ def print_eq(stdout=False):
     n = 0.416
     G = 430
     eta = 23
-    true_params = [[tau/G, k/G, eta/G],
-                    [tau/G, k/G,0],
-                    [tau/G * eta/G, k/G * eta/G, 0]
+
+    #[-1, n-1, c]
+    true_params = [[eta/G, tau/G, k/G],
+                    [0, tau, k],
+                    [0, tau/G * eta, k/G * eta]
                     ]
     true_exp = [[-1, n-1], [-1, n-1], [-1, n-1]]
 
@@ -407,7 +418,7 @@ def optimize(nepoch=5000):
         for i, batch_in in enumerate(tqdm(train_loader)):
         #for i, batch_in in enumerate((train_loader)):
             optimizer.zero_grad()
-            batch_t, batch_u, batch_s, batch_sd, batch_sdd = batch_in[0:4]
+            batch_t, batch_u, batch_s, batch_sd, batch_sdd = batch_in[0:5]
 
             batch_u = batch_u.double().to(device)
             batch_t = batch_t.double().to(device)
@@ -433,12 +444,13 @@ def optimize(nepoch=5000):
 
             u_loss = (u- batch_u).abs().mean(dim=-1) 
             var_u_loss = (var_u- u).abs().mean(dim=-1)
-            param_loss = torch.stack(params).abs().sum()
+            #param_loss = torch.stack(params).abs().sum()
+            param_loss = params[0].abs().sum() #+ params[1].abs().sum()
 
             loss = u_loss.mean() +  var_u_loss.mean() 
             #loss = u_loss.mean() +  var_u_loss.mean() 
             #loss = loss + rhs_loss.mean()
-            loss = loss +  0.0001*param_loss.mean()
+            #loss = loss +  0.0001*param_loss.mean()
 
             u_losses.append(u_loss.mean().item())
             var_u_losses.append(var_u_loss.mean().item())
