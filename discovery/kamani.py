@@ -252,11 +252,11 @@ class Model(nn.Module):
         #[-2,2]
         params_exp = 2*torch.tanh(params_exp)
 
-        params_exp = params_exp.reshape(3, -1)
-        ex1 = -1
-        ex2 = 0.416-1
-        params_exp[:, 0] = ex1
-        params_exp[:, 1] = ex2
+        #params_exp = params_exp.reshape(3, -1)
+        #ex1 = -1
+        #ex2 = 0.416-1
+        #params_exp[:, 0] = ex1
+        #params_exp[:, 1] = ex2
         return [params, params_exp]
 
     def get_iv(self, u):
@@ -339,7 +339,7 @@ class Model(nn.Module):
 
         #u_in = u_in.reshape(bs*ts, 1, solver_dim[1], solver_dim[2])
 
-        up = u_in# self.transform(u_in)
+        up = u_in #  self.transform(u_in)
 
         up = up.reshape(bs,*solver_dim)
 
@@ -354,7 +354,7 @@ class Model(nn.Module):
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step), device=device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
 #optimizer = torch.optim.SGD(model.parameters(), lr=0.0001, momentum =0.9)
