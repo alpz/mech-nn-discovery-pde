@@ -131,9 +131,9 @@ class ResNet1D(nn.Module):
         self.fc2 = nn.Linear(128, out_channels)
 
     def forward(self, x):
-        x = x.permute(0,2,3,1)
+        x = x.permute(0,2,1)
         x = self.fc0(x)
-        x = x.permute(0,3,1,2)
+        x = x.permute(0,2,1)
 
         #x = self.in_conv(x)
         #x = torch.relu(x)
@@ -141,11 +141,11 @@ class ResNet1D(nn.Module):
         #x = self.out_conv(x)
 
 
-        x = x.permute(0,2,3,1)
+        x = x.permute(0,2,1)
         x = self.fc1(x)
         x = torch.relu(x)
         x = self.fc2(x)
-        x = x.permute(0,3,1,2)
+        x = x.permute(0,2,1)
 
         return x
 

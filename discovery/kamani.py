@@ -20,6 +20,7 @@ from solver.multigrid import MultigridLayer
 
 from torch.utils.data import Dataset, DataLoader
 from scipy.integrate import odeint
+from scipy.integrate import solve_ivp
 
 from extras.source import write_source_files, create_log_dir
 
@@ -39,6 +40,7 @@ import net as N
 #import fno_net as FNO
 
 from solver.pde_layer_dense import PDEDenseLayer
+import matplotlib.pyplot as plt
 
 
 log_dir, run_id = create_log_dir(root='logs_kamani')
@@ -239,7 +241,9 @@ class Model(nn.Module):
 
         self.param_net = ParamNet(n_out=9)
         self.param_exp_net = ParamNet(n_out=6)
-        self.transform = TransformNet(self.n_time)
+        #self.transform = TransformNet(self.n_time)
+        #self.transform = N.ResNet1D(in_channels=self.n_time, out_channels=self.n_time)
+        self.transform = N.ResNet1D(in_channels=1, out_channels=1)
 
         self.t_step_size = ds.t_step #0.05*downsample #steps[0]
         print('step size ', self.t_step_size)
@@ -275,9 +279,10 @@ class Model(nn.Module):
     def solve(self, u, up, params_list, shear_list, steps_list):
         bs = u.shape[0]
 
-        #ui = u.reshape(bs, *self.coord_dims)
+        ui = u.reshape(bs, *self.coord_dims)
         upi = up.reshape(bs, *self.coord_dims)
         iv_rhs_u = self.get_iv(upi)
+        #iv_rhs_u = self.get_iv(ui)
 
 
         up = up.reshape(bs, self.n_time)
@@ -305,8 +310,8 @@ class Model(nn.Module):
 
 
         basis0 = torch.stack([pr[0,0]*torch.ones_like(ss_d), pr[0,1]*ss_d.abs().pow(er[0,0]), pr[0,2]*ss_d.abs().pow(er[0,1])  ], dim=-1)
-        basis1 = torch.stack([0*pr[1,0]*torch.ones_like(ss_d), pr[1,1]*ss_d.abs().pow(er[1,0]), pr[1,2]*ss_d.abs().pow(er[1,1])  ], dim=-1)
-        basis2 = torch.stack([0*pr[2,0]*torch.ones_like(ss_d), pr[2,1]*ss_d.abs().pow(er[2,0]), pr[2,2]*ss_d.abs().pow(er[2,1])  ], dim=-1)
+        basis1 = torch.stack([pr[1,0]*torch.ones_like(ss_d), pr[1,1]*ss_d.abs().pow(er[1,0]), pr[1,2]*ss_d.abs().pow(er[1,1])  ], dim=-1)
+        basis2 = torch.stack([pr[2,0]*torch.ones_like(ss_d), pr[2,1]*ss_d.abs().pow(er[2,0]), pr[2,2]*ss_d.abs().pow(er[2,1])  ], dim=-1)
 
 
         p0 = (basis0).sum(dim=-1)
@@ -339,7 +344,8 @@ class Model(nn.Module):
 
         #u_in = u_in.reshape(bs*ts, 1, solver_dim[1], solver_dim[2])
 
-        up = u_in #  self.transform(u_in)
+        #up = u_in #  self.transform(u_in)
+        up = self.transform(u_in.unsqueeze(1)).squeeze(1)
 
         up = up.reshape(bs,*solver_dim)
 
@@ -354,7 +360,8 @@ class Model(nn.Module):
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step), device=device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
+#optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
 #optimizer = torch.optim.SGD(model.parameters(), lr=0.0001, momentum =0.9)
@@ -365,7 +372,93 @@ if DBL:
 model=model.to(device)
 
 
-def print_eq(stdout=False):
+
+#def simulate(shear_amplitude, pr, er, axes):
+def simulate(epoch, pr, er):
+    shear_func = lambda time, amplitude, frequency: amplitude*np.sin(frequency*time)
+    shear_rate_func = lambda time, amplitude, frequency: amplitude*frequency*np.cos(frequency*time)
+    shear_rate_rate_func = lambda time, amplitude, frequency: - amplitude*(frequency**2)*np.sin(frequency*time)
+
+    def ode_rhs_kamani(time, tau, shear_amplitude, shear_frequency, pr, er):
+
+        # Calculating the shear flow rate (independent of the chosen material)
+        shear_rate = shear_rate_func(time, shear_amplitude, shear_frequency)
+        shear_rate_rate = shear_rate_rate_func(time, shear_amplitude, shear_frequency)
+        #norm_shear_rate = np.abs(shear_rate)
+
+
+        ss_d = shear_rate
+        ss_d_abs = np.abs(shear_rate)
+        ss_dd = shear_rate_rate
+
+        p0 = pr[0,0]+ pr[0,1]*np.power(ss_d_abs,er[0,0])+ pr[0,2]*np.power(ss_d_abs,er[0,1])
+        p1 = pr[1,0]+ pr[1,1]*np.power(ss_d_abs,er[1,0])+ pr[1,2]*np.power(ss_d_abs,er[1,1])
+        p2 = pr[2,0]+ pr[2,1]*np.power(ss_d_abs,er[2,0])+ pr[2,2]*np.power(ss_d_abs,er[2,1])
+
+        #basis1 = torch.stack([pr[1,0]*torch.ones_like(ss_d), pr[1,1]*ss_d.abs().pow(er[1,0]), pr[1,2]*ss_d.abs().pow(er[1,1])  ], dim=-1)
+        #basis2 = torch.stack([pr[2,0]*torch.ones_like(ss_d), pr[2,1]*ss_d.abs().pow(er[2,0]), pr[2,2]*ss_d.abs().pow(er[2,1])  ], dim=-1)
+
+        rhs = p1*ss_d + p2*ss_dd - tau
+        rhs = rhs/p0
+        
+        ## Calculating the RHS for this material (Kamani material)
+        #eps = 1e-10
+        #herschel_term = tau_y/(norm_shear_rate + eps) + k*norm_shear_rate**(n-1)
+        #relaxation_time = (herschel_term + eta_s)/G
+        #rhs =  herschel_term*( shear_rate + (eta_s/G)*shear_rate_rate ) - tau
+        #rhs = rhs/relaxation_time
+        return rhs
+
+
+    #sweep_shear_amplitude = np.logspace(-3, 1, 500) # We will sweep over various shear amplitudes
+    visualize_these_lissajous = [0.5, 1, 5, 10]
+    #i_visualize = [np.argmin(np.abs(sweep_shear_amplitude - value)) for value in visualize_these_lissajous]
+    
+    shear_frequency = 1.0
+    N_timesteps = 1000
+    num_periods = 5
+    tMin = 0
+    tMax = num_periods*(2.0*np.pi/shear_frequency)
+    t_eval = np.linspace(tMin, tMax, N_timesteps)
+
+    fig, ax = plt.subplots(1, 2, figsize=(10, 7))
+    #ax_lissajous_kamani, ax_kamani_eq = ax[0, 0], ax[0, 1]
+
+    #for i, shear_amplitude in enumerate(sweep_shear_amplitude): # Dimensional amplitude
+    for i, shear_amplitude in enumerate(visualize_these_lissajous): # Dimensional amplitude
+        args_ivp = (shear_amplitude, shear_frequency, pr, er)
+        solution_ivp_kamani = solve_ivp(ode_rhs_kamani, [0.0, tMax], [0.0], t_eval=t_eval, args=args_ivp)
+        array_sigma_kamani = solution_ivp_kamani.y.flatten()
+
+
+        array_shear = shear_func(t_eval, shear_amplitude, shear_frequency)
+        if array_sigma_kamani.shape[0] == array_shear.shape[0]:
+            print(f'plotting {shear_amplitude}')
+            ax[0].plot(array_shear, array_sigma_kamani, label=r"$\gamma_0 = %.2f$" % (shear_amplitude))
+
+    plt.tight_layout()
+    plt.savefig(f"{log_dir}/fig_kamani_{epoch}.png", dpi=300)
+    plt.close()
+
+
+    ## The righs-hand-side for the ODE coming from Kamani's material model
+    #def ode_rhs_kamani(time, tau, shear_amplitude, shear_frequency, k, tau_y, n, eta_s, G):
+
+    #    # Calculating the shear flow rate (independent of the chosen material)
+    #    shear_rate = shear_rate_func(time, shear_amplitude, shear_frequency)
+    #    shear_rate_rate = shear_rate_rate_func(time, shear_amplitude, shear_frequency)
+    #    norm_shear_rate = np.abs(shear_rate)
+    #    
+    #    # Calculating the RHS for this material (Kamani material)
+    #    eps = 1e-10
+    #    herschel_term = tau_y/(norm_shear_rate + eps) + k*norm_shear_rate**(n-1)
+    #    relaxation_time = (herschel_term + eta_s)/G
+    #    rhs =  herschel_term*( shear_rate + (eta_s/G)*shear_rate_rate ) - tau
+    #    rhs = rhs/relaxation_time
+    #    return rhs
+
+
+def print_eq(epoch=0, stdout=False):
     tau = 94
     k = 27.93
     n = 0.416
@@ -397,6 +490,11 @@ def print_eq(stdout=False):
     #print(params)
     #return code
 
+    #simulate
+    if (epoch+1)%10 ==0:
+        print('simulating')
+        simulate(epoch, params, exps)
+
 
 def train():
     """Optimize and threshold cycle"""
@@ -407,7 +505,7 @@ def train():
 def optimize(nepoch=5000):
     #with tqdm(total=nepoch) as pbar:
 
-    print_eq()
+    print_eq(epoch=0)
     for epoch in range(nepoch):
         #pbar.update(1)
         #for i, (time, batch_in) in enumerate(train_loader):
@@ -450,7 +548,7 @@ def optimize(nepoch=5000):
             loss = u_loss.mean() +  var_u_loss.mean() 
             #loss = u_loss.mean() +  var_u_loss.mean() 
             #loss = loss + rhs_loss.mean()
-            #loss = loss +  0.0001*param_loss.mean()
+            loss = loss +  0.01*param_loss.mean()
 
             u_losses.append(u_loss.mean().item())
             var_u_losses.append(var_u_loss.mean().item())
@@ -469,7 +567,7 @@ def optimize(nepoch=5000):
 
         mean_loss = torch.tensor(losses).mean().item()
 
-        print_eq()
+        print_eq(epoch=epoch)
         #L.info(f'parameters\n{params}')
             #pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item():.3E}  xloss {x_loss:.3E} max eps {meps}\n')
         #print(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E}  xloss {_x_loss:.3E} vloss {_v_loss:.3E} max eps {meps}\n')
