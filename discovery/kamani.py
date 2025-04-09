@@ -260,8 +260,8 @@ class Model(nn.Module):
         params = params.reshape(3, -1)
         params_exp = params_exp.reshape(3, -1)
 
-        params[1,0] = 0.
-        params[2,0] = 0.
+        #params[1,0] = 0.
+        #params[2,0] = 0.
         #ex1 = -1
         #ex2 = 0.416-1
         #params_exp[:, 0] = ex1
@@ -376,9 +376,9 @@ if DBL:
 
 model=model.to(device)
 
-def get_eq_str(pr, er):
+##### visualization and simulation functions ######
 
-    
+def get_eq_str(pr, er):
     bstr = lambda pr0, pr1, pr2, e0, e1: f"({pr0:.3f} +  {pr1:.3f}{{|\lambda'|}}^{{{e0:.3f}}} +   {pr2:.3f}{{|\lambda'|}}^{{{e1:.3f}}})"
     #b0 = f"({pr[0,0]:.03f} +  {pr[0,1]:.3f}|\{{|lambda'|}}^{er[0,0]} +   {pr[0,2]:.3f}|\{{|lambda'|}}^{er[0,1]})"
     b0 = bstr(pr[0,0], pr[0,1], pr[0,2], er[0,0], er[0,1])
@@ -397,13 +397,29 @@ def get_eq_str(pr, er):
 
     return [s1,s2,s3,s4]
 
-#def simulate(shear_amplitude, pr, er, axes):
-def simulate(epoch, pr, er):
-    shear_func = lambda time, amplitude, frequency: amplitude*np.sin(frequency*time)
-    shear_rate_func = lambda time, amplitude, frequency: amplitude*frequency*np.cos(frequency*time)
-    shear_rate_rate_func = lambda time, amplitude, frequency: - amplitude*(frequency**2)*np.sin(frequency*time)
+shear_func = lambda time, amplitude, frequency: amplitude*np.sin(frequency*time)
+shear_rate_func = lambda time, amplitude, frequency: amplitude*frequency*np.cos(frequency*time)
+shear_rate_rate_func = lambda time, amplitude, frequency: - amplitude*(frequency**2)*np.sin(frequency*time)
 
-    def ode_rhs_kamani(time, tau, shear_amplitude, shear_frequency, pr, er):
+visualize_these_lissajous = [0.5, 1, 5, 10]
+
+shear_frequency = 1.0
+N_timesteps = 1000
+num_periods = 5
+tMin = 0
+tMax = num_periods*(2.0*np.pi/shear_frequency)
+t_eval = np.linspace(tMin, tMax, N_timesteps)
+
+#true params for visualization
+tau_y = 94
+k = 27.93
+n = 0.416
+G = 430
+eta_s = 23
+
+#def simulate(shear_amplitude, pr, er, axes):
+def simulate(epoch, pr, er, true_traj):
+    def ode_rhs_kamani_learned(time, tau, shear_amplitude, shear_frequency, pr, er):
 
         # Calculating the shear flow rate (independent of the chosen material)
         shear_rate = shear_rate_func(time, shear_amplitude, shear_frequency)
@@ -434,81 +450,99 @@ def simulate(epoch, pr, er):
         return rhs
 
 
-    #sweep_shear_amplitude = np.logspace(-3, 1, 500) # We will sweep over various shear amplitudes
-    visualize_these_lissajous = [0.5, 1, 5, 10]
-    #i_visualize = [np.argmin(np.abs(sweep_shear_amplitude - value)) for value in visualize_these_lissajous]
-    
-    shear_frequency = 1.0
-    N_timesteps = 1000
-    num_periods = 5
-    tMin = 0
-    tMax = num_periods*(2.0*np.pi/shear_frequency)
-    t_eval = np.linspace(tMin, tMax, N_timesteps)
-
-    fig, ax = plt.subplots(1, 2, figsize=(20, 10))
+    fig, ax = plt.subplots(1, 3, figsize=(20, 10))
     #ax_lissajous_kamani, ax_kamani_eq = ax[0, 0], ax[0, 1]
 
     #for i, shear_amplitude in enumerate(sweep_shear_amplitude): # Dimensional amplitude
     for i, shear_amplitude in enumerate(visualize_these_lissajous): # Dimensional amplitude
         args_ivp = (shear_amplitude, shear_frequency, pr, er)
-        solution_ivp_kamani = solve_ivp(ode_rhs_kamani, [0.0, tMax], [0.0], t_eval=t_eval, args=args_ivp)
+        solution_ivp_kamani = solve_ivp(ode_rhs_kamani_learned, [0.0, tMax], [0.0], t_eval=t_eval, args=args_ivp)
         array_sigma_kamani = solution_ivp_kamani.y.flatten()
 
 
         array_shear = shear_func(t_eval, shear_amplitude, shear_frequency)
         if array_sigma_kamani.shape[0] == array_shear.shape[0]:
             print(f'plotting {shear_amplitude}')
-            ax[0].plot(array_shear, array_sigma_kamani, label=r"$\gamma_0 = %.2f$" % (shear_amplitude))
+            ax[0].plot(array_shear, true_traj[i], label=r"$\gamma_0 = %.2f$ True " % (shear_amplitude))
+            ax[1].plot(array_shear, array_sigma_kamani, label=r"$\gamma_0 = %.2f$ Learned " % (shear_amplitude))
 
     ax[0].set_xlabel("Strain [-]")
     ax[0].set_ylabel("Stress [Pa]")
     ax[0].set_ylim([-400, 400])
+    ax[0].legend()
+    ax[0].set_title('True equation trajectories')
+
+    ax[1].set_xlabel("Strain [-]")
+    ax[1].set_ylabel("Stress [Pa]")
+    ax[1].set_ylim([-400, 400])
+    ax[1].set_title('Learned equation trajectories')
+
+    ax[1].legend()
+
 
     eq_str = get_eq_str(pr, er)
-    ax[1].axis([0, 10, 0, 10])
+    ax[2].axis([0, 10, 0, 10])
 
-    ax[1].text(1, 8, eq_str[0], fontsize=20)
-    ax[1].text(2, 7, eq_str[1], fontsize=20)
-    ax[1].text(2, 6, eq_str[2], fontsize=20)
-    ax[1].text(2, 5, eq_str[3], fontsize=20)
-    ax[1].set_frame_on(False)
-    ax[1].axis('off')
+    ax[2].text(0.1, 9, f'Epoch: {epoch}', fontsize=10)
+
+    ax[2].text(1, 8, eq_str[0], fontsize=20)
+    ax[2].text(2, 7.5, eq_str[1], fontsize=20)
+    ax[2].text(2, 7, eq_str[2], fontsize=20)
+    ax[2].text(2, 6.5, eq_str[3], fontsize=20)
+    ax[2].set_frame_on(False)
+    ax[2].axis('off')
+    ax[2].set_title('Learned Equation')
 
     plt.tight_layout()
     plt.savefig(f"{log_dir}/fig_kamani_{epoch}.png", dpi=300)
     plt.close()
 
 
-    ## The righs-hand-side for the ODE coming from Kamani's material model
-    #def ode_rhs_kamani(time, tau, shear_amplitude, shear_frequency, k, tau_y, n, eta_s, G):
 
-    #    # Calculating the shear flow rate (independent of the chosen material)
-    #    shear_rate = shear_rate_func(time, shear_amplitude, shear_frequency)
-    #    shear_rate_rate = shear_rate_rate_func(time, shear_amplitude, shear_frequency)
-    #    norm_shear_rate = np.abs(shear_rate)
-    #    
-    #    # Calculating the RHS for this material (Kamani material)
-    #    eps = 1e-10
-    #    herschel_term = tau_y/(norm_shear_rate + eps) + k*norm_shear_rate**(n-1)
-    #    relaxation_time = (herschel_term + eta_s)/G
-    #    rhs =  herschel_term*( shear_rate + (eta_s/G)*shear_rate_rate ) - tau
-    #    rhs = rhs/relaxation_time
-    #    return rhs
 
+def simulate_true_eq():
+    # The righs-hand-side for the ODE coming from Kamani's material model
+    def ode_rhs_kamani(time, tau, shear_amplitude, shear_frequency, k, tau_y, n, eta_s, G):
+
+        # Calculating the shear flow rate (independent of the chosen material)
+        shear_rate = shear_rate_func(time, shear_amplitude, shear_frequency)
+        shear_rate_rate = shear_rate_rate_func(time, shear_amplitude, shear_frequency)
+        norm_shear_rate = np.abs(shear_rate)
+        
+        # Calculating the RHS for this material (Kamani material)
+        eps = 1e-10
+        herschel_term = tau_y/(norm_shear_rate + eps) + k*norm_shear_rate**(n-1)
+        relaxation_time = (herschel_term + eta_s)/G
+        rhs =  herschel_term*( shear_rate + (eta_s/G)*shear_rate_rate ) - tau
+        rhs = rhs/relaxation_time
+        return rhs
+
+
+    traj_list = []
+    for i, shear_amplitude in enumerate(visualize_these_lissajous): # Dimensional amplitude
+        args_ivp = (shear_amplitude, shear_frequency, k, tau_y, n, eta_s, G)
+        #args_ivp = (shear_amplitude, shear_frequency, pr, er)
+        solution_ivp_kamani = solve_ivp(ode_rhs_kamani, [0.0, tMax], [0.0], t_eval=t_eval, args=args_ivp)
+        array_sigma_kamani = solution_ivp_kamani.y.flatten()
+        traj_list.append(array_sigma_kamani)
+
+    return traj_list
+
+kamani_true = simulate_true_eq()
 
 def print_eq(epoch=0, stdout=False):
-    tau = 94
-    k = 27.93
-    n = 0.416
-    G = 430
-    eta = 23
-
-    #[-1, n-1, c]
-    true_params = [[eta/G, tau/G, k/G],
-                    [0, tau, k],
-                    [0, tau/G * eta, k/G * eta]
+    #tau = 94
+    #k = 27.93
+    #n = 0.416
+    #G = 430
+    #eta = 23
+    true_params = [[eta_s/G, tau_y/G, k/G],
+                    [0, tau_y, k],
+                    [0, tau_y/G * eta_s, k/G * eta_s]
                     ]
     true_exp = [[-1, n-1], [-1, n-1], [-1, n-1]]
+
+    #[-1, n-1, c]
 
     #print learned params
     params,exps = model.get_params()
@@ -529,10 +563,11 @@ def print_eq(epoch=0, stdout=False):
     #return code
 
     #simulate
-    if (epoch+1)%2 ==0:
+    if (epoch+1)%10 ==0:
         print('simulating')
-        simulate(epoch, params, exps)
+        simulate(epoch, params, exps, kamani_true)
 
+####################3
 
 def train():
     """Optimize and threshold cycle"""
