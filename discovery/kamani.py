@@ -256,7 +256,12 @@ class Model(nn.Module):
         #[-2,2]
         params_exp = 2*torch.tanh(params_exp)
 
-        #params_exp = params_exp.reshape(3, -1)
+
+        params = params.reshape(3, -1)
+        params_exp = params_exp.reshape(3, -1)
+
+        params[1,0] = 0.
+        params[2,0] = 0.
         #ex1 = -1
         #ex2 = 0.416-1
         #params_exp[:, 0] = ex1
@@ -344,8 +349,8 @@ class Model(nn.Module):
 
         #u_in = u_in.reshape(bs*ts, 1, solver_dim[1], solver_dim[2])
 
-        #up = u_in #  self.transform(u_in)
-        up = self.transform(u_in.unsqueeze(1)).squeeze(1)
+        up = u_in #  self.transform(u_in)
+        #up = self.transform(u_in.unsqueeze(1)).squeeze(1)
 
         up = up.reshape(bs,*solver_dim)
 
@@ -360,8 +365,8 @@ class Model(nn.Module):
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step), device=device)
-#optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
+#optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
 #optimizer = torch.optim.SGD(model.parameters(), lr=0.0001, momentum =0.9)
@@ -371,7 +376,26 @@ if DBL:
 
 model=model.to(device)
 
+def get_eq_str(pr, er):
 
+    
+    bstr = lambda pr0, pr1, pr2, e0, e1: f"({pr0:.3f} +  {pr1:.3f}{{|\lambda'|}}^{{{e0:.3f}}} +   {pr2:.3f}{{|\lambda'|}}^{{{e1:.3f}}})"
+    #b0 = f"({pr[0,0]:.03f} +  {pr[0,1]:.3f}|\{{|lambda'|}}^{er[0,0]} +   {pr[0,2]:.3f}|\{{|lambda'|}}^{er[0,1]})"
+    b0 = bstr(pr[0,0], pr[0,1], pr[0,2], er[0,0], er[0,1])
+    b1 = bstr(pr[1,0], pr[1,1], pr[1,2], er[1,0], er[1,1])
+    b2 = bstr(pr[2,0], pr[2,1], pr[2,2], er[2,0], er[2,1])
+    
+    #s1 = f"{b0} \sigma' = {b1} \lambda' + {b2} \lambda'' - \sigma "
+    s1 = f"{b0} \sigma' = "
+    s2 = f"{b1} \lambda' + "
+    s3 = f"{b2} \lambda''"
+    s4 = f"- \sigma "
+    s1 = '$' + s1 + '$'
+    s2 = '$' + s2 + '$'
+    s3 = '$' + s3 + '$'
+    s4 = '$' + s4 + '$'
+
+    return [s1,s2,s3,s4]
 
 #def simulate(shear_amplitude, pr, er, axes):
 def simulate(epoch, pr, er):
@@ -421,7 +445,7 @@ def simulate(epoch, pr, er):
     tMax = num_periods*(2.0*np.pi/shear_frequency)
     t_eval = np.linspace(tMin, tMax, N_timesteps)
 
-    fig, ax = plt.subplots(1, 2, figsize=(10, 7))
+    fig, ax = plt.subplots(1, 2, figsize=(20, 10))
     #ax_lissajous_kamani, ax_kamani_eq = ax[0, 0], ax[0, 1]
 
     #for i, shear_amplitude in enumerate(sweep_shear_amplitude): # Dimensional amplitude
@@ -435,6 +459,20 @@ def simulate(epoch, pr, er):
         if array_sigma_kamani.shape[0] == array_shear.shape[0]:
             print(f'plotting {shear_amplitude}')
             ax[0].plot(array_shear, array_sigma_kamani, label=r"$\gamma_0 = %.2f$" % (shear_amplitude))
+
+    ax[0].set_xlabel("Strain [-]")
+    ax[0].set_ylabel("Stress [Pa]")
+    ax[0].set_ylim([-400, 400])
+
+    eq_str = get_eq_str(pr, er)
+    ax[1].axis([0, 10, 0, 10])
+
+    ax[1].text(1, 8, eq_str[0], fontsize=20)
+    ax[1].text(2, 7, eq_str[1], fontsize=20)
+    ax[1].text(2, 6, eq_str[2], fontsize=20)
+    ax[1].text(2, 5, eq_str[3], fontsize=20)
+    ax[1].set_frame_on(False)
+    ax[1].axis('off')
 
     plt.tight_layout()
     plt.savefig(f"{log_dir}/fig_kamani_{epoch}.png", dpi=300)
@@ -491,7 +529,7 @@ def print_eq(epoch=0, stdout=False):
     #return code
 
     #simulate
-    if (epoch+1)%10 ==0:
+    if (epoch+1)%2 ==0:
         print('simulating')
         simulate(epoch, params, exps)
 
