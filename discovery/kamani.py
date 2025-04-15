@@ -239,8 +239,8 @@ class Model(nn.Module):
                 y = self.net(x)
                 return y
 
-        self.param_net = ParamNet(n_out=9)
-        self.param_exp_net = ParamNet(n_out=6)
+        self.param_net = ParamNet(n_out=4*3)
+        self.param_exp_net = ParamNet(n_out=4*2)
         #self.transform = TransformNet(self.n_time)
         #self.transform = N.ResNet1D(in_channels=self.n_time, out_channels=self.n_time)
         self.transform = N.ResNet1D(in_channels=1, out_channels=1)
@@ -257,15 +257,20 @@ class Model(nn.Module):
         params_exp = 2*torch.tanh(params_exp)
 
 
-        params = params.reshape(3, -1)
-        params_exp = params_exp.reshape(3, -1)
+        params = params.reshape(4, -1)
+        params_exp = params_exp.reshape(4, -1)
 
-        #params[1,0] = 0.
-        #params[2,0] = 0.
+        # no exp terms in sigma
+        params[3,0] = 1.
+        params[3,1] = 0.
+        params[3,2] = 0.
+
+        # fix exponents
         #ex1 = -1
         #ex2 = 0.416-1
         #params_exp[:, 0] = ex1
         #params_exp[:, 1] = ex2
+
         return [params, params_exp]
 
     def get_iv(self, u):
@@ -305,8 +310,8 @@ class Model(nn.Module):
         ss_d = shear_list[1]
         ss_dd = shear_list[2]
 
-        pr = params_list[0].reshape(3, -1)
-        er = params_list[1].reshape(3, -1)
+        pr = params_list[0]#.reshape(3, -1)
+        er = params_list[1]#.reshape(3, -1)
 
         #basis0 = torch.stack([pr[0,0]*torch.ones_like(ss_d), pr[0,1]*ss_d.abs().pow(er[0,0]), pr[0,2]*ss_d.abs().pow(er[0,1])  ], dim=-1)
         #basis1 = torch.stack([pr[1,0]*torch.ones_like(ss_d), pr[1,1]*ss_d.abs().pow(er[1,0]), pr[1,2]*ss_d.abs().pow(er[1,1])  ], dim=-1)
@@ -317,11 +322,13 @@ class Model(nn.Module):
         basis0 = torch.stack([pr[0,0]*torch.ones_like(ss_d), pr[0,1]*ss_d.abs().pow(er[0,0]), pr[0,2]*ss_d.abs().pow(er[0,1])  ], dim=-1)
         basis1 = torch.stack([pr[1,0]*torch.ones_like(ss_d), pr[1,1]*ss_d.abs().pow(er[1,0]), pr[1,2]*ss_d.abs().pow(er[1,1])  ], dim=-1)
         basis2 = torch.stack([pr[2,0]*torch.ones_like(ss_d), pr[2,1]*ss_d.abs().pow(er[2,0]), pr[2,2]*ss_d.abs().pow(er[2,1])  ], dim=-1)
+        basis3 = torch.stack([pr[3,0]*torch.ones_like(ss_d), pr[3,1]*ss_d.abs().pow(er[3,0]), pr[3,2]*ss_d.abs().pow(er[3,1])  ], dim=-1)
 
 
         p0 = (basis0).sum(dim=-1)
         p1 = (basis1).sum(dim=-1)
         p2 = (basis2).sum(dim=-1)
+        p3 = (basis3).sum(dim=-1)
         #p4 = (basis*params_list[3]).sum(dim=-1)
         #q = (basis2*params[...,1,:]).sum(dim=-1)
 
@@ -329,11 +336,12 @@ class Model(nn.Module):
         coeffs_u = torch.zeros((bs, self.ode.grid_size, self.ode.n_orders), device=u.device)
 
         #u
-        coeffs_u[..., 0] = 1 #p0 
+        #coeffs_u[..., 0] = 1 #p0 
+        coeffs_u[..., 0] = p3 
         #u_t
         coeffs_u[..., 1] = p0 #params_list[3][0]
 
-        rhs_u = p1*ss_d + p2*ss_dd
+        rhs_u = p1*ss_d + p2*ss_dd #- p3*up
 
         u0,_,eps = self.ode(coeffs_u, rhs_u, iv_rhs_u, steps_list)
         u = u0
@@ -349,8 +357,9 @@ class Model(nn.Module):
 
         #u_in = u_in.reshape(bs*ts, 1, solver_dim[1], solver_dim[2])
 
-        up = u_in #  self.transform(u_in)
-        #up = self.transform(u_in.unsqueeze(1)).squeeze(1)
+        #up = u_in #  self.transform(u_in)
+        #up = self.transform(u_in)
+        up = self.transform(u_in.unsqueeze(1)).squeeze(1)
 
         up = up.reshape(bs,*solver_dim)
 
@@ -384,12 +393,14 @@ def get_eq_str(pr, er):
     b0 = bstr(pr[0,0], pr[0,1], pr[0,2], er[0,0], er[0,1])
     b1 = bstr(pr[1,0], pr[1,1], pr[1,2], er[1,0], er[1,1])
     b2 = bstr(pr[2,0], pr[2,1], pr[2,2], er[2,0], er[2,1])
+    b3 = bstr(pr[3,0], pr[3,1], pr[3,2], er[3,0], er[3,1])
     
     #s1 = f"{b0} \sigma' = {b1} \lambda' + {b2} \lambda'' - \sigma "
-    s1 = f"{b0} \sigma' = "
-    s2 = f"{b1} \lambda' + "
-    s3 = f"{b2} \lambda''"
-    s4 = f"- \sigma "
+    s1 = f"{b0} \sigma' + "
+    s2 = f"{b3} \sigma = "
+    s3 = f"{b1} \lambda' + "
+    s4 = f"{b2} \lambda''"
+
     s1 = '$' + s1 + '$'
     s2 = '$' + s2 + '$'
     s3 = '$' + s3 + '$'
@@ -434,11 +445,12 @@ def simulate(epoch, pr, er, true_traj):
         p0 = pr[0,0]+ pr[0,1]*np.power(ss_d_abs,er[0,0])+ pr[0,2]*np.power(ss_d_abs,er[0,1])
         p1 = pr[1,0]+ pr[1,1]*np.power(ss_d_abs,er[1,0])+ pr[1,2]*np.power(ss_d_abs,er[1,1])
         p2 = pr[2,0]+ pr[2,1]*np.power(ss_d_abs,er[2,0])+ pr[2,2]*np.power(ss_d_abs,er[2,1])
+        p3 = pr[3,0]+ pr[3,1]*np.power(ss_d_abs,er[3,0])+ pr[3,2]*np.power(ss_d_abs,er[3,1])
 
         #basis1 = torch.stack([pr[1,0]*torch.ones_like(ss_d), pr[1,1]*ss_d.abs().pow(er[1,0]), pr[1,2]*ss_d.abs().pow(er[1,1])  ], dim=-1)
         #basis2 = torch.stack([pr[2,0]*torch.ones_like(ss_d), pr[2,1]*ss_d.abs().pow(er[2,0]), pr[2,2]*ss_d.abs().pow(er[2,1])  ], dim=-1)
 
-        rhs = p1*ss_d + p2*ss_dd - tau
+        rhs = p1*ss_d + p2*ss_dd - p3*tau
         rhs = rhs/p0
         
         ## Calculating the RHS for this material (Kamani material)
@@ -486,7 +498,7 @@ def simulate(epoch, pr, er, true_traj):
     ax[2].text(0.1, 9, f'Epoch: {epoch}', fontsize=10)
 
     ax[2].text(1, 8, eq_str[0], fontsize=20)
-    ax[2].text(2, 7.5, eq_str[1], fontsize=20)
+    ax[2].text(1, 7.5, eq_str[1], fontsize=20)
     ax[2].text(2, 7, eq_str[2], fontsize=20)
     ax[2].text(2, 6.5, eq_str[3], fontsize=20)
     ax[2].set_frame_on(False)
@@ -494,7 +506,7 @@ def simulate(epoch, pr, er, true_traj):
     ax[2].set_title('Learned Equation')
 
     plt.tight_layout()
-    plt.savefig(f"{log_dir}/fig_kamani_{epoch}.png", dpi=300)
+    plt.savefig(f"{log_dir}/fig_kamani_{epoch:04d}.png", dpi=300)
     plt.close()
 
 
@@ -546,13 +558,13 @@ def print_eq(epoch=0, stdout=False):
 
     #print learned params
     params,exps = model.get_params()
-    params = params.reshape(3, -1)
-    exps = exps.reshape(3, -1)
+    #params = params.reshape(3, -1)
+    #exps = exps.reshape(3, -1)
     params = params.squeeze().detach().cpu().numpy()
     exps = exps.squeeze().detach().cpu().numpy()
 
-    params = params.reshape(3,-1)
-    exps = exps.reshape(3,-1)
+    #params = params.reshape(3,-1)
+    #exps = exps.reshape(3,-1)
 
     L.info(f'param {params}')
     L.info(f'exps {exps}')
