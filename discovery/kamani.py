@@ -54,12 +54,13 @@ cuda=True
 #T = 2000
 #n_step_per_batch = T
 #solver_dim=(10,256)
-solver_dim=(100,)
+#solver_dim=(100,)
+solver_dim=(24,)
 #solver_dim=(64,64,64)
 #solver_dim=(50,64)
 #solver_dim=(32,48)
 #n_grid=3
-batch_size= 64
+batch_size= 2048
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
 
@@ -253,14 +254,14 @@ class Model(nn.Module):
         params = self.param_net()
         params_exp = self.param_exp_net()
 
-        #[-2,2]
+        # limit exponential range to [-2,2]
         params_exp = 2*torch.tanh(params_exp)
 
 
         params = params.reshape(4, -1)
         params_exp = params_exp.reshape(4, -1)
 
-        # no exp terms in sigma
+        # fix sigma coeffs to fix coefficient scale
         params[3,0] = 1.
         params[3,1] = 0.
         params[3,2] = 0.
@@ -412,7 +413,8 @@ shear_func = lambda time, amplitude, frequency: amplitude*np.sin(frequency*time)
 shear_rate_func = lambda time, amplitude, frequency: amplitude*frequency*np.cos(frequency*time)
 shear_rate_rate_func = lambda time, amplitude, frequency: - amplitude*(frequency**2)*np.sin(frequency*time)
 
-visualize_these_lissajous = [0.5, 1, 5, 10]
+#visualize_these_lissajous = [0.5, 1, 5, 10]
+visualize_these_lissajous = [0.5, 1, 5, 10, 11, 12]
 
 shear_frequency = 1.0
 N_timesteps = 1000
