@@ -34,6 +34,7 @@ class PDEConfig:
     euler_dir = os.path.join(os.path.expanduser('~'),'data', 'euler')
     porous_dir = os.path.join(os.path.expanduser('~'),'data', 'porous')
     rheology_dir = os.path.join(os.path.expanduser('~'),'data', 'rheology')
+    burgers_dir = os.path.join(os.path.expanduser('~'),'data', 'burgers')
     #relax
     ds = 1e2
 
