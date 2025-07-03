@@ -94,9 +94,10 @@ class ResNet(nn.Module):
 class Resnet1dBlock(nn.Module):
     def __init__(self, in_channels, activation=True):
         super().__init__()
-        pm = 'zeros'
+        #pm = 'zeros'
+        pm = 'circular'
         self.conv = nn.Conv1d(in_channels=in_channels, out_channels=in_channels, kernel_size=5, stride=1, padding=2, padding_mode=pm)
-        self.shortcut = nn.Conv1d(in_channels, in_channels, 1)
+        self.shortcut = nn.Conv1d(in_channels, in_channels, 1, padding_mode=pm)
         self.bn = torch.nn.BatchNorm1d(in_channels)
         self.activation = activation
         self.in_channels = in_channels
@@ -108,7 +109,7 @@ class Resnet1dBlock(nn.Module):
 
         out = self.conv(x)
         out += self.shortcut(x.view(batchsize, self.in_channels, -1)).view(batchsize, self.in_channels, size_x)
-        out = self.bn(out)
+        #out = self.bn(out)
         if self.activation:
             out = F.relu(out)
 
@@ -123,8 +124,9 @@ class ResNet1D(nn.Module):
         layers = [Resnet1dBlock(width) for i in range(n_layers - 1)]
         self.net = nn.Sequential(*layers)
 
-        self.in_conv = nn.Conv1d(in_channels, width, kernel_size=5, stride=1, padding=2)
-        self.out_conv = nn.Conv1d(width, out_channels, kernel_size=5, stride=1, padding=2)
+        pm='circular'
+        self.in_conv = nn.Conv1d(in_channels, width, kernel_size=5, stride=1, padding=2, padding_mode=pm)
+        self.out_conv = nn.Conv1d(width, out_channels, kernel_size=5, stride=1, padding=2, padding_mode=pm)
 
         self.fc0 = nn.Linear(in_channels, width)
         self.fc1 = nn.Linear(width, 128)
@@ -166,9 +168,10 @@ class Resnet2dBlock(nn.Module):
 
         out = self.conv(x)
         out += self.shortcut(x.view(batchsize, self.in_channels, -1)).view(batchsize, self.in_channels, size_x, size_y)
-        out = self.bn(out)
+        #out = self.bn(out)
         if self.activation:
             out = F.relu(out)
+            #out = F.elu(out)
 
         return out
 
@@ -202,6 +205,7 @@ class ResNet2D(nn.Module):
         x = x.permute(0,2,3,1)
         x = self.fc1(x)
         x = torch.relu(x)
+        #x = F.elu(x)
         x = self.fc2(x)
         x = x.permute(0,3,1,2)
 

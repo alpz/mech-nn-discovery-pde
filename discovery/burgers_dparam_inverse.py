@@ -55,7 +55,7 @@ solver_dim=(32,32)
 #solver_dim=(50,64)
 #solver_dim=(32,48)
 n_grid=3
-batch_size= 2
+batch_size= 1
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
 
@@ -75,6 +75,7 @@ class BurgersDataset(Dataset):
         self.down_sample = 1
 
         data=np.load(os.path.join(PDEConfig.burgers_dir, 'burgers_0.1_256.npy'))
+        data = data[:32]
         print(data.shape)
 
         #print(data.keys())
@@ -159,7 +160,8 @@ class BurgersDataset(Dataset):
         data = self.data[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
         #mask = self.mask[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
 
-        return data#, t, x, mask
+        return data[-1], data[0]#, t, x, mask
+        #return data
 
 #%%
 
@@ -232,14 +234,14 @@ class Model(nn.Module):
 
         #self.iv_out = nn.Linear(13*32, self.iv_len)
 
-        #self.rnet1 = N.ResNet(out_channels=1, in_channels=1)
-        #self.rnet2 = N.ResNet(out_channels=1, in_channels=1)
+        self.rnet1 = N.ResNet(out_channels=1, in_channels=1)
+        self.rnet2 = N.ResNet(out_channels=1, in_channels=1)
 
         #self.rnet1_1d = N.ResNet1D(out_channels=32, in_channels=32)
         #self.rnet2_1d = N.ResNet1D(out_channels=32, in_channels=32)
 
-        self.rnet1_2d = N.ResNet2D(out_channels=1, in_channels=1)
-        self.rnet2_2d = N.ResNet2D(out_channels=1, in_channels=1)
+        #self.rnet1_2d = N.ResNet2D(out_channels=1, in_channels=1)
+        #self.rnet2_2d = N.ResNet2D(out_channels=1, in_channels=1)
 
         class ParamNet(nn.Module):
             def __init__(self):
@@ -351,6 +353,22 @@ class Model(nn.Module):
             #nn.Tanh()
         )
 
+        self.data_net = nn.Sequential(
+            nn.Linear(32, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
+
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
+            #nn.Linear(1024, 1024),
+            #nn.ReLU(),
+            #two polynomials, second order
+            #nn.Linear(1024, 3*2),
+            nn.Linear(1024, 32*32),
+            #nn.Tanh()
+        )
+
         #self.in_iv = nn.Parameter(torch.randn(1,512))
         #self.iv_mlp = nn.Sequential(
         #    nn.Linear(self.n_patches*self.iv_len, 1024),
@@ -401,6 +419,11 @@ class Model(nn.Module):
         params = torch.cat(params_list, dim=0)
         #params = params.transpose(1,0)
         #return u_params, v_params, w_params, x_params, y_params, z_params
+
+        params[:,:] = 0.
+        params[0, 1] = 1.
+        params[1,0] = -0.1
+
         return params
 
     #def get_params(self):
@@ -427,8 +450,8 @@ class Model(nn.Module):
         return ub
 
     def solve_chunks(self, u_patches, up_patches, up2_patches, params):
-        bs = u_patches.shape[0]
-        n_patches = u_patches.shape[1]
+        bs = up_patches.shape[0]
+        n_patches = up_patches.shape[1]
         u0_list = []
         eps_list = []
 
@@ -467,6 +490,12 @@ class Model(nn.Module):
         basis3 = torch.stack([torch.ones_like(up), up, up**2, up.pow(3), up.pow(4)], dim=-1)
         #basis2 = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
 
+        #p = (basis*params[...,0,:]).sum(dim=-1)
+        #q = (basis2*params[...,1,:]).sum(dim=-1)
+        #r = (basis3*params[...,2,:]).sum(dim=-1)
+
+        #print('param', params.shape)
+
         p = (basis*params[...,0,:]).sum(dim=-1)
         q = (basis2*params[...,1,:]).sum(dim=-1)
         r = (basis3*params[...,2,:]).sum(dim=-1)
@@ -494,7 +523,7 @@ class Model(nn.Module):
         #u0 = torch.stack(u0_list, dim=1)
         #eps = torch.stack(eps_list, dim=1).max()
 
-        u0 = u0.reshape(u_patches.shape)
+        u0 = u0.reshape(up_patches.shape)
 
         return u0, eps
     
@@ -535,14 +564,17 @@ class Model(nn.Module):
         #up2 = self.data_conv2d2(cin).squeeze(1)
 
 
-        #cin = u.reshape(bs*ts, 1, solver_dim[1])
-        cin = u
-        #print(cin.shape)
-        #up = self.rnet1(cin.unsqueeze(1)).squeeze(1)
-        #up2 = self.rnet2(cin.unsqueeze(1)).squeeze(1)
+        #cin = u.reshape(bs, 1, solver_dim[1])
+        d = u.shape[1]
+        cin = u.unsqueeze(1).expand(-1, d, -1) 
 
-        up = self.rnet1_2d(cin.unsqueeze(1)).squeeze(1)
-        up2 = self.rnet2_2d(cin.unsqueeze(1)).squeeze(1)
+        #print(cin.shape)
+        up = self.rnet1(cin.unsqueeze(1)).squeeze(1)
+        up2 = self.rnet2(cin.unsqueeze(1)).squeeze(1)
+
+
+        #up = self.rnet1_2d(cin.unsqueeze(1)).squeeze(1)
+        #up2 = self.rnet2_2d(cin.unsqueeze(1)).squeeze(1)
 
         #up = self.data_conv2d(cin).squeeze(1)
         #up2 = self.data_conv2d2(cin).squeeze(1)
@@ -598,7 +630,7 @@ class Model(nn.Module):
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step), device=device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.000001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
 #optimizer = torch.optim.SGD(model.parameters(), lr=0.0001, momentum =0.9)
@@ -635,38 +667,31 @@ def optimize(nepoch=5000):
         #for i, (time, batch_in) in enumerate(train_loader):
         x_losses = []
         var_losses = []
+        eval_losses = []
         losses = []
         total_loss = 0
-        for i, batch_in in enumerate(tqdm(train_loader)):
+        for i, batch_in_d in enumerate(tqdm(train_loader)):
         #for i, batch_in in enumerate((train_loader)):
             optimizer.zero_grad()
             #batch_in,t,x,mask = batch_in[0], batch_in[1], batch_in[2], batch_in[3]
             #batch_in = batch_in[0], batch_in[1], batch_in[2], batch_in[3]
-            batch_in = batch_in.double().to(device)
+            batch_in = batch_in_d[0].double().to(device)
+            batch_eval = batch_in_d[1].double().to(device)
             #mask = mask.double().to(device)
 
-            #t = t.double().to(device)
-            #x = x.double().to(device)
-            #time = time.to(device)
-            #print(batch_in.shape)
-            data_shape = batch_in.shape
+            out, var, var2, eps, params = model(batch_in)
 
-            #optimizer.zero_grad()
-            #x0, steps, eps, var,xi = model(index, batch_in)
-            x0, var, var2, eps, params = model(batch_in)
-
-            #print(batch_in.shape, x0.shape, var.shape)
-            t_end = x0.shape[1]
-            x_end = x0.shape[2]
-
-            #batch_in = batch_in.reshape(*data_shape)[:, :t_end, :x_end]
-            #var = var.reshape(*data_shape)[:, :t_end, :x_end]
-            #var2 = var2.reshape(*data_shape)[:, :t_end, :x_end]
-
-
+            #print(out.shape, var.shape)
             bs = batch_in.shape[0]
+            x0 = out[:, 0]
+            xf = out[:, -1]
+            vf = var[:, -1]
+            var = var[:, :-1]
+
             x0 = x0.reshape(bs, -1)
+            xf = xf.reshape(bs, -1)
             batch_in = batch_in.reshape(bs, -1)
+            batch_eval = batch_eval.reshape(bs, -1)
             #mask = mask.reshape(bs, -1)
 
             var =var.reshape(bs, -1)
@@ -674,11 +699,13 @@ def optimize(nepoch=5000):
             #x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
             #x_loss = (x0- batch_in).abs().mean(dim=-1)/batch_in.abs().mean(dim=-1)#.mean()
             #x_loss = (x0- batch_in).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
-            x_loss = (x0- batch_in).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
+            x_loss = (xf- batch_in).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
+            eval_loss = (x0- batch_eval).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
 
             #var_loss = (var- batch_in).abs().mean(dim=-1)/batch_in.abs().mean(dim=-1)
-            var2_loss = (var2- x0).abs().mean(dim=-1)
-            var_loss = (var- x0).abs().mean(dim=-1)
+            #var2_loss = (var2- x0).abs().mean(dim=-1)
+            var_loss = (var- out.reshape(bs,32,32)[:, :-1].reshape(bs, -1)).abs().mean(dim=-1)
+            #var_loss = var_loss + (vf- batch_eval).abs().mean(dim=-1)
 
             #loss = x_loss + var_loss + time_loss
             param_loss = params.abs()
@@ -686,7 +713,7 @@ def optimize(nepoch=5000):
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.001*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() +var2_loss.mean()  +  0.05*param_loss.mean()
-            loss = x_loss.mean() + var_loss.mean()  +  0.005*param_loss.mean()
+            loss = x_loss.mean() + var_loss.mean()  #+  0.005*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + 0.001*param_loss.mean()
             #loss = x_loss.mean() #+ 0.01*param_loss.mean()
             #loss = var_loss.mean()
@@ -695,6 +722,7 @@ def optimize(nepoch=5000):
             x_losses.append(x_loss)
             #var_losses.append(var_loss + var2_loss)
             var_losses.append(var_loss)
+            eval_losses.append(eval_loss)
             #var_losses.append(var_loss )
             losses.append(loss)
             total_loss = total_loss + loss
@@ -709,6 +737,7 @@ def optimize(nepoch=5000):
             #beta = beta.squeeze().item()
         _x_loss = torch.cat(x_losses,dim=0).mean()
         _v_loss = torch.cat(var_losses,dim=0).mean()
+        _eval_loss = torch.cat(eval_losses,dim=0).mean()
 
         #_x_loss = torch.tensor(x_losses).mean()
         #_v_loss = torch.tensor(var_losses).mean()
@@ -727,7 +756,8 @@ def optimize(nepoch=5000):
         L.info(f'parameters\n{params}')
             #pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item():.3E}  xloss {x_loss:.3E} max eps {meps}\n')
         #print(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E}  xloss {_x_loss:.3E} vloss {_v_loss:.3E} max eps {meps}\n')
-        L.info(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E} max eps {meps:.3E} xloss {_x_loss.item():.3E} vloss {_v_loss.item():.3E}')
+        L.info(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E} max eps {meps:.3E} xloss {_x_loss.item():.3E}  \
+               vloss {_v_loss.item():.3E} evalloss {_eval_loss.item():.3E}')
 
 
 if __name__ == "__main__":
