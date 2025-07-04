@@ -51,7 +51,7 @@ cuda=True
 #T = 2000
 #n_step_per_batch = T
 #solver_dim=(10,256)
-solver_dim=(32,32)
+solver_dim=(32, 32)
 #solver_dim=(50,64)
 #solver_dim=(32,48)
 n_grid=3
@@ -117,7 +117,8 @@ class BurgersDataset(Dataset):
 
 
         self.num_t_idx = num_t_idx//solver_dim[0]  #+ 1
-        self.num_x_idx = num_x_idx//solver_dim[1]  #+ 1
+        #self.num_x_idx = num_x_idx//solver_dim[1]  #+ 1
+        self.num_x_idx = num_x_idx-solver_dim[1]  #+ 1
 
         #if self.t_subsample < self.solver_dim[0]:
         #    self.num_t_idx = self.num_t_idx - self.solver_dim[0]//self.t_subsample
@@ -147,7 +148,7 @@ class BurgersDataset(Dataset):
         (t_idx, x_idx) = np.unravel_index(idx, (self.num_t_idx, self.num_x_idx))
 
         t_idx = t_idx*solver_dim[0]
-        x_idx = x_idx*solver_dim[1]
+        x_idx = x_idx#*solver_dim[1]
 
 
         t_step = solver_dim[0]
@@ -163,26 +164,70 @@ class BurgersDataset(Dataset):
         return data[-1], data[0]#, t, x, mask
         #return data
 
+    #def __getitem__(self, idx):
+    #    #return self.data, self.t, self.x
+    #    ##t_idx = idx//self.num_x_idx
+    #    ##x_idx = idx - t_idx*self.num_x_idx
+    #    (t_idx, x_idx) = np.unravel_index(idx, (self.num_t_idx, self.num_x_idx))
+
+    #    t_idx = t_idx*solver_dim[0]
+    #    x_idx = x_idx*solver_dim[1]
+
+
+    #    t_step = solver_dim[0]
+    #    x_step = solver_dim[1]
+
+
+    #    #t = self.t[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+    #    #x = self.x[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+
+    #    data = self.data[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+    #    #mask = self.mask[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+
+    #    return data[-1], data[0]#, t, x, mask
+    #    #return data
+
 #%%
 
 ds = BurgersDataset(solver_dim=solver_dim)#.generate()
 
 #
-##%%
-#import matplotlib.pyplot as plt
-#u = ds.data.cpu().numpy().T
-#t = ds._t.cpu().numpy()
-#x = ds._x.cpu().numpy()
-#plt.figure(figsize=(10, 4))
-#plt.subplot(1, 2, 1)
-#plt.pcolormesh(t, x, u)
-#plt.xlabel('t', fontsize=16)
-#plt.ylabel('x', fontsize=16)
-#plt.title(r'$u(x, t)$', fontsize=16)
+#%%
+import matplotlib.pyplot as plt
+u = ds.data.cpu().numpy().T
+t = np.arange(32)
+x = np.arange(256)
+fig = plt.figure(figsize=(10, 4))
+plt.subplot(1, 2, 1)
+plt.pcolormesh(t, x, u)
+plt.xlabel('t', fontsize=16)
+plt.ylabel('x', fontsize=16)
+plt.title(r'$u(x, t)$', fontsize=16)
+#plt.ion()
+#plt.show(block=False)
+fig.canvas.draw()
+fig.canvas.flush_events()
+plt.pause(1)
+plt.cla()
 
+def do_plot(x, y, epoch):
+    n = x.shape[0]
+    plt.plot(np.arange(n), x, label='learned')
+    plt.plot(np.arange(n), y, label='true')
+
+    plt.tight_layout()
+    plt.savefig(f"{log_dir}/fig_inv_{epoch:04d}.png", dpi=300)
+    plt.close()
+
+
+    #fig.canvas.draw()
+    #fig.canvas.flush_events()
+    #plt.pause(1)
+    #plt.cla()
 
 #%%
 train_loader =DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=8, drop_last=True) 
+test_loader =DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=8, drop_last=True) 
 
 
 
@@ -234,8 +279,8 @@ class Model(nn.Module):
 
         #self.iv_out = nn.Linear(13*32, self.iv_len)
 
-        self.rnet1 = N.ResNet(out_channels=1, in_channels=1)
-        self.rnet2 = N.ResNet(out_channels=1, in_channels=1)
+        self.rnet1_2d = N.ResNet(out_channels=1, in_channels=1)
+        self.rnet2_2d = N.ResNet(out_channels=1, in_channels=1)
 
         #self.rnet1_1d = N.ResNet1D(out_channels=32, in_channels=32)
         #self.rnet2_1d = N.ResNet1D(out_channels=32, in_channels=32)
@@ -566,15 +611,23 @@ class Model(nn.Module):
 
         #cin = u.reshape(bs, 1, solver_dim[1])
         d = u.shape[1]
-        cin = u.unsqueeze(1).expand(-1, d, -1) 
 
+
+        #cin = u.unsqueeze(1).expand(-1, solver_dim[0], -1) 
+        cin = u.unsqueeze(1).expand(-1, solver_dim[0], -1) 
+
+        #cz = torch.zeros(cin.shape[0], cin.shape[1]+32, cin.shape[2]+32, device=u.device, dtype=u.dtype)
+        #cz[:, 16:-16, 16:-16] = cin
+        cz = cin
         #print(cin.shape)
-        up = self.rnet1(cin.unsqueeze(1)).squeeze(1)
-        up2 = self.rnet2(cin.unsqueeze(1)).squeeze(1)
+        #up = self.rnet1(cin.unsqueeze(1)).squeeze(1)
+        #up2 = self.rnet2(cin.unsqueeze(1)).squeeze(1)
 
 
         #up = self.rnet1_2d(cin.unsqueeze(1)).squeeze(1)
-        #up2 = self.rnet2_2d(cin.unsqueeze(1)).squeeze(1)
+        up = self.rnet1_2d(cz.unsqueeze(1)).squeeze(1)
+        #up = up[:, 16:-16, 16:-16]
+        up2 = up #self.rnet2_2d(cin.unsqueeze(1)).squeeze(1)
 
         #up = self.data_conv2d(cin).squeeze(1)
         #up2 = self.data_conv2d2(cin).squeeze(1)
@@ -624,13 +677,14 @@ class Model(nn.Module):
         #u0 = self.join_patches(u0_patches, unfold_shape)
         u0 = u0.squeeze(1)
 
+
         return u0, up,up2, eps, params
         #return u0, up,eps, params
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step), device=device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.000001)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.00005)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
 #optimizer = torch.optim.SGD(model.parameters(), lr=0.0001, momentum =0.9)
@@ -655,6 +709,51 @@ def train():
 
     optimize()
 
+@torch.no_grad()
+def evaluate(epoch):
+    x_list = []
+    y_list = []
+    xs = torch.zeros(256, device=device)
+    counts = torch.zeros(256, device=device)
+    ys = torch.zeros(256, device=device)
+
+    for i, batch_in_d in enumerate(tqdm(test_loader)):
+        if i+32 == 256: #solver_dim[1]:
+            break
+        counts[i:i+32] = counts[i:i+32]+1
+        #optimizer.zero_grad()
+        batch_in = batch_in_d[0].double().to(device)
+        batch_eval = batch_in_d[1].double().to(device)
+
+        out, var, var2, eps, params = model(batch_in)
+
+        bs = batch_in.shape[0]
+        x0 = out[:, 0]
+        xf = out[:, -1]
+        vf = var[:, -1]
+        v0 = var[:, 0]
+
+        x0 = x0.reshape(bs, -1)
+        xf = xf.reshape(bs, -1)
+        batch_in = batch_in.reshape(bs, -1)
+        batch_eval = batch_eval.reshape(bs, -1)
+
+        xs[i:i+32] = xs[i:i+32] + x0[0]
+
+        if i % 32 == 0: #solver_dim[1]:
+            ys[i:i+32] = batch_eval[0]
+        #x_list.append(x0)
+        x_list.append(v0)
+        y_list.append(batch_eval)
+
+    #x = torch.cat(x_list, dim=1)
+    #y = torch.cat(y_list, dim=1)
+
+    xs = xs/counts
+    #do_plot(x[0].detach().cpu().numpy(), y[0].detach().cpu().numpy(), epoch)
+    do_plot(xs.detach().cpu().numpy(), ys.detach().cpu().numpy(), epoch)
+    return
+
 
 def optimize(nepoch=5000):
     #with tqdm(total=nepoch) as pbar:
@@ -671,8 +770,8 @@ def optimize(nepoch=5000):
         losses = []
         total_loss = 0
         for i, batch_in_d in enumerate(tqdm(train_loader)):
-        #for i, batch_in in enumerate((train_loader)):
             optimizer.zero_grad()
+        #for i, batch_in in enumerate((train_loader)):
             #batch_in,t,x,mask = batch_in[0], batch_in[1], batch_in[2], batch_in[3]
             #batch_in = batch_in[0], batch_in[1], batch_in[2], batch_in[3]
             batch_in = batch_in_d[0].double().to(device)
@@ -681,12 +780,11 @@ def optimize(nepoch=5000):
 
             out, var, var2, eps, params = model(batch_in)
 
-            #print(out.shape, var.shape)
             bs = batch_in.shape[0]
             x0 = out[:, 0]
             xf = out[:, -1]
             vf = var[:, -1]
-            var = var[:, :-1]
+            #var = var[:, :-1]
 
             x0 = x0.reshape(bs, -1)
             xf = xf.reshape(bs, -1)
@@ -704,8 +802,9 @@ def optimize(nepoch=5000):
 
             #var_loss = (var- batch_in).abs().mean(dim=-1)/batch_in.abs().mean(dim=-1)
             #var2_loss = (var2- x0).abs().mean(dim=-1)
-            var_loss = (var- out.reshape(bs,32,32)[:, :-1].reshape(bs, -1)).abs().mean(dim=-1)
-            #var_loss = var_loss + (vf- batch_eval).abs().mean(dim=-1)
+            #var_loss = (var- out.reshape(bs,32,32)[:, :-1].reshape(bs, -1)).abs().mean(dim=-1)
+            var_loss = (var- out.reshape(bs, -1)).abs().mean(dim=-1)
+            #var_loss = var_loss + (vf- batch_in).abs().mean(dim=-1)
 
             #loss = x_loss + var_loss + time_loss
             param_loss = params.abs()
@@ -713,24 +812,29 @@ def optimize(nepoch=5000):
             #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
             #loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.001*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() +var2_loss.mean()  +  0.05*param_loss.mean()
-            loss = x_loss.mean() + var_loss.mean()  #+  0.005*param_loss.mean()
+            loss = x_loss.mean() + var_loss.mean()  #+  0.001*param_loss.mean()
             #loss = x_loss.mean() + var_loss.mean() + 0.001*param_loss.mean()
             #loss = x_loss.mean() #+ 0.01*param_loss.mean()
             #loss = var_loss.mean()
             #loss = x_loss +  (var- batch_in).abs().mean()
             #loss = x_loss +  (var- batch_in).pow(2).mean()
-            x_losses.append(x_loss)
+            x_losses.append(x_loss.detach().cpu())
             #var_losses.append(var_loss + var2_loss)
-            var_losses.append(var_loss)
-            eval_losses.append(eval_loss)
+            var_losses.append(var_loss.detach().cpu())
+            eval_losses.append(eval_loss.detach().cpu())
             #var_losses.append(var_loss )
-            losses.append(loss)
-            total_loss = total_loss + loss
+            losses.append(loss.detach().cpu())
+            #total_loss = total_loss + loss
             
 
             loss.backward()
             optimizer.step()
 
+            del loss,var_loss, eval_loss, x_loss, var, var2, x0,xf,vf, params
+
+        if (epoch+1) % 5 == 0:
+            #print('plotting)')
+            evaluate(epoch)
 
             #xi = xi.detach().cpu().numpy()
             #alpha = alpha.squeeze().item() #.detach().cpu().numpy()
