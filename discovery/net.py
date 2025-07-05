@@ -116,7 +116,7 @@ class Resnet1dBlock(nn.Module):
         return out
 
 class ResNet1D(nn.Module):
-    def __init__(self, output_len=100,in_channels=1, out_channels=32, device=None, **kwargs):
+    def __init__(self, output_len=32,in_channels=1, out_channels=32, device=None, **kwargs):
         super().__init__()
 
         n_layers = 10
@@ -124,7 +124,8 @@ class ResNet1D(nn.Module):
         layers = [Resnet1dBlock(width) for i in range(n_layers - 1)]
         self.net = nn.Sequential(*layers)
 
-        pm='circular'
+        #pm='circular'
+        pm='zeros'
         self.in_conv = nn.Conv1d(in_channels, width, kernel_size=5, stride=1, padding=2, padding_mode=pm)
         self.out_conv = nn.Conv1d(width, out_channels, kernel_size=5, stride=1, padding=2, padding_mode=pm)
 
@@ -168,7 +169,7 @@ class Resnet2dBlock(nn.Module):
 
         out = self.conv(x)
         out += self.shortcut(x.view(batchsize, self.in_channels, -1)).view(batchsize, self.in_channels, size_x, size_y)
-        #out = self.bn(out)
+        out = self.bn(out)
         if self.activation:
             out = F.relu(out)
             #out = F.elu(out)

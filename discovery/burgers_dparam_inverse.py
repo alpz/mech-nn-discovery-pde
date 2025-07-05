@@ -117,8 +117,8 @@ class BurgersDataset(Dataset):
 
 
         self.num_t_idx = num_t_idx//solver_dim[0]  #+ 1
-        #self.num_x_idx = num_x_idx//solver_dim[1]  #+ 1
-        self.num_x_idx = num_x_idx-solver_dim[1]  #+ 1
+        self.num_x_idx = num_x_idx//solver_dim[1]  #+ 1
+        #self.num_x_idx = num_x_idx-solver_dim[1]  #+ 1
 
         #if self.t_subsample < self.solver_dim[0]:
         #    self.num_t_idx = self.num_t_idx - self.solver_dim[0]//self.t_subsample
@@ -141,29 +141,6 @@ class BurgersDataset(Dataset):
     def __len__(self):
         return self.length #self.x_train.shape[0]
 
-    def __getitem__(self, idx):
-        #return self.data, self.t, self.x
-        ##t_idx = idx//self.num_x_idx
-        ##x_idx = idx - t_idx*self.num_x_idx
-        (t_idx, x_idx) = np.unravel_index(idx, (self.num_t_idx, self.num_x_idx))
-
-        t_idx = t_idx*solver_dim[0]
-        x_idx = x_idx#*solver_dim[1]
-
-
-        t_step = solver_dim[0]
-        x_step = solver_dim[1]
-
-
-        #t = self.t[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
-        #x = self.x[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
-
-        data = self.data[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
-        #mask = self.mask[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
-
-        return data[-1], data[0]#, t, x, mask
-        #return data
-
     #def __getitem__(self, idx):
     #    #return self.data, self.t, self.x
     #    ##t_idx = idx//self.num_x_idx
@@ -171,7 +148,7 @@ class BurgersDataset(Dataset):
     #    (t_idx, x_idx) = np.unravel_index(idx, (self.num_t_idx, self.num_x_idx))
 
     #    t_idx = t_idx*solver_dim[0]
-    #    x_idx = x_idx*solver_dim[1]
+    #    x_idx = x_idx#*solver_dim[1]
 
 
     #    t_step = solver_dim[0]
@@ -186,6 +163,30 @@ class BurgersDataset(Dataset):
 
     #    return data[-1], data[0]#, t, x, mask
     #    #return data
+
+    def __getitem__(self, idx):
+        #return self.data, self.t, self.x
+        ##t_idx = idx//self.num_x_idx
+        ##x_idx = idx - t_idx*self.num_x_idx
+        (t_idx, x_idx) = np.unravel_index(idx, (self.num_t_idx, self.num_x_idx))
+
+        t_idx = t_idx*solver_dim[0]
+        x_idx = x_idx*solver_dim[1]
+
+
+        t_step = solver_dim[0]
+        x_step = solver_dim[1]
+
+
+        #t = self.t[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+        #x = self.x[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+
+        data = self.data[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+        #mask = self.mask[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
+        ind = torch.linspace(x_idx/256, (x_idx+solver_dim[0])/256, solver_dim[0])
+
+        return data[-1], data[0], ind#, t, x, mask
+        #return data
 
 #%%
 
@@ -210,12 +211,14 @@ fig.canvas.flush_events()
 plt.pause(1)
 plt.cla()
 
-def do_plot(x, y, epoch):
+def do_plot(x, y, z, epoch):
     n = x.shape[0]
     plt.plot(np.arange(n), x, label='learned')
-    plt.plot(np.arange(n), y, label='true')
+    plt.plot(np.arange(n), y, label='var')
+    plt.plot(np.arange(n), z, label='true')
 
     plt.tight_layout()
+    plt.legend()
     plt.savefig(f"{log_dir}/fig_inv_{epoch:04d}.png", dpi=300)
     plt.close()
 
@@ -226,8 +229,8 @@ def do_plot(x, y, epoch):
     #plt.cla()
 
 #%%
-train_loader =DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=8, drop_last=True) 
-test_loader =DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=8, drop_last=True) 
+train_loader =DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=8, drop_last=False) 
+test_loader =DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=8, drop_last=False) 
 
 
 
@@ -282,7 +285,7 @@ class Model(nn.Module):
         self.rnet1_2d = N.ResNet(out_channels=1, in_channels=1)
         self.rnet2_2d = N.ResNet(out_channels=1, in_channels=1)
 
-        #self.rnet1_1d = N.ResNet1D(out_channels=32, in_channels=32)
+        #self.rnet1_1d = N.ResNet1D(out_channels=32, in_channels=1)
         #self.rnet2_1d = N.ResNet1D(out_channels=32, in_channels=32)
 
         #self.rnet1_2d = N.ResNet2D(out_channels=1, in_channels=1)
@@ -308,6 +311,26 @@ class Model(nn.Module):
                 y = self.net(self.input)
                 return y
 
+        class IVNet(nn.Module):
+            def __init__(self, out_len=32):
+                super().__init__()
+                #self.input = nn.Parameter(torch.randn(1,512)) #*(2/(4*512)))
+                self.net = nn.Sequential(
+                    nn.Linear(32, 1024),
+                    #nn.ELU(),
+                    nn.ReLU(),
+                    nn.Linear(1024, 1024),
+                    nn.ReLU(),
+
+                    nn.Linear(1024, 1024),
+                    nn.ReLU(),
+                    nn.Linear(1024, out_len),
+                    #nn.Tanh()
+                )
+            def forward(self, x):
+                y = self.net(x)
+                return y
+
         #self.param_net= ParamNet()
         #self.param_net2= ParamNet()
         #self.param_net3= ParamNet()
@@ -319,6 +342,10 @@ class Model(nn.Module):
         self.param_net_list = nn.ModuleList() 
         for i in range(3):
             self.param_net_list.append(ParamNet())
+
+        self.iv_net_list = nn.ModuleList() 
+        for out_len in [30,32,32]:
+            self.iv_net_list.append(IVNet(out_len))
 
         #self.data_mlp1 = nn.Sequential(
         #    #nn.Linear(32*32, 1024),
@@ -489,6 +516,10 @@ class Model(nn.Module):
         #u3 = u[:, self.coord_dims[0]-1, 1:self.coord_dims[1]-2+1]
         u4 = u[:, 0:self.coord_dims[0]-1+1, self.coord_dims[1]-1]
 
+        #u1 = self.iv_net_list[0](u)
+        #u2 = self.iv_net_list[1](u)
+        #u4 = self.iv_net_list[2](u)
+
         #ub = torch.cat([u1,u2,u3,u4], dim=-1)
         ub = torch.cat([u1,u2,u4], dim=-1)
 
@@ -522,6 +553,7 @@ class Model(nn.Module):
         #upi = upi + up2.reshape(bs, *self.coord_dims)
         #upi = upi/2
         iv_rhs = self.get_iv(upi)
+        #iv_rhs = self.get_iv(u.reshape(bs, solver_dim[1]))
         #iv_rhs = upi + up2.reshape(bs, *self.coord_dims)
         #iv_rhs = iv_rhs.reshape(bs, n_patches*self.iv_len)
         #iv_rhs = self.iv_mlp(iv_rhs)
@@ -595,7 +627,7 @@ class Model(nn.Module):
 
         return merged
 
-    def forward(self, u):
+    def forward(self, u, u_idx):
         bs = u.shape[0]
         ts = u.shape[1]
         #up = self.data_net(u)
@@ -614,19 +646,20 @@ class Model(nn.Module):
 
 
         #cin = u.unsqueeze(1).expand(-1, solver_dim[0], -1) 
+        #cin = u.unsqueeze(1).expand(-1, solver_dim[0], -1) 
         cin = u.unsqueeze(1).expand(-1, solver_dim[0], -1) 
 
-        #cz = torch.zeros(cin.shape[0], cin.shape[1]+32, cin.shape[2]+32, device=u.device, dtype=u.dtype)
-        #cz[:, 16:-16, 16:-16] = cin
+        ##cz = torch.zeros(cin.shape[0], cin.shape[1]+32, cin.shape[2]+32, device=u.device, dtype=u.dtype)
+        ##cz[:, 16:-16, 16:-16] = cin
         cz = cin
-        #print(cin.shape)
-        #up = self.rnet1(cin.unsqueeze(1)).squeeze(1)
-        #up2 = self.rnet2(cin.unsqueeze(1)).squeeze(1)
+        ##print(cin.shape)
+        ##up = self.rnet1(cin.unsqueeze(1)).squeeze(1)
+        ##up2 = self.rnet2(cin.unsqueeze(1)).squeeze(1)
 
 
-        #up = self.rnet1_2d(cin.unsqueeze(1)).squeeze(1)
+        ##up = self.rnet1_2d(cin.unsqueeze(1)).squeeze(1)
         up = self.rnet1_2d(cz.unsqueeze(1)).squeeze(1)
-        #up = up[:, 16:-16, 16:-16]
+        ##up = up[:, 16:-16, 16:-16]
         up2 = up #self.rnet2_2d(cin.unsqueeze(1)).squeeze(1)
 
         #up = self.data_conv2d(cin).squeeze(1)
@@ -635,8 +668,8 @@ class Model(nn.Module):
         #up = cin #self.rnet1_1d(cin)#.squeeze(1)
         #up2= cin #self.rnet2_1d(cin)#.squeeze(1)
 
-        #up = self.rnet1_1d(cin)#.squeeze(1)
-        #up2= self.rnet2_1d(cin)#.squeeze(1)
+        #up = self.rnet1_1d(u.unsqueeze(1))#.squeeze(1)
+        #up2= up# self.rnet2_1d(cin)#.squeeze(1)
 
         #up  = up.double()
         #up2  = up2.double()
@@ -716,16 +749,19 @@ def evaluate(epoch):
     xs = torch.zeros(256, device=device)
     counts = torch.zeros(256, device=device)
     ys = torch.zeros(256, device=device)
+    vs = torch.zeros(256, device=device)
 
-    for i, batch_in_d in enumerate(tqdm(test_loader)):
-        if i+32 == 256: #solver_dim[1]:
-            break
+    for j, batch_in_d in enumerate(tqdm(test_loader)):
+        #if i+32 == 256: #solver_dim[1]:
+        #    break
+        i = j*32
         counts[i:i+32] = counts[i:i+32]+1
         #optimizer.zero_grad()
         batch_in = batch_in_d[0].double().to(device)
         batch_eval = batch_in_d[1].double().to(device)
+        batch_index = batch_in_d[2].double().to(device)
 
-        out, var, var2, eps, params = model(batch_in)
+        out, var, var2, eps, params = model(batch_in, batch_index)
 
         bs = batch_in.shape[0]
         x0 = out[:, 0]
@@ -739,6 +775,7 @@ def evaluate(epoch):
         batch_eval = batch_eval.reshape(bs, -1)
 
         xs[i:i+32] = xs[i:i+32] + x0[0]
+        vs[i:i+32] = vs[i:i+32] + v0[0]
 
         if i % 32 == 0: #solver_dim[1]:
             ys[i:i+32] = batch_eval[0]
@@ -751,7 +788,7 @@ def evaluate(epoch):
 
     xs = xs/counts
     #do_plot(x[0].detach().cpu().numpy(), y[0].detach().cpu().numpy(), epoch)
-    do_plot(xs.detach().cpu().numpy(), ys.detach().cpu().numpy(), epoch)
+    do_plot(xs.detach().cpu().numpy(), vs.detach().cpu().numpy(), ys.detach().cpu().numpy(), epoch)
     return
 
 
@@ -770,15 +807,16 @@ def optimize(nepoch=5000):
         losses = []
         total_loss = 0
         for i, batch_in_d in enumerate(tqdm(train_loader)):
-            optimizer.zero_grad()
         #for i, batch_in in enumerate((train_loader)):
+            optimizer.zero_grad()
             #batch_in,t,x,mask = batch_in[0], batch_in[1], batch_in[2], batch_in[3]
             #batch_in = batch_in[0], batch_in[1], batch_in[2], batch_in[3]
             batch_in = batch_in_d[0].double().to(device)
             batch_eval = batch_in_d[1].double().to(device)
+            batch_index = batch_in_d[2].double().to(device)
             #mask = mask.double().to(device)
 
-            out, var, var2, eps, params = model(batch_in)
+            out, var, var2, eps, params = model(batch_in, batch_index)
 
             bs = batch_in.shape[0]
             x0 = out[:, 0]
@@ -832,7 +870,7 @@ def optimize(nepoch=5000):
 
             del loss,var_loss, eval_loss, x_loss, var, var2, x0,xf,vf, params
 
-        if (epoch+1) % 5 == 0:
+        if (epoch+1) % 10 == 0:
             #print('plotting)')
             evaluate(epoch)
 
