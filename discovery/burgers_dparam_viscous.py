@@ -153,16 +153,8 @@ class Model(nn.Module):
         self.coord_dims = solver_dim
         self.iv_list = [lambda nx, ny: (0,0, [0,0],[0,ny-2]), 
                         lambda nx,ny: (1,0, [1,0], [nx-1, 0]), 
-                        #(0,1, [0,0],[0,self.coord_dims[1]-1]), 
-                        #(0,0, [self.coord_dims[0]-1,1],[self.coord_dims[0]-1,self.coord_dims[1]-2]), 
-                        #(1,2, [0,0], [self.coord_dims[0]-1, 0]),
-                        #(1,3, [0,0], [self.coord_dims[0]-1, 0])
                         lambda nx,ny: (1,0, [0,ny-1], [nx-1, ny-1])
                         ]
-
-        #self.iv_len = self.coord_dims[1]-1 + self.coord_dims[0]-1 + self.coord_dims[1]-2 + self.coord_dims[0]
-        #self.iv_len = self.coord_dims[1]-1 + self.coord_dims[0]-1 + self.coord_dims[0]
-        #print('iv len', self.iv_len)
 
         self.n_patches_t = 1 #ds.data.shape[0]//self.coord_dims[0]
         self.n_patches_x = 1 #ds.data.shape[1]//self.coord_dims[1]
@@ -497,7 +489,7 @@ class Model(nn.Module):
         #up = self.rnet1(cin.unsqueeze(1)).squeeze(1)
         #up2 = self.rnet2(cin.unsqueeze(1)).squeeze(1)
 
-        up = self.rnet1_2d(cin.unsqueeze(1)).squeeze(1)
+        up = u #self.rnet1_2d(cin.unsqueeze(1)).squeeze(1)
         up2 = up #self.rnet2_2d(cin.unsqueeze(1)).squeeze(1)
 
         #up = up.double()
@@ -556,7 +548,7 @@ class Model(nn.Module):
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step), device=device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
 #optimizer = torch.optim.SGD(model.parameters(), lr=0.0001, momentum =0.9)
@@ -581,8 +573,8 @@ def print_eq(stdout=False):
 
 
     eq_str = "u_t + " + basis_text[0].format(*tuple(params[0])) + "\n" \
-            + basis_text[1].format(*tuple(params[0])) + "\n"  \
-            + " = "+  basis_text[2].format(*tuple(params[0])) \
+            + basis_text[1].format(*tuple(params[1])) + "\n"  \
+            + " = "+  basis_text[2].format(*tuple(params[2])) \
 
     #print(params)
     #return params
@@ -601,102 +593,46 @@ def train(nepoch=5000):
         #for i, (time, batch_in) in enumerate(train_loader):
         x_losses = []; var_losses = []; losses = []
 
-        total_loss = 0
         for i, batch_in in enumerate(tqdm(train_loader)):
-        #for i, batch_in in enumerate((train_loader)):
             optimizer.zero_grad()
-            #batch_in,t,x,mask = batch_in[0], batch_in[1], batch_in[2], batch_in[3]
-            #batch_in = batch_in[0], batch_in[1], batch_in[2], batch_in[3]
             batch_in = batch_in.double().to(device)
-            #mask = mask.double().to(device)
 
-            #t = t.double().to(device)
-            #x = x.double().to(device)
-            #time = time.to(device)
-            #print(batch_in.shape)
-            data_shape = batch_in.shape
-
-            #optimizer.zero_grad()
-            #x0, steps, eps, var,xi = model(index, batch_in)
             x0, var, var2, eps, params = model(batch_in)
-
-            #print(batch_in.shape, x0.shape, var.shape)
-            t_end = x0.shape[1]
-            x_end = x0.shape[2]
-
-            #batch_in = batch_in.reshape(*data_shape)[:, :t_end, :x_end]
-            #var = var.reshape(*data_shape)[:, :t_end, :x_end]
-            #var2 = var2.reshape(*data_shape)[:, :t_end, :x_end]
-
 
             bs = batch_in.shape[0]
             x0 = x0.reshape(bs, -1)
             batch_in = batch_in.reshape(bs, -1)
-            #mask = mask.reshape(bs, -1)
 
             var =var.reshape(bs, -1)
             var2 =var2.reshape(bs, -1)
-            #x_loss = (x0- batch_in).abs()#.pow(2)#.mean()
-            #x_loss = (x0- batch_in).abs().mean(dim=-1)/batch_in.abs().mean(dim=-1)#.mean()
-            #x_loss = (x0- batch_in).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
-            x_loss = (x0- batch_in).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
+            x_loss = (x0- batch_in).abs().mean(dim=-1)
 
-            #var_loss = (var- batch_in).abs().mean(dim=-1)/batch_in.abs().mean(dim=-1)
-            var2_loss = (var2- x0).abs().mean(dim=-1)
             var_loss = (var- x0).abs().mean(dim=-1)
 
-            #loss = x_loss + var_loss + time_loss
             param_loss = params.abs()
-            #loss = x_loss.mean() + var_loss.mean() #+ 0.01*param_loss.mean()
-            #loss = x_loss.mean() + var_loss.mean() + var2_loss.mean() + 0.0001*param_loss.mean()
-            #loss = 2*x_loss.mean() + var_loss.mean() + var2_loss.mean() +  0.001*param_loss.mean()
-            #loss = x_loss.mean() + var_loss.mean() +var2_loss.mean()  +  0.05*param_loss.mean()
             loss = x_loss.mean() + var_loss.mean()  +  0.005*param_loss.mean()
-            #loss = x_loss.mean() + var_loss.mean() + 0.001*param_loss.mean()
-            #loss = x_loss.mean() #+ 0.01*param_loss.mean()
-            #loss = var_loss.mean()
-            #loss = x_loss +  (var- batch_in).abs().mean()
-            #loss = x_loss +  (var- batch_in).pow(2).mean()
-            x_losses.append(x_loss.mean().item())
-            #var_losses.append(var_loss + var2_loss)
-            var_losses.append(var_loss.mean().item())
-            #var_losses.append(var_loss )
-            losses.append(loss.mean().item())
-            #total_loss = total_loss + loss
-            
 
+            x_losses.append(x_loss.mean().item())
+            var_losses.append(var_loss.mean().item())
+            losses.append(loss.mean().item())
+            
             loss.backward()
             optimizer.step()
 
+            del loss,x_loss, var_loss, param_loss,params
 
-            #del loss,u,u_loss,v,v_loss,var_u,var_v,var_u_loss,var_v_loss,var_uv_loss, params#, t_params_loss
-            #xi = xi.detach().cpu().numpy()
-            #alpha = alpha.squeeze().item() #.detach().cpu().numpy()
-            #beta = beta.squeeze().item()
         _x_loss = torch.tensor(x_losses).mean()
         _v_loss = torch.tensor(var_losses).mean()
-
-        #_x_loss = torch.tensor(x_losses).mean()
-        #_v_loss = torch.tensor(var_losses).mean()
-
-        #total_loss.backward()
-        #optimizer.step()
-
         mean_loss = torch.tensor(losses).mean()
 
         loss_list.append(_x_loss.detach().cpu().numpy())
-        np.save(loss_path, np.array(loss_list))
 
-        meps = 1 #eps.max().item()
-            #print(f'\nalpha, beta {xi}')
         eq_str=print_eq()
         L.info(f'Learned \n{eq_str}\n')
-            #pbar.set_description(f'run {run_id} epoch {epoch}, loss {loss.item():.3E}  xloss {x_loss:.3E} max eps {meps}\n')
-        #print(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E}  xloss {_x_loss:.3E} vloss {_v_loss:.3E} max eps {meps}\n')
-        L.info(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E} max eps {meps:.3E} xloss {_x_loss.item():.3E} vloss {_v_loss.item():.3E}')
+
+        L.info(f'run {run_id} epoch {epoch}, loss {mean_loss.item():.3E} xloss {_x_loss.item():.3E} vloss {_v_loss.item():.3E}')
 
 
 if __name__ == "__main__":
     train()
-
     print_eq()
