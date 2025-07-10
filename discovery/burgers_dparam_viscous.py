@@ -53,6 +53,11 @@ batch_size= 10
 
 noise =False
 noise_factor = 20
+frame_drop_prob = 0.0
+
+
+#l1 regularization coeff
+param_l1 = 0.005
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -60,7 +65,7 @@ L.info(f'Burgers viscous ')
 L.info(f'Solver dim {solver_dim} ')
 
 
-loss_path = os.path.join(log_dir, 'losses.npy')
+#loss_path = os.path.join(log_dir, 'losses.npy')
 
 class BurgersDataset(Dataset):
     def __init__(self, solver_dim=(32,32)):
@@ -118,20 +123,10 @@ class BurgersDataset(Dataset):
 #%%
 
 ds = BurgersDataset(solver_dim=solver_dim)#.generate()
+mask = torch.rand(ds.data.shape[0]) > frame_drop_prob
+ds.data = ds.data*mask.unsqueeze(1)
 data_all = ds.data.to(device)
-
-#
-##%%
-#import matplotlib.pyplot as plt
-#u = ds.data.cpu().numpy().T
-#t = ds._t.cpu().numpy()
-#x = ds._x.cpu().numpy()
-#plt.figure(figsize=(10, 4))
-#plt.subplot(1, 2, 1)
-#plt.pcolormesh(t, x, u)
-#plt.xlabel('t', fontsize=16)
-#plt.ylabel('x', fontsize=16)
-#plt.title(r'$u(x, t)$', fontsize=16)
+mask = mask.to(device)
 
 
 #%%
@@ -154,16 +149,15 @@ class Model(nn.Module):
         self.param_in = nn.Parameter(torch.randn(1,64))
 
         self.coord_dims = solver_dim
-        self.iv_list = [lambda nx, ny: (0,0, [0,0],[0,ny-2]), 
+
+        #initial and boundary ranges
+        #format nx, ny: (0,0, [0,0],[0,ny-2]) -> (coord to vary, u term index, range initial, range final )
+        #Term order is u, u_t, u_tt, u_x, u_xx
+        #0 is the index for u (Dirichlet conditions)
+        self.iv_list = [lambda nx, ny: (0,0, [0,0],[0,ny-2]),  
                         lambda nx,ny: (1,0, [1,0], [nx-1, 0]), 
                         lambda nx,ny: (1,0, [0,ny-1], [nx-1, ny-1])
                         ]
-
-        self.n_patches_t = 1 #ds.data.shape[0]//self.coord_dims[0]
-        self.n_patches_x = 1 #ds.data.shape[1]//self.coord_dims[1]
-        self.n_patches = 1 #self.n_patches_t*self.n_patches_x
-        print('num patches ', self.n_patches)
-
 
         #self.pde = MultigridLayer(bs=bs, coord_dims=self.coord_dims, order=2, n_ind_dim=self.n_ind_dim, n_iv=1, 
         #                n_grid=n_grid,
@@ -177,16 +171,7 @@ class Model(nn.Module):
         # u, u_t, u_tt, u_x, u_xx
         self.num_multiindex = self.pde.n_orders
 
-        #self.iv_out = nn.Linear(13*32, self.iv_len)
-
         self.rnet1_2d = N.ResNet(out_channels=1, in_channels=1)
-        #self.rnet2 = N.ResNet(out_channels=1, in_channels=1)
-
-        #self.rnet1_1d = N.ResNet1D(out_channels=32, in_channels=32)
-        #self.rnet2_1d = N.ResNet1D(out_channels=32, in_channels=32)
-
-        #self.rnet1_2d = N.ResNet2D(out_channels=1, in_channels=1)
-        #self.rnet2_2d = N.ResNet2D(out_channels=1, in_channels=1)
 
         class ParamNet(nn.Module):
             def __init__(self):
@@ -217,83 +202,52 @@ class Model(nn.Module):
         self.x_step_size = ds.x_step 
         print('steps ', steps)
 
-        self.steps0 = torch.logit(self.t_step_size*torch.ones(1,1,1))
-        self.steps1 = torch.logit(self.x_step_size*torch.ones(1,1,1))
+        self.steps0 = torch.logit(self.t_step_size*torch.ones(1,1))
+        self.steps1 = torch.logit(self.x_step_size*torch.ones(1,1))
 
 
     def get_params(self):
-        #params_list = [(net()).squeeze() for net in self.param_net_list]
         params_list = [net() for net in self.param_net_list]
         params = torch.cat(params_list, dim=0)
-        #params = params.transpose(1,0)
-        #return u_params, v_params, w_params, x_params, y_params, z_params
-        #mask = torch.zeros_like(params)
-        #mask[0, 1] = 1.
-        #mask[1,0] = 1.
-        #params = params*mask
         return params
 
 
-    def get_iv(self, u):
+    def get_iv_bc(self, u):
         u1 = u[:,0, :self.coord_dims[1]-2+1]
         u2 = u[:, 1:self.coord_dims[0]-1+1:,0]
-        #u3 = u[:, self.coord_dims[0]-1, 1:self.coord_dims[1]-2+1]
         u4 = u[:, 0:self.coord_dims[0]-1+1, self.coord_dims[1]-1]
 
-        #ub = torch.cat([u1,u2,u3,u4], dim=-1)
         ub = torch.cat([u1,u2,u4], dim=-1)
 
         return ub
 
-    def solve_chunks(self, u_patches, up_patches, up2_patches, params):
-        bs = u_patches.shape[0]
-        n_patches = u_patches.shape[1]
-        u0_list = []
-        eps_list = []
+    def solve(self, u, up, params):
+        bs = u.shape[0]
 
-        steps0 = self.steps0.type_as(params).expand(self.bs, self.n_patches, self.coord_dims[0]-1)
-        steps1 = self.steps1.type_as(params).expand(self.bs, self.n_patches, self.coord_dims[1]-1)
+        steps0 = self.steps0.type_as(params).expand(self.bs, self.coord_dims[0]-1)
+        steps1 = self.steps1.type_as(params).expand(self.bs, self.coord_dims[1]-1)
         steps0 = torch.sigmoid(steps0).clip(min=0.005, max=0.5)
         steps1 = torch.sigmoid(steps1).clip(min=0.005, max=0.5)
         steps_list = [steps0, steps1]
 
-        #for i in range(n_patches):
-        #for i in tqdm(range(n_patches)):
-        u = u_patches#[:, i]
-        up = up_patches#[:, i]
-        up2 = up2_patches#[:, i]
 
-        up = up.reshape(bs*n_patches, self.pde.grid_size)
-        up2 = up2.reshape(bs*n_patches, self.pde.grid_size)
-        # solve each chunk
-        #can use either u or up for boundary conditions
-        #upi = u.reshape(bs, *self.coord_dims)
-        #upi = up.reshape(bs*n_patches, *self.coord_dims)
-        upi = up.reshape(bs*n_patches, *self.coord_dims)
-        #upi = upi + up2.reshape(bs, *self.coord_dims)
-        #upi = upi/2
-        iv_rhs = self.get_iv(upi)
-        #iv_rhs = upi + up2.reshape(bs, *self.coord_dims)
-        #iv_rhs = iv_rhs.reshape(bs, n_patches*self.iv_len)
-        #iv_rhs = self.iv_mlp(iv_rhs)
+        up = up.reshape(bs, self.pde.grid_size)
 
+        #setup initial and boundary values
+        upi = up.reshape(bs, *self.coord_dims)
+        iv_rhs = self.get_iv_bc(upi)
 
         basis = torch.stack([torch.ones_like(up), up, up**2, up.pow(3), up.pow(4)], dim=-1)
-        #basis2 = torch.stack([torch.ones_like(up2), up2, up2**2], dim=-1)
-        #basis2 = torch.stack([torch.ones_like(up2), up2, up2**2], dim=-1)
         basis2 = torch.stack([torch.ones_like(up), up, up**2, up.pow(3), up.pow(4)], dim=-1)
-        #basis3 = torch.stack([torch.ones_like(up2), up2, up2**2, up2.pow(3), up2.pow(4)], dim=-1)
         basis3 = torch.stack([torch.ones_like(up), up, up**2, up.pow(3), up.pow(4)], dim=-1)
-        #basis2 = torch.stack([torch.ones_like(up), up, up**2], dim=-1)
 
         p = (basis*params[...,0,:]).sum(dim=-1)
         q = (basis2*params[...,1,:]).sum(dim=-1)
         r = (basis3*params[...,2,:]).sum(dim=-1)
 
 
-        coeffs = torch.zeros((bs*n_patches, self.pde.grid_size, self.pde.n_orders), device=u.device)
+        coeffs = torch.zeros((bs, self.pde.grid_size, self.pde.n_orders), device=u.device)
         #u, u_t, u_x, u_tt, u_xx
-        #coeffs[..., 0] = r
         #u_t
         coeffs[..., 1] = 1.
         #u_x
@@ -301,44 +255,35 @@ class Model(nn.Module):
         #u_xx
         coeffs[..., 4] = q
 
-        #up = up.reshape(bs, *self.coord_dims)
-
-        #rhs = torch.zeros(bs*n_patches, *self.coord_dims, device=u.device)
         rhs = r
-
         u0,_,eps = self.pde(coeffs, rhs, iv_rhs, steps_list)
-        #u0_list.append(u0)
-        #eps_list.append(eps)
 
-        #u0 = torch.stack(u0_list, dim=1)
-        #eps = torch.stack(eps_list, dim=1).max()
-
-        u0 = u0.reshape(u_patches.shape)
+        u0 = u0.reshape(u.shape)
 
         return u0, eps
     
-    def make_patches(self, x):
-        x_patches = x.unfold(1, self.coord_dims[0], self.coord_dims[0]) 
-        x_patches = x_patches.unfold(2, self.coord_dims[1], self.coord_dims[1]) 
-        unfold_shape = x_patches.shape
+    #def make_patches(self, x):
+    #    x_patches = x.unfold(1, self.coord_dims[0], self.coord_dims[0]) 
+    #    x_patches = x_patches.unfold(2, self.coord_dims[1], self.coord_dims[1]) 
+    #    unfold_shape = x_patches.shape
 
-        n_patch_t = x_patches.shape[1]
-        n_patch_x = x_patches.shape[2]
+    #    n_patch_t = x_patches.shape[1]
+    #    n_patch_x = x_patches.shape[2]
 
-        #x_patches = x_patches.reshape(-1, n_patch_t*n_patch_x, self.pde.grid_size)
-        x_patches = x_patches.contiguous().view(-1, n_patch_t*n_patch_x, self.pde.grid_size)
+    #    #x_patches = x_patches.reshape(-1, n_patch_t*n_patch_x, self.pde.grid_size)
+    #    x_patches = x_patches.contiguous().view(-1, n_patch_t*n_patch_x, self.pde.grid_size)
 
-        return x_patches, unfold_shape
+    #    return x_patches, unfold_shape
 
-    def join_patches(self, patches, unfold_shape):
-        # Reshape back
-        patches= patches.view(unfold_shape)
-        n_t = unfold_shape[1] * unfold_shape[-2]
-        n_x = unfold_shape[2] * unfold_shape[-1]
-        merged = patches.permute(0,1,3,2,4).contiguous()
-        merged = merged.view(-1, n_t, n_x)
+    #def join_patches(self, patches, unfold_shape):
+    #    # Reshape back
+    #    patches= patches.view(unfold_shape)
+    #    n_t = unfold_shape[1] * unfold_shape[-2]
+    #    n_x = unfold_shape[2] * unfold_shape[-1]
+    #    merged = patches.permute(0,1,3,2,4).contiguous()
+    #    merged = merged.view(-1, n_t, n_x)
 
-        return merged
+    #    return merged
 
     def forward(self, u, t_idx, x_idx):
         bs = u.shape[0]
@@ -370,60 +315,19 @@ class Model(nn.Module):
             _up = up[:, t_idx[i]:t_idx[i]+solver_dim[0], x_idx[i]:x_idx[i]+solver_dim[1]]
             up_list.append(_up)
         up = torch.cat(up_list, dim=0)
-        up2 = up #self.rnet2_2d(cin.unsqueeze(1)).squeeze(1)
-
-        #up = up.double()
-        #up = self.data_conv2d(cin).squeeze(1)
-        #up2 = self.data_conv2d2(cin).squeeze(1)
-
-        #up = cin #self.rnet1_1d(cin)#.squeeze(1)
-        #up2= cin #self.rnet2_1d(cin)#.squeeze(1)
-
-        #up = self.rnet1_1d(cin)#.squeeze(1)
-        #up2= self.rnet2_1d(cin)#.squeeze(1)
-
-        #up  = up.double()
-        #up2  = up2.double()
-        #up =self.rnet1_1d(cin)#.squeeze(1)
-        #up2 = self.rnet2_1d(cin)#.squeeze(1)
 
         up = up.reshape(bs, *solver_dim)
-        up2 = up2.reshape(bs, *solver_dim)
 
-        #iv = self.iv_conv2d(u)
-        #iv = iv.reshape(-1, self.n_patches, 13*32)
-        #iv = self.iv_out(iv)
-        #iv = self.iv_mlp(self.in_iv)
-
-        #up = self.data_net(cin)#.squeeze(1)
-        #up2 = self.data_net2(cin)#.squeeze(1)
-
-        #u = u.reshape(bs, *self.coord_dims)
-        #up = up.reshape(bs, *self.coord_dims)
-        #up2 = up2.reshape(bs, *self.coord_dims)
-
-        #up = u + up
-        #up2 = u + up2
-
-        #chunk u, up, up2
-        #u_patched, unfold_shape = self.make_patches(u)
-        #up_patched, _ = self.make_patches(up)
-        #up2_patched, _ = self.make_patches(up2)
-        u_patched = u.unsqueeze(1)
-        up_patched = up.unsqueeze(1)
-        up2_patched= up2.unsqueeze(1)
+        u= u.unsqueeze(1)
+        up= up.unsqueeze(1)
 
         params = self.get_params()
 
-        u0, eps = self.solve_chunks(u_patched, up_patched, up2_patched, params)
+        u0, eps = self.solve(u, up, params)
 
-        #join chunks into solution
-        #u0 = self.join_patches(u0_patches, unfold_shape)
         u0 = u0.squeeze(1)
 
-
-        return u0, up,up2, eps, params
-        #return u0, up,eps, params
+        return u0, up,params
 
 
 model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step), device=device)
@@ -479,20 +383,25 @@ def train(nepoch=5000):
             t_idx = t_idx.to(device)
             x_idx = x_idx.to(device)
 
-            x0, var, var2, eps, params = model(batch_in, t_idx, x_idx)
+            x0, var, params = model(batch_in, t_idx, x_idx)
+
+            mask_list = []
+            for i in range(batch_in.shape[0]):
+                _mask = mask[t_idx[i]:t_idx[i]+1] #, x_idx[i]:x_idx[i]+solver_dim[1]]
+                mask_list.append(_mask.unsqueeze(1))
+            dmask = torch.stack(mask_list, dim=0)
 
             bs = batch_in.shape[0]
             x0 = x0.reshape(bs, -1)
             batch_in = batch_in.reshape(bs, -1)
 
             var =var.reshape(bs, -1)
-            var2 =var2.reshape(bs, -1)
-            x_loss = (x0- batch_in).abs().mean(dim=-1)
+            x_loss = (x0*dmask- batch_in).abs().mean(dim=-1)
 
             var_loss = (var- x0).abs().mean(dim=-1)
 
             param_loss = params.abs()
-            loss = x_loss.mean() + var_loss.mean()  +  0.005*param_loss.mean()
+            loss = x_loss.mean() + var_loss.mean() + param_l1*param_loss.mean()
 
             x_losses.append(x_loss.mean().item())
             var_losses.append(var_loss.mean().item())
