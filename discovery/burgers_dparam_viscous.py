@@ -54,6 +54,8 @@ batch_size= 10
 noise =False
 noise_factor = 20
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 L.info(f'Burgers viscous ')
 L.info(f'Solver dim {solver_dim} ')
 
@@ -111,11 +113,12 @@ class BurgersDataset(Dataset):
 
         data = self.data[t_idx:t_idx+t_step, x_idx:x_idx+x_step]
 
-        return data#, t, x, mask
+        return data, t_idx, x_idx #, t, x, mask
 
 #%%
 
 ds = BurgersDataset(solver_dim=solver_dim)#.generate()
+data_all = ds.data.to(device)
 
 #
 ##%%
@@ -205,139 +208,18 @@ class Model(nn.Module):
                 y = self.net(self.input)
                 return y
 
-        #self.param_net= ParamNet()
-        #self.param_net2= ParamNet()
-        #self.param_net3= ParamNet()
-        #self.param_net4= ParamNet()
-        #self.param_net5= ParamNet()
-        #self.param_net6= ParamNet()
-        #self.param_net7= ParamNet()
-
         self.param_net_list = nn.ModuleList() 
         for i in range(3):
             self.param_net_list.append(ParamNet())
 
-        #self.data_mlp1 = nn.Sequential(
-        #    #nn.Linear(32*32, 1024),
-        #    nn.Linear(self.pde.grid_size, 1024),
-        #    nn.ReLU(),
-        #    nn.Linear(1024, 1024),
-        #    nn.ReLU(),
-        #    nn.Linear(1024, 1024),
-        #    nn.ReLU(),
-        #    #two polynomials, second order
-        #    nn.Linear(1024,self.pde.grid_size)
-        #)
 
-
-        #self.data_mlp2 = nn.Sequential(
-        #    #nn.Linear(32*32, 1024),
-        #    nn.Linear(self.pde.grid_size, 1024),
-        #    nn.ReLU(),
-        #    nn.Linear(1024, 1024),
-        #    nn.ReLU(),
-        #    nn.Linear(1024, 1024),
-        #    nn.ReLU(),
-        #    #two polynomials, second order
-        #    nn.Linear(1024,self.pde.grid_size)
-        #)
-
-        self.param_in = nn.Parameter(torch.randn(1,512))
-        self.param_net = nn.Sequential(
-            nn.Linear(512, 1024),
-            #nn.ELU(),
-            nn.ReLU(),
-            nn.Linear(1024, 1024),
-            nn.ReLU(),
-
-            nn.Linear(1024, 1024),
-            nn.ReLU(),
-            #nn.Linear(1024, 1024),
-            #nn.ReLU(),
-            #two polynomials, second order
-            #nn.Linear(1024, 3*2),
-            nn.Linear(1024, 5),
-            #nn.Tanh()
-        )
-        #self.param_net_out = nn.Linear(1024, 3)
-
-        self.param_in2 = nn.Parameter(torch.randn(1,512))
-        self.param_net2 = nn.Sequential(
-            nn.Linear(512, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, 1024),
-            nn.ReLU(),
-
-            nn.Linear(1024, 1024),
-            nn.ReLU(),
-            #nn.Linear(1024, 1024),
-            #nn.ReLU(),
-            #two polynomials, second order
-            #nn.Linear(1024, 3*2),
-            nn.Linear(1024, 5),
-            #nn.Tanh()
-        )
-
-        self.param_in3 = nn.Parameter(torch.randn(1,512))
-        self.param_net3 = nn.Sequential(
-            nn.Linear(512, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, 1024),
-            nn.ReLU(),
-
-            nn.Linear(1024, 1024),
-            nn.ReLU(),
-            #nn.Linear(1024, 1024),
-            #nn.ReLU(),
-            #two polynomials, second order
-            #nn.Linear(1024, 3*2),
-            nn.Linear(1024, 5),
-            #nn.Tanh()
-        )
-
-        #self.in_iv = nn.Parameter(torch.randn(1,512))
-        #self.iv_mlp = nn.Sequential(
-        #    nn.Linear(self.n_patches*self.iv_len, 1024),
-        #    nn.ReLU(),
-        #    nn.Linear(1024, 1024),
-        #    nn.ReLU(),
-        #    nn.Linear(1024, 1024),
-        #    nn.ReLU(),
-        #    #two polynomials, second order
-        #    #nn.Linear(1024, 3*2),
-        #    nn.Linear(1024, self.n_patches*self.iv_len),
-        #    #nn.Tanh()
-        #)
-
-
-        #self.param_net2_out = nn.Linear(1024, 3)
-
-        #self.param_net_out.weight.data.fill_(0.0)
-        #self.param_net2_out.weight.data.fill_(0.0)
-
-        #param_init = torch.randn(3)
-        #self.param_net_out.bias.data.fill_(param_init)
-        #self.param_net_out.bias = nn.Parameter(0.1*torch.randn(3))
-        #self.param_net2_out.bias = nn.Parameter(0.1*torch.randn(3))
-
-        self.t_step_size = ds.t_step #steps[0]
-        self.x_step_size = ds.x_step #steps[1]
+        self.t_step_size = ds.t_step 
+        self.x_step_size = ds.x_step 
         print('steps ', steps)
-        #self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
-        #self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
 
         self.steps0 = torch.logit(self.t_step_size*torch.ones(1,1,1))
         self.steps1 = torch.logit(self.x_step_size*torch.ones(1,1,1))
 
-        #self.steps0 = nn.Parameter(self.steps0)
-        #self.steps1 = nn.Parameter(self.steps1)
-
-
-        #up_coeffs = torch.randn((1, 1, self.num_multiindex), dtype=dtype)
-        #self.up_coeffs = nn.Parameter(up_coeffs)
-
-        #self.stepsup0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
-        #self.stepsup1 = torch.logit(self.x_step_size*torch.ones(2,self.coord_dims[1]-1))
 
     def get_params(self):
         #params_list = [(net()).squeeze() for net in self.param_net_list]
@@ -351,17 +233,6 @@ class Model(nn.Module):
         #params = params*mask
         return params
 
-    #def get_params(self):
-    #    #params = self.param_net_out(self.param_net(self.param_in))
-    #    #params2 =self.param_net2_out(self.param_net2(self.param_in2))
-
-    #    params = (self.param_net(self.param_in))
-    #    params2 =(self.param_net2(self.param_in2))
-    #    params3 =(self.param_net3(self.param_in3))
-    #    #params = params.reshape(-1,1,2, 3)
-    #    #params = params.reshape(-1,1,2, 2)
-    #    params = torch.stack([params, params2, params3], dim=-2)
-    #    return params
 
     def get_iv(self, u):
         u1 = u[:,0, :self.coord_dims[1]-2+1]
@@ -469,7 +340,7 @@ class Model(nn.Module):
 
         return merged
 
-    def forward(self, u):
+    def forward(self, u, t_idx, x_idx):
         bs = u.shape[0]
         ts = u.shape[1]
         #up = self.data_net(u)
@@ -484,12 +355,21 @@ class Model(nn.Module):
 
 
         #cin = u.reshape(bs*ts, 1, solver_dim[1])
-        cin = u#.float()
+        #cin = u#.float()
+        cin = data_all.unsqueeze(0)#.float()
         #print(cin.shape)
         #up = self.rnet1(cin.unsqueeze(1)).squeeze(1)
         #up2 = self.rnet2(cin.unsqueeze(1)).squeeze(1)
 
-        up = u #self.rnet1_2d(cin.unsqueeze(1)).squeeze(1)
+        #up = u #self.rnet1_2d(cin.unsqueeze(1)).squeeze(1)
+        #up = self.rnet1_2d(cin.unsqueeze(1)).squeeze(1)
+        up = self.rnet1_2d(cin.unsqueeze(1)).squeeze(1)
+
+        up_list = []
+        for i in range(bs):
+            _up = up[:, t_idx[i]:t_idx[i]+solver_dim[0], x_idx[i]:x_idx[i]+solver_dim[1]]
+            up_list.append(_up)
+        up = torch.cat(up_list, dim=0)
         up2 = up #self.rnet2_2d(cin.unsqueeze(1)).squeeze(1)
 
         #up = up.double()
@@ -546,7 +426,6 @@ class Model(nn.Module):
         #return u0, up,eps, params
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step), device=device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
@@ -593,11 +472,14 @@ def train(nepoch=5000):
         #for i, (time, batch_in) in enumerate(train_loader):
         x_losses = []; var_losses = []; losses = []
 
-        for i, batch_in in enumerate(tqdm(train_loader)):
+        for i, batch_x in enumerate(tqdm(train_loader)):
             optimizer.zero_grad()
+            batch_in, t_idx, x_idx = batch_x
             batch_in = batch_in.double().to(device)
+            t_idx = t_idx.to(device)
+            x_idx = x_idx.to(device)
 
-            x0, var, var2, eps, params = model(batch_in)
+            x0, var, var2, eps, params = model(batch_in, t_idx, x_idx)
 
             bs = batch_in.shape[0]
             x0 = x0.reshape(bs, -1)
