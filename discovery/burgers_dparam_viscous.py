@@ -6,7 +6,6 @@ import os
 import numpy as np
 
 import torch
-torch.manual_seed(10)
 import torch.nn as nn
 from torch.nn.parameter import Parameter
 import numpy as np
@@ -40,7 +39,8 @@ from sklearn.metrics import mean_squared_error
 import net as N
 
 
-log_dir, run_id = create_log_dir(root='logs_burgers2')
+torch.manual_seed(10)
+log_dir, run_id = create_log_dir(root='logs/burgers')
 write_source_files(log_dir)
 L = logger.setup(log_dir, stdout=True)
 
@@ -55,7 +55,7 @@ solver_dim=(32,32)
 #solver_dim=(50,64)
 #solver_dim=(32,48)
 n_grid=3
-batch_size= 2
+batch_size= 10
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
 
@@ -112,11 +112,11 @@ class BurgersDataset(Dataset):
         self.solver_dim = solver_dim
 
         num_t_idx = self.data_dim[0] #- self.solver_dim[0] + 1
-        num_x_idx = self.data_dim[1] #- self.solver_dim[1] + 1
+        num_x_idx = self.data_dim[1] - self.solver_dim[1] + 1
 
 
         self.num_t_idx = num_t_idx//solver_dim[0]  #+ 1
-        self.num_x_idx = num_x_idx//solver_dim[1]  #+ 1
+        self.num_x_idx = num_x_idx#//solver_dim[1]  #+ 1
 
         #if self.t_subsample < self.solver_dim[0]:
         #    self.num_t_idx = self.num_t_idx - self.solver_dim[0]//self.t_subsample
@@ -146,7 +146,7 @@ class BurgersDataset(Dataset):
         (t_idx, x_idx) = np.unravel_index(idx, (self.num_t_idx, self.num_x_idx))
 
         t_idx = t_idx*solver_dim[0]
-        x_idx = x_idx*solver_dim[1]
+        x_idx = x_idx#*solver_dim[1]
 
 
         t_step = solver_dim[0]
@@ -592,6 +592,7 @@ class Model(nn.Module):
         #u0 = self.join_patches(u0_patches, unfold_shape)
         u0 = u0.squeeze(1)
 
+
         return u0, up,up2, eps, params
         #return u0, up,eps, params
 
@@ -692,23 +693,24 @@ def optimize(nepoch=5000):
             #loss = var_loss.mean()
             #loss = x_loss +  (var- batch_in).abs().mean()
             #loss = x_loss +  (var- batch_in).pow(2).mean()
-            x_losses.append(x_loss)
+            x_losses.append(x_loss.mean().item())
             #var_losses.append(var_loss + var2_loss)
-            var_losses.append(var_loss)
+            var_losses.append(var_loss.mean().item())
             #var_losses.append(var_loss )
-            losses.append(loss)
-            total_loss = total_loss + loss
+            losses.append(loss.mean().item())
+            #total_loss = total_loss + loss
             
 
             loss.backward()
             optimizer.step()
 
 
+            #del loss,u,u_loss,v,v_loss,var_u,var_v,var_u_loss,var_v_loss,var_uv_loss, params#, t_params_loss
             #xi = xi.detach().cpu().numpy()
             #alpha = alpha.squeeze().item() #.detach().cpu().numpy()
             #beta = beta.squeeze().item()
-        _x_loss = torch.cat(x_losses,dim=0).mean()
-        _v_loss = torch.cat(var_losses,dim=0).mean()
+        _x_loss = torch.tensor(x_losses).mean()
+        _v_loss = torch.tensor(var_losses).mean()
 
         #_x_loss = torch.tensor(x_losses).mean()
         #_v_loss = torch.tensor(var_losses).mean()
