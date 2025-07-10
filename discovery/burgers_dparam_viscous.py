@@ -51,8 +51,11 @@ solver_dim=(32,32)
 #n_grid=3
 batch_size= 10
 
+#add percent Gaussian noise
 noise =False
 noise_factor = 20
+
+#sets an entire time step to 0 with this probability
 frame_drop_prob = 0.0
 
 
@@ -65,7 +68,6 @@ L.info(f'Burgers viscous ')
 L.info(f'Solver dim {solver_dim} ')
 
 
-#loss_path = os.path.join(log_dir, 'losses.npy')
 
 class BurgersDataset(Dataset):
     def __init__(self, solver_dim=(32,32)):
@@ -262,52 +264,12 @@ class Model(nn.Module):
 
         return u0, eps
     
-    #def make_patches(self, x):
-    #    x_patches = x.unfold(1, self.coord_dims[0], self.coord_dims[0]) 
-    #    x_patches = x_patches.unfold(2, self.coord_dims[1], self.coord_dims[1]) 
-    #    unfold_shape = x_patches.shape
-
-    #    n_patch_t = x_patches.shape[1]
-    #    n_patch_x = x_patches.shape[2]
-
-    #    #x_patches = x_patches.reshape(-1, n_patch_t*n_patch_x, self.pde.grid_size)
-    #    x_patches = x_patches.contiguous().view(-1, n_patch_t*n_patch_x, self.pde.grid_size)
-
-    #    return x_patches, unfold_shape
-
-    #def join_patches(self, patches, unfold_shape):
-    #    # Reshape back
-    #    patches= patches.view(unfold_shape)
-    #    n_t = unfold_shape[1] * unfold_shape[-2]
-    #    n_x = unfold_shape[2] * unfold_shape[-1]
-    #    merged = patches.permute(0,1,3,2,4).contiguous()
-    #    merged = merged.view(-1, n_t, n_x)
-
-    #    return merged
 
     def forward(self, u, t_idx, x_idx):
         bs = u.shape[0]
         ts = u.shape[1]
-        #up = self.data_net(u)
-        #up = up.reshape(bs, self.pde.grid_size)
-        #cin = torch.stack([u,t,x], dim=1)
-        #cin = u.unsqueeze(1) #torch.stack([u,t,x], dim=1)
-        #cin = u
-        #print(cin.shape)
-
-        #up = self.data_conv2d(cin).squeeze(1)
-        #up2 = self.data_conv2d2(cin).squeeze(1)
-
-
-        #cin = u.reshape(bs*ts, 1, solver_dim[1])
-        #cin = u#.float()
         cin = data_all.unsqueeze(0)#.float()
-        #print(cin.shape)
-        #up = self.rnet1(cin.unsqueeze(1)).squeeze(1)
-        #up2 = self.rnet2(cin.unsqueeze(1)).squeeze(1)
 
-        #up = u #self.rnet1_2d(cin.unsqueeze(1)).squeeze(1)
-        #up = self.rnet1_2d(cin.unsqueeze(1)).squeeze(1)
         up = self.rnet1_2d(cin.unsqueeze(1)).squeeze(1)
 
         up_list = []
@@ -332,9 +294,6 @@ class Model(nn.Module):
 
 model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step), device=device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
-#optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
-#optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
-#optimizer = torch.optim.SGD(model.parameters(), lr=0.0001, momentum =0.9)
 
 if DBL:
     model = model.double()
@@ -346,8 +305,6 @@ basis_text = {}
 basis_text[0] = "{0:.4f} u_x + {1:.4f} u*u_x+ {2:.4f} u^2*u_x + {3:.4f} u^3*u_x + {4:.4f} u^4*u_x"
 basis_text[1] = "{0:.4f} u_xx + {1:.4f} u*u_xx+ {2:.4f} u^2*u_xx + {3:.4f} u^3*u_xx + {4:.4f} u^4*u_xx"
 basis_text[2] = "{0:.4f} + {1:.4f} u+ {2:.4f} u^2 + {3:.4f} u^3 + {4:.4f} u^4"
-#basis_text[1] = ['u_xx', 'u u_xx', 'u^2 u_xx', 'u^3 u_xx', 'u^4 u_xx']
-#basis_text[2] = ['1', 'u', 'u^2', 'u^3', 'u^4']
 
 def print_eq(stdout=False):
     #print learned equation
@@ -359,10 +316,7 @@ def print_eq(stdout=False):
             + basis_text[1].format(*tuple(params[1])) + "\n"  \
             + " = "+  basis_text[2].format(*tuple(params[2])) \
 
-    #print(params)
-    #return params
     return eq_str
-    #return code
 
 
 def train(nepoch=5000):
