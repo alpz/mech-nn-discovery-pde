@@ -58,9 +58,15 @@ noise_factor = 20
 #sets an entire time step to 0 with this probability
 frame_drop_prob = 0.0
 
+#whether to transform the input before feeding into pde expression
+nn_transform = True
+
+#simpler setting for demo
+true_coeffs_only = False
 
 #l1 regularization coeff
 param_l1 = 0.005
+#param_l1 = 0.0005
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -211,6 +217,14 @@ class Model(nn.Module):
     def get_params(self):
         params_list = [net() for net in self.param_net_list]
         params = torch.cat(params_list, dim=0)
+
+        if true_coeffs_only:
+            #simpler setting where only the true basis coeffs are learned
+            mask = params.zeros_like(params)
+            mask[0,1] = 1
+            mask[1,0] = 1
+            params = mask*params
+
         return params
 
 
@@ -270,7 +284,10 @@ class Model(nn.Module):
         ts = u.shape[1]
         cin = data_all.unsqueeze(0)#.float()
 
-        up = self.rnet1_2d(cin.unsqueeze(1)).squeeze(1)
+        if nn_transform:
+            up = self.rnet1_2d(cin.unsqueeze(1)).squeeze(1)
+        else:
+            up = cin
 
         up_list = []
         for i in range(bs):
@@ -350,9 +367,11 @@ def train(nepoch=5000):
             batch_in = batch_in.reshape(bs, -1)
 
             var =var.reshape(bs, -1)
-            x_loss = (x0*dmask- batch_in).abs().mean(dim=-1)
+            x_loss = (x0*dmask- batch_in*dmask).abs().mean(dim=-1)
 
             var_loss = (var- x0).abs().mean(dim=-1)
+            #var_loss = (var*(1-dmask.int())- x0*(1-dmask.int())).abs().mean(dim=-1)
+            #var_loss = var_loss + (var*(dmask)- batch_in*dmask).abs().mean(dim=-1)
 
             param_loss = params.abs()
             loss = x_loss.mean() + var_loss.mean() + param_l1*param_loss.mean()
