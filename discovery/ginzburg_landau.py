@@ -39,7 +39,7 @@ import net as N
 #import fno_net as FNO
 
 
-log_dir, run_id = create_log_dir(root='logs')
+log_dir, run_id = create_log_dir(root='logs/gl')
 write_source_files(log_dir)
 L = logger.setup(log_dir, stdout=True)
 

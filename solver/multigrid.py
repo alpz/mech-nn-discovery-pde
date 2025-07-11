@@ -736,7 +736,8 @@ class MultigridSolver():
         #dr, drn = self.get_residual_norm(As, x, b)
         #print('resid before smooth',idx, dr, drn)
         ##pre-smooth
-        nstep =10 # 5 if back and idx == 0 else 5
+        #nstep = 2 #10 # 5 if back and idx == 0 else 5
+        nstep = config.mg_gauss_seidel_steps_pre  #10 # 5 if back and idx == 0 else 5
         #nstep =50 if back and idx == 0 else 10
         #x = self.smooth_jacobi(As, b, x, D, nsteps=nstep, back=back)
 
@@ -810,7 +811,8 @@ class MultigridSolver():
 
         #smooth
         #x = self.smooth_jacobi(As, b, x, D, nsteps=nstep, back=back)
-        nstep=10
+        #nstep= 2 #10
+        nstep= config.mg_gauss_seidel_steps_post #10
         x = self.smooth_gs(AL, AU, b, x, nsteps=nstep)
         #x = self.smooth_cg(As, b, x, nsteps=200)
 

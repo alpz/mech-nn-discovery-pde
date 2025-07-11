@@ -44,4 +44,17 @@ class PDEConfig:
     #linear_solver = SolverType.SPARSE_INDIRECT_BLOCK_CG
     #cg_max_iter = 200
 
+    # multigrid options
+    mg_gauss_seidel_steps_pre = 5
+    mg_gauss_seidel_steps_post = 5
+
+    mg_steps_forward  = 1
+    mg_steps_backward = 1
+
+    mg_fgmres_max_iter_forward = 20
+    mg_fgmres_restarts_forward = 10
+
+    mg_fgmres_max_iter_backward = 20
+    mg_fgmres_restarts_backward = 10
+
 
