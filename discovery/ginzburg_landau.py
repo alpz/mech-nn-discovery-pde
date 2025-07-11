@@ -63,6 +63,9 @@ noise =False
 setmask =False
 downsample=2
 
+#We learn one equation at a time
+first_equation = True
+
 L.info(f'Ginzburg')
 L.info(f'Solver dim {solver_dim} ')
 
@@ -72,7 +75,7 @@ class ReactDiffDataset(Dataset):
         #self.n_step_per_batch=n_step_per_batch
         #self.n_step=n_step
 
-        self.down_sample = 1
+        #self.down_sample = 1
 
         #129,2,64,64
         #data=np.load(os.path.join(PDEConfig.brusselator_dir, 'brusselator_01_1en3.npy'))
@@ -89,22 +92,24 @@ class ReactDiffDataset(Dataset):
         #downsample time
         u_data = u_data[::downsample]
         v_data = v_data[::downsample]
+
+        if not first_equation:
+            #swap u and v if learning the second equation.
+            L.info(f'Learing second equations')
+            u_data, v_data = v_data, u_data
+
         uv_data = uv_data[::downsample]
-        L.info(f'rdiff shape {u_data.shape}')
+        L.info(f'data shape {u_data.shape}')
         L.info(f'downsample {downsample}')
 
-        #print(data.keys())
-        #t = torch.tensor(np.array(data['t'])).squeeze()
-        #x = torch.tensor(np.array(data['x'])).squeeze()
+        ## data step sizes
+        #self.t_step = 0.01 
+        #self.x_step = 1
+        #self.y_step = 1
 
-        #self._t = t
-        #self._x = x
-
-        #self.t_step = t[1] - t[0]
-        #self.x_step = x[1] - x[0]
-        self.t_step = 0.01 
-        self.x_step = 1
-        self.y_step = 1
+        self.t_step_size = 0.05*downsample 
+        self.x_step_size = 0.3906 #steps[1]
+        self.y_step_size = 0.3906 #steps[2]
 
 
         if noise:
@@ -130,6 +135,7 @@ class ReactDiffDataset(Dataset):
         self.y = torch.linspace(0,1,data_shape[2]).reshape(1,1,-1).expand(data_shape[0], data_shape[1], -1)        
         
 
+        # learn over a subset
         self.u_data = u_data[128:128+128, :128, :128]
         self.v_data = v_data[128:128+128, :128, :128]
         self.uv_data = uv_data[128:128+128, :128, :128]
@@ -280,10 +286,10 @@ class Model(nn.Module):
         #self.iv_len = self.coord_dims[1]-1 + self.coord_dims[0]-1 + self.coord_dims[0]
         #print('iv len', self.iv_len)
 
-        self.n_patches_t = 1 #ds.data.shape[0]//self.coord_dims[0]
-        self.n_patches_x = 1 #ds.data.shape[1]//self.coord_dims[1]
-        self.n_patches = 1 #self.n_patches_t*self.n_patches_x
-        print('num patches ', self.n_patches)
+        #self.n_patches_t = 1 #ds.data.shape[0]//self.coord_dims[0]
+        #self.n_patches_x = 1 #ds.data.shape[1]//self.coord_dims[1]
+        #self.n_patches = 1 #self.n_patches_t*self.n_patches_x
+        #print('num patches ', self.n_patches)
 
 
         self.pde = MultigridLayer(bs=bs, coord_dims=self.coord_dims, order=2, n_ind_dim=self.n_ind_dim, n_iv=1, 
@@ -318,12 +324,7 @@ class Model(nn.Module):
                     nn.ReLU(),
                     nn.Linear(1024, 1024),
                     nn.ReLU(),
-                    #nn.Linear(512, 512),
-                    #nn.ReLU(),
-                    #two polynomials, second order
-                    #nn.Linear(1024, 3*2),
                     nn.Linear(1024, 10),
-                    #nn.Tanh()
                 )
             def forward(self):
                 y = self.net(self.input)
@@ -427,26 +428,26 @@ class Model(nn.Module):
         #    #nn.Tanh()
         #)
 
-        self.t_param_net = nn.Sequential(
-            nn.Linear(solver_dim[0], 1024),
-            #nn.ELU(),
-            nn.ELU(),
-            nn.Linear(1024, 1024),
-            nn.ELU(),
-            #nn.ELU(),
-            nn.Linear(1024, 1024),
-            #nn.ELU(),
-            nn.ELU(),
-            #two polynomials, second order
-            #nn.Linear(1024, 3*2),
-            nn.Linear(1024, self.pde.grid_size),
-            #nn.Tanh()
-        )
+        #self.t_param_net = nn.Sequential(
+        #    nn.Linear(solver_dim[0], 1024),
+        #    #nn.ELU(),
+        #    nn.ELU(),
+        #    nn.Linear(1024, 1024),
+        #    nn.ELU(),
+        #    #nn.ELU(),
+        #    nn.Linear(1024, 1024),
+        #    #nn.ELU(),
+        #    nn.ELU(),
+        #    #two polynomials, second order
+        #    #nn.Linear(1024, 3*2),
+        #    nn.Linear(1024, self.pde.grid_size),
+        #    #nn.Tanh()
+        #)
 
 
-        self.t_step_size = 0.05*downsample #steps[0]
-        self.x_step_size = 0.3906 #steps[1]
-        self.y_step_size = 0.3906 #steps[2]
+        self.t_step_size = ds.t_step_size #0.05*downsample #steps[0]
+        self.x_step_size = ds.x_step_size #0.3906 #steps[1]
+        self.y_step_size = ds.y_step_size #0.3906 #steps[2]
         #print('steps ', steps)
         ##self.steps0 = torch.logit(self.t_step_size*torch.ones(1,self.coord_dims[0]-1))
         ##self.steps1 = torch.logit(self.x_step_size*torch.ones(1,self.coord_dims[1]-1))
@@ -459,50 +460,50 @@ class Model(nn.Module):
         #self.steps1 = nn.Parameter(self.steps1)
         #self.steps2 = nn.Parameter(self.steps2)
 
-        self.t_steps_net = nn.Sequential(
-            nn.Linear(solver_dim[0], 1024),
-            #nn.ELU(),
-            nn.ReLU(),
-            nn.Linear(1024, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, solver_dim[0]-1),
-            nn.Sigmoid()
-        )
+        #self.t_steps_net = nn.Sequential(
+        #    nn.Linear(solver_dim[0], 1024),
+        #    #nn.ELU(),
+        #    nn.ReLU(),
+        #    nn.Linear(1024, 1024),
+        #    nn.ReLU(),
+        #    nn.Linear(1024, 1024),
+        #    nn.ReLU(),
+        #    nn.Linear(1024, solver_dim[0]-1),
+        #    nn.Sigmoid()
+        #)
 
-        self.x_steps_net = nn.Sequential(
-            nn.Linear(solver_dim[1], 1024),
-            #nn.ELU(),
-            nn.ReLU(),
-            nn.Linear(1024, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, solver_dim[1]-1),
-            nn.Sigmoid()
-        )
-        self.y_steps_net = nn.Sequential(
-            nn.Linear(solver_dim[2], 1024),
-            #nn.ELU(),
-            nn.ReLU(),
-            nn.Linear(1024, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, solver_dim[2]-1),
-            nn.Sigmoid()
-        )
+        #self.x_steps_net = nn.Sequential(
+        #    nn.Linear(solver_dim[1], 1024),
+        #    #nn.ELU(),
+        #    nn.ReLU(),
+        #    nn.Linear(1024, 1024),
+        #    nn.ReLU(),
+        #    nn.Linear(1024, 1024),
+        #    nn.ReLU(),
+        #    nn.Linear(1024, solver_dim[1]-1),
+        #    nn.Sigmoid()
+        #)
+        #self.y_steps_net = nn.Sequential(
+        #    nn.Linear(solver_dim[2], 1024),
+        #    #nn.ELU(),
+        #    nn.ReLU(),
+        #    nn.Linear(1024, 1024),
+        #    nn.ReLU(),
+        #    nn.Linear(1024, 1024),
+        #    nn.ReLU(),
+        #    nn.Linear(1024, solver_dim[2]-1),
+        #    nn.Sigmoid()
+        #)
 
-        with torch.no_grad():
-            self.t_steps_net[-2].weight.data.zero_()
-            self.t_steps_net[-2].bias.data.fill_(self.steps0[0].item())
+        #with torch.no_grad():
+        #    self.t_steps_net[-2].weight.data.zero_()
+        #    self.t_steps_net[-2].bias.data.fill_(self.steps0[0].item())
 
-            self.x_steps_net[-2].weight.data.zero_()
-            self.x_steps_net[-2].bias.data.fill_(self.steps1[0].item())
+        #    self.x_steps_net[-2].weight.data.zero_()
+        #    self.x_steps_net[-2].bias.data.fill_(self.steps1[0].item())
 
-            self.y_steps_net[-2].weight.data.zero_()
-            self.y_steps_net[-2].bias.data.fill_(self.steps2[0].item())
+        #    self.y_steps_net[-2].weight.data.zero_()
+        #    self.y_steps_net[-2].bias.data.fill_(self.steps2[0].item())
 
         #up_coeffs = torch.randn((1, 1, self.num_multiindex), dtype=dtype)
         #self.up_coeffs = nn.Parameter(up_coeffs)
@@ -553,48 +554,48 @@ class Model(nn.Module):
 
         return ub
 
-    def set_iv(self, coeffs, rhs, up, crvals):
-        bs = rhs.shape[0]
+    #def set_iv(self, coeffs, rhs, up, crvals):
+    #    bs = rhs.shape[0]
 
-        #crvals shape [bs, t, x, y, n_order+1]
-        rvals = crvals[:, -1,  :, :, :]
-        cvals = crvals[:, :-1, :, :, :].permute(0,2,3,4,1)
+    #    #crvals shape [bs, t, x, y, n_order+1]
+    #    rvals = crvals[:, -1,  :, :, :]
+    #    cvals = crvals[:, :-1, :, :, :].permute(0,2,3,4,1)
 
-        coeffs = coeffs.reshape(bs, *self.coord_dims, self.pde.n_orders)
-        rhs = rhs.reshape(bs, *self.coord_dims)
-        up = up.reshape(bs, *self.coord_dims)
+    #    coeffs = coeffs.reshape(bs, *self.coord_dims, self.pde.n_orders)
+    #    rhs = rhs.reshape(bs, *self.coord_dims)
+    #    up = up.reshape(bs, *self.coord_dims)
 
-        #b, 
-        #coeffs[:, 0, :, :, :] = cvals[:, 0, :, :, :]
-        #coeffs[:, -1, :, :, :] = cvals[:, -1, :, :, :]
-        #coeffs[:, :, 0,  :, :] = cvals[:, :, 0, :, :]
-        #coeffs[:, :, -1, :, :] = cvals[:, :, -1, :, :]
-        #coeffs[:, :, :, 0,  :] = cvals[:, :, :, 0, : ]
-        #coeffs[:, :, :, -1, :] = cvals[:, :, :, -1, :]
+    #    #b, 
+    #    #coeffs[:, 0, :, :, :] = cvals[:, 0, :, :, :]
+    #    #coeffs[:, -1, :, :, :] = cvals[:, -1, :, :, :]
+    #    #coeffs[:, :, 0,  :, :] = cvals[:, :, 0, :, :]
+    #    #coeffs[:, :, -1, :, :] = cvals[:, :, -1, :, :]
+    #    #coeffs[:, :, :, 0,  :] = cvals[:, :, :, 0, : ]
+    #    #coeffs[:, :, :, -1, :] = cvals[:, :, :, -1, :]
 
-        coeffs[:, 0, :, :, :] = 0.
-        coeffs[:, -1, :, :, :] = 0.
-        coeffs[:, :, 0,  :, :] = 0.
-        coeffs[:, :, -1, :, :] = 0.
-        coeffs[:, :, :, 0,  :] = 0.
-        coeffs[:, :, :, -1, :] = 0.
+    #    coeffs[:, 0, :, :, :] = 0.
+    #    coeffs[:, -1, :, :, :] = 0.
+    #    coeffs[:, :, 0,  :, :] = 0.
+    #    coeffs[:, :, -1, :, :] = 0.
+    #    coeffs[:, :, :, 0,  :] = 0.
+    #    coeffs[:, :, :, -1, :] = 0.
 
-        coeffs[:, 0, :, :, 0] = up[:, 0, :, :]
-        coeffs[:, -1, :, :, 0] = up[:, -1, :, :]
-        coeffs[:, :, 0,  :, 0] = up[:, :, 0, :]
-        coeffs[:, :, -1, :, 0] = up[:, :,-1, :]
-        coeffs[:, :, :, 0,  0] = up[:,:, :, 0]
-        coeffs[:, :, :, -1, 0] = up[:,:,:, -1]
+    #    coeffs[:, 0, :, :, 0] = up[:, 0, :, :]
+    #    coeffs[:, -1, :, :, 0] = up[:, -1, :, :]
+    #    coeffs[:, :, 0,  :, 0] = up[:, :, 0, :]
+    #    coeffs[:, :, -1, :, 0] = up[:, :,-1, :]
+    #    coeffs[:, :, :, 0,  0] = up[:,:, :, 0]
+    #    coeffs[:, :, :, -1, 0] = up[:,:,:, -1]
 
-        #rhs[:, 0, :, :] = rvals[:, 0, :, :]
-        #rhs[:, -1, :, :] = rvals[:, -1, :, :]
-        #rhs[:, :, 0, :] = rvals[:, :, 0, :]
-        #rhs[:, :, -1, :] = rvals[:, :,-1, :]
-        #rhs[:, :, :,  0] = rvals[:,:, :, 0]
-        #rhs[:, :, :, -1] = rvals[:,:,:, -1]
+    #    #rhs[:, 0, :, :] = rvals[:, 0, :, :]
+    #    #rhs[:, -1, :, :] = rvals[:, -1, :, :]
+    #    #rhs[:, :, 0, :] = rvals[:, :, 0, :]
+    #    #rhs[:, :, -1, :] = rvals[:, :,-1, :]
+    #    #rhs[:, :, :,  0] = rvals[:,:, :, 0]
+    #    #rhs[:, :, :, -1] = rvals[:,:,:, -1]
 
 
-        return coeffs, rhs 
+    #    return coeffs, rhs 
 
     def get_steps(self, u, t, x, y):
         x = x.squeeze()
@@ -618,13 +619,9 @@ class Model(nn.Module):
 
         return steps_list
 
-    def solve(self, u, v, up, vp, uvp, params_list, t_params, steps_list):
+    def solve(self, u, v, up, vp, params_list, steps_list):
         bs = u.shape[0]
 
-        #params_u,params_v,params_w, params_x, params_y, params_z = params
-
-        #upi = up.reshape(bs, *self.coord_dims)
-        #vpi = vp.reshape(bs, *self.coord_dims)
         ui = u.reshape(bs, *self.coord_dims)
         #vi = v.reshape(bs, *self.coord_dims)
         #vpi = vp.reshape(bs, *self.coord_dims)
@@ -766,7 +763,7 @@ class Model(nn.Module):
         #vp = v_in + self.rnet3d_2(v_in)
         uvp = None #uv_in+ self.rnet3d_3(uv_in)
 
-        t_params =self.t_param_net(t[:, :, 0, 0])
+        #t_params =self.t_param_net(t[:, :, 0, 0])
         #up = 2*torch.tanh(up)
         #vp = 2*torch.tanh(vp)
         #up = self.fnet1(u_in)
@@ -776,9 +773,9 @@ class Model(nn.Module):
         params = self.get_params()
         steps_list = self.get_steps(u, t,x,y)
 
-        u0, v0, rhs_loss = self.solve(u,v, up, vp, uvp, params, t_params, steps_list)
+        u0, v0, rhs_loss = self.solve(u,v, up, vp, params, steps_list)
 
-        return u0, v0,up,vp, uvp, params, t_params
+        return u0, v0,up,vp, params
         #return u0, up,eps, params
 
 
@@ -839,13 +836,13 @@ def optimize(nepoch=5000):
 
             t = t.double().to(device)
             x = x.double().to(device)
-            y =y.double().to(device)
+            y = y.double().to(device)
 
             data_shape = batch_u.shape
 
             #optimizer.zero_grad()
             #x0, steps, eps, var,xi = model(index, batch_in)
-            u, v, var_u, var_v, var_uv, params, t_params = model(batch_u, batch_v, batch_uv, t, x,y)
+            u, v, var_u, var_v, params = model(batch_u, batch_v, batch_uv, t, x,y)
 
 
             bs = batch_u.shape[0]
@@ -856,7 +853,7 @@ def optimize(nepoch=5000):
             #batch_uv = batch_uv.reshape(bs, -1)
             var_u =var_u.reshape(bs,1, -1)
             var_v =var_v.reshape(bs,1, -1)
-            mask =mask.reshape(bs, -1)
+            #mask =mask.reshape(bs, -1)
             #var_uv =var_uv.reshape(bs,2, -1)
 
             #u_loss = (u- batch_u).pow(2).mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
