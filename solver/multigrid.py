@@ -48,7 +48,7 @@ from torch.autograd import gradcheck
 class MultigridSolver():
     #def __init__(self, coord_dims):
     def __init__(self, bs, order, n_ind_dim, n_iv, init_index_mi_list, coord_dims, n_iv_steps, solver_dbl=True, 
-                    evolution=False,
+                    evolution=False, downsample_first=True,
                     gamma=0.5, alpha=0.1, double_ret=False, n_grid=2, device=None):
         super().__init__()
         dtype = torch.float64 if solver_dbl else torch.float32
@@ -69,6 +69,8 @@ class MultigridSolver():
         self.solver_dbl = solver_dbl
         self.init_index_mi_list = init_index_mi_list
         self.evolution=evolution
+        #whether to downsample the time dimension.
+        self.downsample_first = downsample_first
 
         
         interp_modes={1:'linear', 2:'bilinear', 3:'trilinear'}
@@ -97,8 +99,13 @@ class MultigridSolver():
             assert(np.min(dims)>=8)
             self.dim_list.append(tuple(dims))
             self.size_list.append(size)
-            dims = dims//2
 
+            if downsample_first:
+                dims = dims//2
+            else:
+                dims[1:] = dims[1:]//2
+
+        print('multigrid dimension list', self.dim_list)
         self.pde_list: List[PDESYSLPEPS] = []
         for dim in self.dim_list:
             pde = PDESYSLPEPS(bs=bs*self.n_ind_dim, n_equations=self.n_equations, n_auxiliary=0, 
@@ -396,7 +403,11 @@ class MultigridSolver():
             steps = steps.reshape(self.bs*self.n_ind_dim,old_shape[i]-1)
             #print('steps', old_shape)
             #steps = steps[:, :-1].reshape(-1, old_shape[i]//2-1, 2).sum(dim=-1)
-            steps = steps[:, :-1].reshape(-1, old_shape[i]//2-1, 2).sum(dim=-1)
+            if i==0:
+                if self.downsample_first:
+                    steps = steps[:, :-1].reshape(-1, old_shape[i]//2-1, 2).sum(dim=-1)
+            else:
+                steps = steps[:, :-1].reshape(-1, old_shape[i]//2-1, 2).sum(dim=-1)
             #steps = steps[:, :-1].reshape(-1, old_shape[i]//2-1, 2)[:,:, 0]
 
             new_steps_list.append(steps)
@@ -437,6 +448,7 @@ class MultigridSolver():
 
         iv_rhs = iv_rhs.reshape(self.bs*self.n_ind_dim, -1)
         _iv_rhs = iv_rhs.clone()
+        #print(iv_rhs.shape, old_shape, new_shape)
         #ipdb.set_trace()
         iv_list = []
         offset = 0
@@ -822,7 +834,7 @@ class MultigridSolver():
         #x = torch.randn_like(b_list[0])
         #x = torch.rand_like(b_list[0])
         #n_step =1000 if back else 200
-        n_step =2 if back else 1
+        n_step =1 if back else 1
         #n_step=1000
         for step in range(n_step):
             x = self.v_cycle_gs(0, A_list, AL_list, AU_list, b, x, L, back=back)
@@ -873,7 +885,7 @@ class MultigridSolver():
 class MultigridLayer(nn.Module):
     """ Multigrid layer """
     def __init__(self, bs, order, n_ind_dim, n_iv, init_index_mi_list, coord_dims, n_iv_steps, solver_dbl=True, 
-                    evolution=False,
+                    evolution=False, downsample_first=True,
                     gamma=0.5, alpha=0.1, double_ret=False,n_grid=2, device=None):
         super().__init__()
         # placeholder step size
@@ -905,7 +917,7 @@ class MultigridLayer(nn.Module):
 
         self.mg_solver = MultigridSolver(bs, order, n_ind_dim, n_iv, init_index_mi_list, coord_dims, 
                                     n_iv_steps, solver_dbl=True, n_grid=n_grid,
-                                    evolution=self.evolution,
+                                    evolution=self.evolution, downsample_first=downsample_first,
                                     gamma=0.5, alpha=0.1, double_ret=False, 
                                     device=None)
         #self.pde = PDESYSLPEPS(bs=bs*self.n_ind_dim, n_equations=self.n_equations, n_auxiliary=0, coord_dims=self.coord_dims, step_size=self.step_size, order=self.order,

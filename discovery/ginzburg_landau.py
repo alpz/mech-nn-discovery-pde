@@ -50,12 +50,12 @@ cuda=True
 #T = 2000
 #n_step_per_batch = T
 #solver_dim=(10,256)
-solver_dim=(32,32,32)
+solver_dim=(8,32,32)
 #solver_dim=(64,64,64)
 #solver_dim=(50,64)
 #solver_dim=(32,48)
 n_grid=3
-batch_size= 8
+batch_size= 32
 #weights less than threshold (absolute) are set to 0 after each optimization step.
 threshold = 0.1
 
@@ -287,7 +287,7 @@ class Model(nn.Module):
 
 
         self.pde = MultigridLayer(bs=bs, coord_dims=self.coord_dims, order=2, n_ind_dim=self.n_ind_dim, n_iv=1, 
-                        n_grid=n_grid, evolution=False,
+                        n_grid=n_grid, evolution=False, downsample_first=False,
                         init_index_mi_list=self.iv_list,  n_iv_steps=1, double_ret=True, solver_dbl=True)
 
         # u, u_t, u_tt, u_x, u_xx
@@ -754,8 +754,11 @@ class Model(nn.Module):
         #up = self.rnet1(u)
         #vp = None #self.rnet2(v)
 
-        up = u_in+ self.rnet2d_1(u_in)
-        vp = v_in + self.rnet2d_2(v_in)
+        #up = u_in+ self.rnet2d_1(u_in)
+        #vp = v_in + self.rnet2d_2(v_in)
+
+        up = u_in#+ self.rnet2d_1(u_in)
+        vp = v_in# + self.rnet2d_2(v_in)
 
         up = up.reshape(bs,1, *solver_dim)
         vp = vp.reshape(bs,1, *solver_dim)

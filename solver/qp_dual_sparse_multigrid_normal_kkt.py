@@ -375,7 +375,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             x,_ = cg.fgmres_matvec(AtA, 
                             rhs_list[0].reshape(-1),
                             x0=torch.zeros_like(rhs_list[0]).reshape(-1),
-                            MG=mg, MG_args=mg_args, restart=40, maxiter=80)
+                            MG=mg, MG_args=mg_args, restart=10, maxiter=80)
             #x,_ = cg.fgmres(AtA_list[0].unsqueeze(0), 
             #                rhs_list[0].unsqueeze(0),
             #                x0=torch.zeros_like(rhs_list[0]).unsqueeze(0), 
@@ -453,7 +453,7 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             dz,_ = cg.fgmres_matvec(AtA_list[0], 
                              grad_list[0].reshape(-1),
                              x0=torch.zeros_like(grad_list[0]).reshape(-1),
-                           MG=mg, MG_args=mg_args, restart=40, maxiter=80, back=True)
+                           MG=mg, MG_args=mg_args, restart=10, maxiter=80, back=True)
 
             #dz,_ = cg.fgmres(AtA_list[0].unsqueeze(0), 
             #                 grad_list[0].unsqueeze(0),
