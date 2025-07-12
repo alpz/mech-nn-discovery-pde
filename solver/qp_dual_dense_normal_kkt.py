@@ -2,7 +2,7 @@ import torch
 from torch.autograd import Function
 import numpy as np
 
-import solver.cg as cg
+#import solver.cg as cg
 
 from config import PDEConfig as config
 import ipdb
