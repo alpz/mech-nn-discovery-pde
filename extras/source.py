@@ -4,7 +4,7 @@ import subprocess
 log_dir = None
 run_id = None
 
-def create_log_dir(root):
+def create_log_dir(root='logs/misc'):
     global log_dir, run_id
     if log_dir is not None:
         return log_dir, run_id

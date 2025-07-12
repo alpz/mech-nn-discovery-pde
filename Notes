@@ -65,3 +65,21 @@ dx = -A-1 dA A-1 b
 ######
 Ax -b = 0
 dx/dA = 
+
+
+TODO:
+
+1. Readme
+    kamani gif, gl gif
+    citation
+
+2. kamani
+3. transport dense 
+4. transport sparse mg 
+5. fit example
+6. comments remove
+7. data dirs 
+8. fgmres clean
+9. lp clean
+10. gl equation format
+

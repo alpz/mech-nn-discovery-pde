@@ -30,8 +30,8 @@ import extras.logger as logger
 
 import extras.source
 
-log_dir = extras.source.log_dir
-L = logger.setup(log_dir, 'solver.txt', stdout=True)
+log_dir,_ = extras.source.create_log_dir()
+L = logger.setup(log_dir, 'solver', 'solver.txt', stdout=True)
 
 
 def to_torch_coo(KKTs):
