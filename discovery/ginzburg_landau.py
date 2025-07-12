@@ -65,6 +65,8 @@ downsample=2
 #We learn one equation at a time
 first_equation = True
 
+nn_transform = False
+
 L.info(f'Ginzburg')
 L.info(f'Solver dim {solver_dim} ')
 
@@ -114,7 +116,7 @@ class ReactDiffDataset(Dataset):
         self.y = torch.linspace(0,1,data_shape[2]).reshape(1,1,-1).expand(data_shape[0], data_shape[1], -1)        
         
 
-        # learn over a subset
+        # learn over a smaller subset
         self.u_data = u_data[:128+128, :128, :128]
         self.v_data = v_data[:128+128, :128, :128]
         #self.uv_data = uv_data[128:128+128, :128, :128]
@@ -257,8 +259,11 @@ class Model(nn.Module):
         self.num_multiindex = self.pde.n_orders
 
 
-        self.rnet2d_1 = N.ResNet2D(out_channels=1, in_channels=1)
-        self.rnet2d_2 = N.ResNet2D(out_channels=1, in_channels=1)
+        #self.rnet2d_1 = N.ResNet2D(out_channels=1, in_channels=1)
+        #self.rnet2d_2 = N.ResNet2D(out_channels=1, in_channels=1)
+
+        self.rnet2d_1 = N.ResNet(out_channels=1, in_channels=1)
+        self.rnet2d_2 = N.ResNet(out_channels=1, in_channels=1)
 
         #self.params_u = nn.Parameter(0.5*torch.randn(1,4))
         class ParamNet(nn.Module):
@@ -409,17 +414,16 @@ class Model(nn.Module):
         v_in = v_in.reshape(bs*ts, 1, solver_dim[1], solver_dim[2])
 
 
-        #up = u_in+ self.rnet2d_1(u_in)
-        #vp = v_in + self.rnet2d_2(v_in)
 
-        up = u_in#+ self.rnet2d_1(u_in)
-        vp = v_in# + self.rnet2d_2(v_in)
+        if nn_transform:
+            up = self.rnet2d_1(u_in)
+            vp = self.rnet2d_2(v_in)
+        else:
+            up = u_in
+            vp = v_in
 
         up = up.reshape(bs,1, *solver_dim)
         vp = vp.reshape(bs,1, *solver_dim)
-        #up = u_in + self.rnet3d_1(u_in)
-        #vp = v_in + self.rnet3d_2(v_in)
-
 
         params = self.get_params()
         steps_list = self.get_steps(u, t,x,y)
