@@ -90,9 +90,9 @@ class ReactDiffDataset(Dataset):
         #v_data=np.load(os.path.join(PDEConfig.ginzburg_dir, '256', 'Ai_256_300.npy'))
         #uv_data=np.load(os.path.join(PDEConfig.ginzburg_dir, '256', 'A2_256_300.npy'))
 
-        u_data=np.load(os.path.join(PDEConfig.ginzburg_dir, '256', 'Ar_256_0_05.npy'))
-        v_data=np.load(os.path.join(PDEConfig.ginzburg_dir, '256', 'Ai_256_0_05.npy'))
-        uv_data=np.load(os.path.join(PDEConfig.ginzburg_dir, '256', 'A2_256_0_05.npy'))
+        u_data=np.load(os.path.join(PDEConfig.ginzburg_dir, 'Ar_256_0_05.npy'))
+        v_data=np.load(os.path.join(PDEConfig.ginzburg_dir, 'Ai_256_0_05.npy'))
+        uv_data=np.load(os.path.join(PDEConfig.ginzburg_dir, 'A2_256_0_05.npy'))
         #downsample time
         u_data = u_data[::downsample]
         v_data = v_data[::downsample]
