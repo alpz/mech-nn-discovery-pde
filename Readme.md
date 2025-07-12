@@ -12,13 +12,6 @@
 - Matplotlib
 - Numpy and Scipy
 
-
-To run the code create a conda environment by using the env.yml file.
-Small test examples can be run in the given Jupyter Notebooks.
-These include a simple fitting test of a damped sinusoidal wave, a solver comparison with scipy odeint, and 2-body trajectory predictions.
-
-The test examples were run with the dense Cholesky solver. Set the Cholesky solver in config.py
-
 ### Examples
 
 The `examples` directory contains Jupyter notebook examples for using the dense direct and sparse multigrid preconditioned solvers for simple PDEs. Also included is an example to fit a PDE to data.  Make sure the top-level directories are in the path before running the notebooks.
@@ -35,10 +28,16 @@ Data for the Burgers and Ginzburg Landau reaction diffusion equations are includ
 PYTHONPATH=. python discovery/burgers_dparam_viscous.py
 ```
 
-**Ginzburg Landau Reaction Diffusion**. For the reaction-diffusion equation run
+**Ginzburg Landau Reaction Diffusion**. 
+
+![Reaction-diffusion](img/react_diff_A2.gif)
+
+For the reaction-diffusion equation run
 ```
 PYTHONPATH=. python discovery/ginzburg_landau.py
 ```
+
+It can be necessary to tune the balanace between accuracy and compute time for the multigrid solver. The parameters can be tuned in `config.py`.
 
 Logs are saved in the `logs` directory. 
 
@@ -47,6 +46,12 @@ The PDE code can also be used for ODE discovery. The repository includes code fo
 ```
 PYTHONPATH=. python discovery/kamani.py
 ```
+
+The following animations simulate the learning of the Kamani equations when the coefficients are fixed and varying. With fixed expoenents the exact coefficients are learned. When the exponents are also learned some coefficients are different from the ones used to generate the data.
+
+![Kamani-Fixed-Exp](img/kamani_fixed_exp.gif)
+
+![Kamani-Varying-Exp](img/kamani_varying_exp.gif)
 
 ## Citation
 ```
