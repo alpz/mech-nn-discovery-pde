@@ -59,7 +59,8 @@ batch_size= 32
 threshold = 0.1
 
 noise =False
-setmask =False
+noise_factor=20
+
 downsample=2
 
 #We learn one equation at a time
@@ -97,12 +98,12 @@ class ReactDiffDataset(Dataset):
 
 
         if noise:
-            L.info('adding 20% noise')
+            L.info('adding noise percent ', noise_factor)
             #rmse = mean_squared_error(u_data, np.zeros(u_data.shape), squared=False)
             rmse = np.sqrt(np.mean(u_data**2))
             # add 20% noise (note the impact on derivatives depends on step size...)
-            u_data = u_data + np.random.normal(0, rmse / 5.0, u_data.shape) 
-            v_data = v_data + np.random.normal(0, rmse / 5.0, v_data.shape) 
+            u_data = u_data + np.random.normal(0, rmse *noise_factor/100, u_data.shape) 
+            v_data = v_data + np.random.normal(0, rmse *noise_factor/100, v_data.shape) 
             #uv_data = uv_data + np.random.normal(0, rmse / 5.0, uv_data.shape) 
 
         u_data = torch.tensor(u_data, dtype=dtype)#.permute(1,0,2,3) 
@@ -137,20 +138,6 @@ class ReactDiffDataset(Dataset):
 
         self.length = self.num_t_idx*self.num_x_idx*self.num_y_idx
 
-        #if setmask:
-        #    ##mask
-        #    mask = torch.rand_like(self.u_data)
-        #    ##keep only 80% of data
-        #    mask = (mask>0.2).double()
-        #    L.info(f'20% mask')
-        #else:
-        #    mask = torch.ones_like(self.u_data)
-
-        
-        #self.u_data = self.u_data
-        #self.v_data = self.v_data
-        #self.mask = mask
-        
 
 
     def __len__(self):
