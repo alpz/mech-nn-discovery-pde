@@ -14,7 +14,7 @@ import extras.logger as logger
 import extras.source
 
 log_dir,_ = extras.source.create_log_dir()
-LOG = logger.setup(log_dir, 'solver', 'solver.txt', stdout=True)
+LOG = logger.setup(log_dir, 'solver', 'solver.txt', stdout=False)
 
 
 

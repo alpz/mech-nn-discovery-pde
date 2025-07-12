@@ -348,14 +348,9 @@ class Model(nn.Module):
         vp = vp.reshape(bs, 1, self.pde.grid_size)
         
         up0 = up[:,0]
-        #up1 = up[:,1]
-        #up2 = up[:,2]
 
         vp0 = vp[:,0]
-        #vp1 = vp[:,1]
-        #vp2 = vp[:,2]
 
-        #basis1 = torch.stack([torch.ones_like(up0), up0, up0.pow(2), up0.pow(3), vp0, vp0.pow(2), vp0.pow(3), up0*vp0, up0.pow(2)*vp0, up0*vp0.pow(2)], dim=-1)
         basis0 = torch.stack([torch.ones_like(up0), up0, up0.pow(2), vp0, vp0.pow(2), up0*vp0], dim=-1)
         basis2= torch.stack([torch.ones_like(up0), up0, up0.pow(2)], dim=-1)
         basis3 = torch.stack([vp0, vp0.pow(2), vp0.pow(3)], dim=-1)
@@ -383,7 +378,7 @@ class Model(nn.Module):
 
         u0,_,eps = self.pde(coeffs_u, rhs_u, iv_rhs_u, steps_list)
         u = u0
-        v = 0*u0 #v0 #None#u0[1]
+        #v = 0*u0 #v0 #None#u0[1]
 
         return u, v, rhs_loss
     
@@ -431,15 +426,28 @@ if DBL:
 model=model.to(device)
 
 
+        #basis0 = torch.stack([torch.ones_like(up0), up0, up0.pow(2), vp0, vp0.pow(2), up0*vp0], dim=-1)
+        #basis2= torch.stack([torch.ones_like(up0), up0, up0.pow(2)], dim=-1)
+        #basis3 = torch.stack([vp0, vp0.pow(2), vp0.pow(3)], dim=-1)
+
+basis_text = {}
+basis_text[0] = "{0:.4f}u + {1:.4f} u^2 + {2:.4f} u^3 + {3:.4f} u*v + {4:.4f} u*v^2 + {5:.4f} u^2*v"
+basis_text[1] = "{0:.4f} u_xx + {1:.4f} u*u_xx+ {2:.4f} u^2*u_xx"
+basis_text[2] = "{0:.4f} u_yy + {1:.4f} u*u_yy+ {2:.4f} u^2*u_yy"
+basis_text[3] = "{0:.4f} v + {1:.4f} v^2 + {2:.4f} v^3"
+
 def print_eq(stdout=False):
     #print learned equation
     params = model.get_params()
     params = [p.squeeze().detach().cpu().numpy() for p in params]
 
-    for i,p in enumerate(params):
-        L.info(f'param {i}\n{p}')
-    #print(params)
-    #return code
+    eq_str = "u_t + " + basis_text[0].format(*tuple(params[0][0:6])) + "\n" \
+            + basis_text[1].format(*tuple(params[1][0:3])) + "\n"  \
+            + basis_text[2].format(*tuple(params[2][0:3])) + "\n"  \
+            + " = "+  basis_text[3].format(*tuple(params[3][0:3])) \
+
+    #return eq_str
+    L.info(eq_str)
 
 
 def train(nepoch=500):
@@ -472,74 +480,50 @@ def train(nepoch=500):
 
             data_shape = batch_u.shape
 
-            #optimizer.zero_grad()
-            #x0, steps, eps, var,xi = model(index, batch_in)
             u, v, var_u, var_v, params = model(batch_u, batch_v, t, x,y)
 
 
             bs = batch_u.shape[0]
             u = u.reshape(bs, -1)
-            #v = v.reshape(bs, -1)
+
             batch_u = batch_u.reshape(bs, -1)
             batch_v = batch_v.reshape(bs, -1)
-            #batch_uv = batch_uv.reshape(bs, -1)
             var_u =var_u.reshape(bs,1, -1)
             var_v =var_v.reshape(bs,1, -1)
 
-            u_loss = (u- batch_u).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
-            v_loss = 0*u_loss #(v- batch_v).abs().mean(dim=-1) #+ (x0**2- batch_in**2).pow(2).mean(dim=-1)
+            u_loss = (u- batch_u).abs().mean(dim=-1)
 
             var_u_loss = (var_u- batch_u.unsqueeze(1)).abs().mean(dim=-1)
             var_v_loss = (var_v- batch_v.unsqueeze(1)).abs().mean(dim=-1)
-            var_uv_loss = 0*var_u_loss #(var_uv- batch_uv.unsqueeze(1)).pow(2).mean(dim=-1)
 
             param_loss = torch.stack(params).abs().sum()
 
-            #t_params_loss = (t_params-1).abs().mean()
-            t_params_loss = 0*(params[1][1]-1).abs().mean()
-            #jloss = u_loss.mean() +  v_loss.mean() + var_u_loss.mean() + var_v_loss.mean()
-            #loss = u_loss.mean() + v_loss.mean() +  var_u_loss.mean() + var_v_loss.mean() + t_params_loss
-            loss = u_loss.mean() +  var_u_loss.mean() + var_v_loss.mean() #+ var_uv_loss.mean()#+ t_params_loss
-            #loss = u_loss.mean() +  var_u_loss.mean() 
-            #loss = loss + rhs_loss.mean()
+            loss = u_loss.mean() +  var_u_loss.mean() + var_v_loss.mean()
             loss = loss +  0.0001*param_loss.mean()
 
             u_losses.append(u_loss.mean().item())
-            v_losses.append(v_loss.mean().item())
-            #var_losses.append(var_loss + var2_loss)
             var_u_losses.append(var_u_loss.mean().item())
             var_v_losses.append(var_v_loss.mean().item())
-            var_uv_losses.append(var_uv_loss.mean().item())
-            #var_losses.append(var_loss )
             losses.append(loss.detach().item())
-            t_losses.append(t_params_loss.detach().item())
-            #total_loss = total_loss + loss
-            
-            #print('rhs loss ', rhs_loss.mean().item())
 
             loss.backward()
             optimizer.step()
 
 
-            del loss,u,u_loss,v,v_loss,var_u,var_v,var_u_loss,var_v_loss,var_uv_loss, params#, t_params_loss
+            del loss,u,u_loss,v,var_u,var_v,var_u_loss,var_v_loss, params#, t_params_loss
 
         _u_loss = torch.tensor(u_losses).mean().item()
-        _v_loss = torch.tensor(v_losses).mean().item()
         _var_u_loss = torch.tensor(var_u_losses).mean().item()
         _var_v_loss = torch.tensor(var_v_losses).mean().item()
-        _var_uv_loss = torch.tensor(var_uv_losses).mean().item()
-        t_loss = torch.tensor(t_losses).mean().item()
 
         mean_loss = torch.tensor(losses).mean().item()
 
         print_eq()
         L.info(f'run {run_id} epoch {epoch}, loss {mean_loss:.3E}  \
-               uloss {_u_loss:.3E} vloss {_v_loss:.3E} \
-               var_u_loss {_var_u_loss:.3E} var_v_loss {_var_v_loss:.3E}  \
-               var_uv_loss {_var_uv_loss:.3E}  \ t_loss {t_loss:.3E}')
-        print('steps ', torch.sigmoid(model.steps0).squeeze().item(), 
-                        torch.sigmoid(model.steps1).squeeze().item(), 
-                        torch.sigmoid(model.steps2).squeeze().item())
+               uloss {_u_loss:.3E} var_u_loss {_var_u_loss:.3E} var_v_loss {_var_v_loss:.3E} ')
+        #print('steps ', torch.sigmoid(model.steps0).squeeze().item(), 
+        #                torch.sigmoid(model.steps1).squeeze().item(), 
+        #                torch.sigmoid(model.steps2).squeeze().item())
 
 if __name__ == "__main__":
     train()
