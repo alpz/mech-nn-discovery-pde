@@ -3,7 +3,16 @@
 *Mechanistic PDE Networks for Discovery of Governing Equations*, Adeel Pervez, Efstratios Gavves, Francesco Locatello, *International Conference on Machine Learning (ICML) 2025*. \[[Arxiv](http://arxiv.org/abs/2502.18377)\]
 
 
+
 ## Running Experiments
+
+### Requirements
+- Pytorch
+- Cupy
+- Matplotlib
+- Numpy and Scipy
+
+
 To run the code create a conda environment by using the env.yml file.
 Small test examples can be run in the given Jupyter Notebooks.
 These include a simple fitting test of a damped sinusoidal wave, a solver comparison with scipy odeint, and 2-body trajectory predictions.

@@ -521,9 +521,6 @@ def train(nepoch=500):
         print_eq()
         L.info(f'run {run_id} epoch {epoch}, loss {mean_loss:.3E}  \
                uloss {_u_loss:.3E} var_u_loss {_var_u_loss:.3E} var_v_loss {_var_v_loss:.3E} ')
-        #print('steps ', torch.sigmoid(model.steps0).squeeze().item(), 
-        #                torch.sigmoid(model.steps1).squeeze().item(), 
-        #                torch.sigmoid(model.steps2).squeeze().item())
 
 if __name__ == "__main__":
     train()
