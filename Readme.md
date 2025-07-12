@@ -19,68 +19,41 @@ These include a simple fitting test of a damped sinusoidal wave, a solver compar
 
 The test examples were run with the dense Cholesky solver. Set the Cholesky solver in config.py
 
+### Examples
 
-### Discovery
+The `examples` directory contains Jupyter notebook examples for using the dense direct and sparse multigrid preconditioned solvers for simple PDEs. Also included is an example to fit a PDE to data.  Make sure the top-level directories are in the path before running the notebooks.
 
-**Lorenz**. For the Lorenz system ODE discovery run
+### Data
 
-```
-PYTHONPATH=. python discovery/lorenz.py
-```
-or 
+Data for the Burgers and Ginzburg Landau reaction diffusion equations are include in the `data` directory. The reactoin diffusion dataset was generated using the example script at [http://basilisk.fr/src/examples/ginzburg-landau.c](http://basilisk.fr/src/examples/ginzburg-landau.c). The full data is large so a small subset of the data is included in the directory.
 
-```
-PYTHONPATH=. python discovery/lorenz_ind.py
-```
-for an example with a flat parameter vector without an NN.
+### PDE Discovery
 
-Plots and logs are saved in the `logs` directory. 
-
-The discovery proceeds in a cycle of optimization and thresholding the basis weights.
-The optimization runs for 400 epochs, which is a safe value but takes some time. A smaller value could possibly work.
-
-Generated trajectory from a learned equation.
-
-![](img/lorenz.png)
-
-**Logistic**. Generates a set of noisy trajectories from the logisitc ODE, each with different parameters. During inference the model outputs parameters for a given trajectory.
-
-Run
+**1D Burgers Equation**. For the viscous 1D Burgers equation PDE discovery run
 
 ```
-PYTHONPATH=. python discovery/logistic.py
+PYTHONPATH=. python discovery/burgers_dparam_viscous.py
 ```
 
-The following plot shows learned logistic parameters for 100 trajectories:
-
-![](img/params_70_100.png)
-
-### PDE
-Generate 1D KdV data using the scripts at https://github.com/brandstetter-johannes/LPSDA
-Modify the data location in pde/kdv.py if needed.
-Edit config.py and set the Cholesky solver.
-
-Run using
+**Ginzburg Landau Reaction Diffusion**. For the reaction-diffusion equation run
 ```
-PYTHONPATH=. python pde/kdv.py
+PYTHONPATH=. python discovery/ginzburg_landau.py
 ```
 
-After training test rmse can be calculated by using the `losses` function in kdv.py. Pass the Pytorch checkpoint.
+Logs are saved in the `logs` directory. 
 
-The following figures show a ground truth trajectory (left) and the corresponding prediction (right)
-
-![](img/kdv_gt.png)
-![](img/kdv_pred.png)
-
-### N-body ephemerides
-
-Get data using the astroquery script in the nbody directory.
-Edit the data_ephermris.py file to set the data path if needed.
-Set the conjugate gradient solver.
-
-Run using
+### ODE Discovery 
+The PDE code can also be used for ODE discovery. The repository includes code for learning the Kamani equation from Rheology.
 ```
-PYTHONPATH=. python pde/ephemeris_sys.py
+PYTHONPATH=. python discovery/kamani.py
 ```
 
-Test trajectories can be generated using generate function by passing a checkpoint.
+## Citation
+```
+@inproceedings{pervezmechnnpde2025,
+  title={Mechanistic PDE Networks for Discovery of Governing Equations},
+  author={Pervez, Adeel and Gavves, Efstratios and Locatello, Francesco},
+  booktitle={Forty-second International Conference on Machine Learning},
+  year={2025}
+}
+```

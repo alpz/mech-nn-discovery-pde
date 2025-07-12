@@ -183,26 +183,8 @@ class Model(nn.Module):
                 y = self.net(self.input)
                 return y
 
-        #class TransformNet(nn.Module):
-        #    def __init__(self, n_time):
-        #        super().__init__()
-        #        self.net = nn.Sequential(
-        #            nn.Linear(n_time, 1024),
-        #            nn.ReLU(),
-        #            nn.Linear(1024, 1024),
-        #            nn.ReLU(),
-        #            nn.Linear(1024, 1024),
-        #            nn.ReLU(),
-        #            nn.Linear(1024, n_time),
-        #        )
-        #    def forward(self, x):
-        #        y = self.net(x)
-        #        return y
-
         self.param_net = ParamNet(n_out=4*3)
         self.param_exp_net = ParamNet(n_out=4*2)
-        #self.transform = TransformNet(self.n_time)
-        #self.transform = N.ResNet1D(in_channels=self.n_time, out_channels=self.n_time)
         self.transform = N.ResNet1D(in_channels=1, out_channels=1)
 
         self.t_step_size = ds.t_step #0.05*downsample #steps[0]
