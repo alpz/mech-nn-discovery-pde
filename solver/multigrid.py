@@ -1,6 +1,7 @@
 
 import numpy as np
 import torch
+import torch.nn as nn
 
 import cupy as cp
 import cupyx.scipy.sparse as CSP
@@ -22,10 +23,10 @@ def seed_everything(seed: int):
 #seed_everything(10)
 
 import math
-import scipy.sparse as sp
-import torch.nn as nn
+#import scipy.sparse as sp
+#import torch.nn as nn
 import ipdb
-import scipy.sparse as SP
+#import scipy.sparse as SP
 from typing import List
 
 import torch.nn.functional as F
@@ -34,7 +35,7 @@ from solver.lp_pde_central_diff import PDESYSLP as PDESYSLPEPS #as ODELP_sys
 import solver.qp_dual_sparse_multigrid_normal_kkt as MGS #import QPFunction as QPFunctionSys
 
 from config import PDEConfig as config
-import solver.cg as CG
+#import solver.cg as CG
 
 from torch.autograd import gradcheck
 # set of KKT matrices

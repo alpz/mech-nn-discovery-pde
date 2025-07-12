@@ -3,9 +3,9 @@ from enum import Enum
 import os
 
 class PDEConfig:
-    data_root = os.path.expanduser('~')
-    #data_root = ''
-    ginzburg_dir = os.path.join(data_root,'ginzburg', '256')
+    #data_root = os.path.expanduser('~')
+    data_root = 'data'
+    ginzburg_dir = os.path.join(data_root,'ginzburg')
     rheology_dir = os.path.join(data_root,'kamani')
     burgers_dir = os.path.join(data_root,'burgers')
 

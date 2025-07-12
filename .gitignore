@@ -128,6 +128,6 @@ dmypy.json
 # Pyre type checker
 .pyre/
 lightning_logs
-data/
+#data/
 mnist/
 logs/

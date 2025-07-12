@@ -74,7 +74,7 @@ class ReactDiffDataset(Dataset):
 
         u_data=np.load(os.path.join(PDEConfig.ginzburg_dir, 'Ar_256_0_05.npy'))
         v_data=np.load(os.path.join(PDEConfig.ginzburg_dir, 'Ai_256_0_05.npy'))
-        uv_data=np.load(os.path.join(PDEConfig.ginzburg_dir, 'A2_256_0_05.npy'))
+        #uv_data=np.load(os.path.join(PDEConfig.ginzburg_dir, 'A2_256_0_05.npy'))
         #downsample time
         u_data = u_data[::downsample]
         v_data = v_data[::downsample]
@@ -84,7 +84,7 @@ class ReactDiffDataset(Dataset):
             L.info(f'Learing second equations')
             u_data, v_data = v_data, u_data
 
-        uv_data = uv_data[::downsample]
+        #uv_data = uv_data[::downsample]
         L.info(f'data shape {u_data.shape}')
         L.info(f'downsample {downsample}')
 
@@ -101,11 +101,11 @@ class ReactDiffDataset(Dataset):
             # add 20% noise (note the impact on derivatives depends on step size...)
             u_data = u_data + np.random.normal(0, rmse / 5.0, u_data.shape) 
             v_data = v_data + np.random.normal(0, rmse / 5.0, v_data.shape) 
-            uv_data = uv_data + np.random.normal(0, rmse / 5.0, uv_data.shape) 
+            #uv_data = uv_data + np.random.normal(0, rmse / 5.0, uv_data.shape) 
 
         u_data = torch.tensor(u_data, dtype=dtype)#.permute(1,0,2,3) 
         v_data = torch.tensor(v_data, dtype=dtype)#.permute(1,0,2,3) 
-        uv_data = torch.tensor(uv_data, dtype=dtype)#.permute(1,0,2,3) 
+        #uv_data = torch.tensor(uv_data, dtype=dtype)#.permute(1,0,2,3) 
 
 
         data_shape = tuple(u_data.shape)
@@ -115,9 +115,9 @@ class ReactDiffDataset(Dataset):
         
 
         # learn over a subset
-        self.u_data = u_data[128:128+128, :128, :128]
-        self.v_data = v_data[128:128+128, :128, :128]
-        self.uv_data = uv_data[128:128+128, :128, :128]
+        self.u_data = u_data[:128+128, :128, :128]
+        self.v_data = v_data[:128+128, :128, :128]
+        #self.uv_data = uv_data[128:128+128, :128, :128]
 
         print('u,v ', self.u_data.shape, self.v_data.shape)
 
@@ -135,19 +135,19 @@ class ReactDiffDataset(Dataset):
 
         self.length = self.num_t_idx*self.num_x_idx*self.num_y_idx
 
-        if setmask:
-            ##mask
-            mask = torch.rand_like(self.u_data)
-            ##keep only 80% of data
-            mask = (mask>0.2).double()
-            L.info(f'20% mask')
-        else:
-            mask = torch.ones_like(self.u_data)
+        #if setmask:
+        #    ##mask
+        #    mask = torch.rand_like(self.u_data)
+        #    ##keep only 80% of data
+        #    mask = (mask>0.2).double()
+        #    L.info(f'20% mask')
+        #else:
+        #    mask = torch.ones_like(self.u_data)
 
         
-        self.u_data = self.u_data*mask
-        self.v_data = self.v_data*mask
-        self.mask = mask
+        #self.u_data = self.u_data
+        #self.v_data = self.v_data
+        #self.mask = mask
         
 
 
@@ -178,12 +178,12 @@ class ReactDiffDataset(Dataset):
                              x_idx:x_idx+x_step,
                              y_idx:y_idx+y_step]
 
-        uv_data = self.uv_data[t_idx:t_idx+t_step, 
-                             x_idx:x_idx+x_step,
-                             y_idx:y_idx+y_step]
-        mask = self.mask[t_idx:t_idx+t_step, 
-                             x_idx:x_idx+x_step,
-                             y_idx:y_idx+y_step]
+        #uv_data = self.uv_data[t_idx:t_idx+t_step, 
+        #                     x_idx:x_idx+x_step,
+        #                     y_idx:y_idx+y_step]
+        #mask = self.mask[t_idx:t_idx+t_step, 
+        #                     x_idx:x_idx+x_step,
+        #                     y_idx:y_idx+y_step]
 
 
         t = self.t[t_idx:t_idx+t_step, x_idx:x_idx+x_step,y_idx:y_idx+y_step]
@@ -193,7 +193,7 @@ class ReactDiffDataset(Dataset):
         y = self.y[t_idx:t_idx+t_step, x_idx:x_idx+x_step,
                              y_idx:y_idx+y_step]#.unsqueeze(0)
 
-        return u_data, v_data,uv_data, t, x, y, mask
+        return u_data, v_data,t, x, y
 
 #%%
 
@@ -395,7 +395,7 @@ class Model(nn.Module):
 
         return u, v, rhs_loss
     
-    def forward(self, u, v, uv, t, x,y):
+    def forward(self, u, v, t, x,y):
         bs = u.shape[0]
         ts = solver_dim[0]
 
@@ -403,7 +403,7 @@ class Model(nn.Module):
 
         u_in = u.unsqueeze(1) #torch.stack([u,t, x,y], dim=1) 
         v_in = v.unsqueeze(1) #torch.stack([v,t, x,y], dim=1) 
-        uv_in = uv.unsqueeze(1) #torch.stack([v,t, x,y], dim=1) 
+        #uv_in = uv.unsqueeze(1) #torch.stack([v,t, x,y], dim=1) 
 
         u_in = u_in.reshape(bs*ts, 1, solver_dim[1], solver_dim[2])
         v_in = v_in.reshape(bs*ts, 1, solver_dim[1], solver_dim[2])
@@ -468,11 +468,11 @@ def train(nepoch=500):
         for i, batch_in in enumerate(tqdm(train_loader)):
         #for i, batch_in in enumerate((train_loader)):
             optimizer.zero_grad()
-            batch_u, batch_v, batch_uv = batch_in[0], batch_in[1], batch_in[2]
-            t,x,y,mask = batch_in[3], batch_in[4], batch_in[5], batch_in[6]
+            batch_u, batch_v = batch_in[0], batch_in[1]
+            t,x,y = batch_in[2], batch_in[3], batch_in[4]
             batch_u = batch_u.double().to(device)
             batch_v = batch_v.double().to(device)
-            mask = mask.double().to(device)
+            #mask = mask.double().to(device)
             #batch_uv = batch_uv.double().to(device)
 
             t = t.double().to(device)
@@ -483,7 +483,7 @@ def train(nepoch=500):
 
             #optimizer.zero_grad()
             #x0, steps, eps, var,xi = model(index, batch_in)
-            u, v, var_u, var_v, params = model(batch_u, batch_v, batch_uv, t, x,y)
+            u, v, var_u, var_v, params = model(batch_u, batch_v, t, x,y)
 
 
             bs = batch_u.shape[0]
