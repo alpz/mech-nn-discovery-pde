@@ -1,4 +1,8 @@
 #%%
+
+import extras.source
+log_dir, run_id = extras.source.create_log_dir(root='logs/gl')
+
 from scipy.io import loadmat
 
 from config import PDEConfig
@@ -21,7 +25,7 @@ from solver.multigrid import MultigridLayer
 from torch.utils.data import Dataset, DataLoader
 from scipy.integrate import odeint
 
-from extras.source import write_source_files, create_log_dir
+#from extras.source import write_source_files, create_log_dir
 
 #from solver.pde_layer import PDEINDLayerEPS
 #from solver.ode_layer import ODEINDLayer
@@ -39,8 +43,8 @@ import net as N
 #import fno_net as FNO
 
 
-log_dir, run_id = create_log_dir(root='logs/gl')
-write_source_files(log_dir)
+#log_dir, run_id = create_log_dir(root='logs/gl')
+extras.source.write_source_files(log_dir)
 L = logger.setup(log_dir, stdout=True)
 
 DBL=True
@@ -253,7 +257,7 @@ train_loader =DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=8,
 
 
 class Model(nn.Module):
-    def __init__(self, bs, solver_dim, steps, device=None, **kwargs):
+    def __init__(self, bs, solver_dim, device=None, **kwargs):
         super().__init__()
 
         self.order = 2
@@ -780,7 +784,7 @@ class Model(nn.Module):
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step, ds.x_step, ds.y_step), device=device)
+model = Model(bs=batch_size,solver_dim=solver_dim, device=device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)

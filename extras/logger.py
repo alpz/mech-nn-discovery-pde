@@ -6,7 +6,7 @@ import sys
 import os
 
 
-def setup(path, stdout=True):
+def setup(path, name='main', log_file='log.txt', stdout=True):
     #logging.basicConfig(
     #    level=logging.INFO,
     #    format="%(message)s",
@@ -16,7 +16,7 @@ def setup(path, stdout=True):
     #    ]
     #)
     #main_log.setLevel(logging.DEBUG)
-    main_log = logging.getLogger('')
+    main_log = logging.getLogger(name)
     main_log.setLevel(logging.INFO)
     format = logging.Formatter("%(message)s")
 
@@ -28,7 +28,7 @@ def setup(path, stdout=True):
     #fh = handlers.RotatingFileHandler(LOGFILE, maxBytes=(1048576*5), backupCount=7)
     file_format = logging.Formatter("%(asctime)s - %(message)s")
 
-    log_path = os.path.join(path, 'log.txt')
+    log_path = os.path.join(path, log_file)
     #fh = handlers.FileHandler(log_path)
     fh = logging.FileHandler(log_path)
     fh.setFormatter(file_format)

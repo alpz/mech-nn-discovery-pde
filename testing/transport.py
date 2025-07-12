@@ -42,7 +42,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def solve():
-    bs = 2
+    bs = 1
     #coord_dims = (16,16)
     coord_dims = (8,2*128)
     #coord_dims = (64,64)
@@ -94,7 +94,7 @@ def solve():
 
     coeffs = torch.zeros((bs, n_ind_dim, pde.grid_size, pde.n_orders), device=device)
     #u, u_t, u_x, u_tt, u_xx
-    #u_tt + u_xx = 0
+    #u_t + u_x = 0
     coeffs[..., 0] = 0.
     coeffs[..., 1] = 1.
     coeffs[..., 2] = 1.
@@ -107,7 +107,7 @@ def solve():
     #rhs = torch.zeros(bs, n_ind_dim, *coord_dims)
     rhs = torch.zeros(bs, *coord_dims, device=device)
     #rhs = nn.Parameter(rhs)
-    coeffs = nn.Parameter(coeffs)
+    #coeffs = nn.Parameter(coeffs)
 
     #iv
     x_steps = torch.linspace(0, 2*np.pi, coord_dims[1], device=device)
@@ -121,17 +121,26 @@ def solve():
     #iv2 = x_bc[1:-1]
     #iv3 = y_bc[:]
 
-    #print('iv0', iv0.shape)
+    u_list = []
     iv_rhs = iv0 # torch.cat([iv0,iv1, iv2, iv3], dim =-1).to(device)
     iv_rhs = torch.stack([iv_rhs]*bs,dim=0)
-    #print('ivrhs', iv_rhs.shape)
 
-    #u0,_,eps,out = pde(coeffs, rhs, iv_rhs, steps_list)
-    u0,_,eps = pde(coeffs, rhs, iv_rhs, steps_list)
+    for i in range(5):
+        #print('iv0', iv0.shape)
+        #print('ivrhs', iv_rhs.shape)
+
+        #u0,_,eps,out = pde(coeffs, rhs, iv_rhs, steps_list)
+        u0,_,eps = pde(coeffs, rhs, iv_rhs, steps_list)
+        
+        u0 = u0.reshape(bs,*coord_dims)
+        print(u0.shape, iv0.shape)
+        iv_rhs = u0[:, -1]
+        u_list.append(u0)
     
+    u0 = torch.cat(u_list, dim=1)
     #print(eps.max())
     #print(u0.shape)
-    u0 = u0.reshape(bs,*coord_dims)
+    #u0 = u0.reshape(bs,*coord_dims)
 
     #l = u0.pow(2).sum()
     #l = u0.mean()
@@ -146,9 +155,15 @@ u0=solve()
 # %%
 
 u0 = u0.detach().cpu().numpy()
+
+# %%
 #plot = plt.pcolormesh(u0, cmap='RdBu', shading='gouraud')
 #plot = plt.pcolormesh(u0, cmap='RdBu', shading='gouraud')
-plot = plt.pcolormesh(u0[0], cmap='viridis', shading='gouraud')
+plot = plt.pcolormesh(u0[0][0:8*6], cmap='viridis', shading='gouraud')
+plt.axis('off')
+
+# %%
+print(u0.shape)
 
 # %%
 deltaH = out['deltaH'].cpu().numpy()

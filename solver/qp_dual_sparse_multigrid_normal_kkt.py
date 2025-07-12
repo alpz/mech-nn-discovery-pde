@@ -27,6 +27,13 @@ import solver.minres_torch as MINRES
 #import solver.multigrid as MG
 import torch.nn.functional as F
 
+import extras.logger as logger
+
+import extras.source
+
+log_dir = extras.source.log_dir
+LOG = logger.setup(log_dir, 'solver', 'solver.txt', stdout=True)
+
 
 def to_torch_coo(KKTs):
     row = torch.tensor(KKTs.row)
@@ -385,7 +392,8 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
 
             x = x.reshape(-1)
             r,rr = mg.get_residual_norm(AtA_list[0], x, rhs_list[0])
-            print(f'gmres step norm: ', r,rr)
+            #print(f'gmres step norm: ', r,rr)
+            LOG.info(f'gmres step norm: {r},{rr}')
                                                                             
             #G (-lam) = Ax -b
             #r = torch.bmm(A, x.unsqueeze(2)).squeeze(2) - A_rhs
@@ -467,7 +475,8 @@ def QPFunction(pde, mg, n_iv, gamma=1, alpha=1, double_ret=True):
             dz = dz.reshape(-1)
 
             nr, nrr = mg.get_residual_norm(AtA_list[0],dz, grad_list[0].reshape(-1))
-            print('backward', nr, nrr)
+            #print('backward', nr, nrr)
+            LOG.info(f'backward norms: {nr}, {nrr}')
 
             ## dnu + G^(-1)*Adnu = 0
             #dnu = torch.bmm(A, dz.unsqueeze(2)).squeeze(2)

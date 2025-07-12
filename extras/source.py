@@ -1,16 +1,25 @@
 import os
 import subprocess
 
+log_dir = None
+run_id = None
+
 def create_log_dir(root):
+    global log_dir, run_id
+    if log_dir is not None:
+        return log_dir, run_id
+
     for i in range(1000):
         name = str(i)
         path = os.path.join(root, name)
 
         if not os.path.isdir(path):
             os.makedirs(path)
-            return path,i 
+            log_dir = path
+            run_id = i
+            return log_dir, run_id
 
-    raise ValueError("Dir not found. Limit exceeded",i)
+    raise ValueError("Limit exceeded",i)
 
 
 def write_source_files(summ_dir):

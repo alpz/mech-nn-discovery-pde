@@ -1,4 +1,8 @@
 #%%
+
+import extras.source
+log_dir, run_id = extras.source.create_log_dir(root='logs/burgers')
+
 from scipy.io import loadmat
 
 from config import PDEConfig
@@ -20,7 +24,7 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from scipy.integrate import odeint
 
-from extras.source import write_source_files, create_log_dir
+#from extras.source import write_source_files, create_log_dir
 
 #from solver.pde_layer import PDEINDLayerEPS
 
@@ -40,8 +44,9 @@ import net as N
 
 
 torch.manual_seed(10)
-log_dir, run_id = create_log_dir(root='logs/burgers')
-write_source_files(log_dir)
+
+
+extras.source.write_source_files(log_dir)
 L = logger.setup(log_dir, stdout=True)
 
 DBL=True

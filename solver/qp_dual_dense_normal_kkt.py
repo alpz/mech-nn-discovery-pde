@@ -26,6 +26,12 @@ import solver.minres_torch as MINRES
 #import solver.minres_torch_chol as MINRES
 #import solver.multigrid as MG
 import torch.nn.functional as F
+import extras.logger as logger
+
+import extras.source
+
+log_dir = extras.source.log_dir
+L = logger.setup(log_dir, 'solver.txt', stdout=True)
 
 
 def to_torch_coo(KKTs):
