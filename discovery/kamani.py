@@ -1,32 +1,24 @@
 #%%
-from scipy.io import loadmat
 
-from config import PDEConfig
+import extras.source
+log_dir, run_id = extras.source.create_log_dir(root='logs/kamani')
+
+from scipy.io import loadmat
 import os
 import numpy as np
 
 import torch
 import torch.nn as nn
-torch.manual_seed(10)
 from torch.nn.parameter import Parameter
 import numpy as np
-
-#import matplotlib.pyplot as plt
 import torch
 
 import torch.optim as optim
-
-from solver.multigrid import MultigridLayer
 
 from torch.utils.data import Dataset, DataLoader
 from scipy.integrate import odeint
 from scipy.integrate import solve_ivp
 
-from extras.source import write_source_files, create_log_dir
-
-#from solver.pde_layer import PDEINDLayerEPS
-#from solver.ode_layer import ODEINDLayer
-#import discovery.basis as B
 import ipdb
 import extras.logger as logger
 import os
@@ -37,32 +29,21 @@ from tqdm import tqdm
 #import discovery.plot as P
 from sklearn.metrics import mean_squared_error
 import net as N
-#import fno_net as FNO
+from config import PDEConfig
 
 from solver.pde_layer_dense import PDEDenseLayer
 import matplotlib.pyplot as plt
 
 
-log_dir, run_id = create_log_dir(root='logs_kamani')
-write_source_files(log_dir)
+#log_dir, run_id = create_log_dir(root='logs_kamani')
+extras.source.write_source_files(log_dir)
 L = logger.setup(log_dir, stdout=True)
 
 DBL=True
 dtype = torch.float64 if DBL else torch.float32
-#STEP = 0.001
 cuda=True
-#T = 2000
-#n_step_per_batch = T
-#solver_dim=(10,256)
-#solver_dim=(100,)
 solver_dim=(24,)
-#solver_dim=(64,64,64)
-#solver_dim=(50,64)
-#solver_dim=(32,48)
-#n_grid=3
 batch_size= 2048
-#weights less than threshold (absolute) are set to 0 after each optimization step.
-threshold = 0.1
 
 noise =False
 downsample=2
@@ -73,19 +54,8 @@ L.info(f'Solver dim {solver_dim} ')
 
 class KamaniDataset(Dataset):
     def __init__(self, solver_dim=(100,)):
-        #self.n_step_per_batch=n_step_per_batch
-        #self.n_step=n_step
 
         self.down_sample = 1
-
-        #129,2,64,64
-        #data=np.load(os.path.join(PDEConfig.brusselator_dir, 'brusselator_01_1en3.npy'))
-        #u_data=np.load(os.path.join(PDEConfig.ginzburg_dir, 'Ar.npy'))
-        #v_data=np.load(os.path.join(PDEConfig.ginzburg_dir, 'Ai.npy'))
-
-        #u_data=np.load(os.path.join(PDEConfig.ginzburg_dir, '256', 'Ar_256_300.npy'))
-        #v_data=np.load(os.path.join(PDEConfig.ginzburg_dir, '256', 'Ai_256_300.npy'))
-        #uv_data=np.load(os.path.join(PDEConfig.ginzburg_dir, '256', 'A2_256_300.npy'))
 
         u_data=np.load(os.path.join(PDEConfig.rheology_dir, 'kamani_traj.npy'))
         t_data =np.load(os.path.join(PDEConfig.rheology_dir, 'times.npy'))
@@ -98,25 +68,18 @@ class KamaniDataset(Dataset):
         self.t_step = t_data[1]-t_data[0]
         L.info(f'time step {self.t_step}')
 
-        u_data = torch.tensor(u_data, dtype=dtype)#.permute(1,0,2,3) 
-        t_data = torch.tensor(t_data, dtype=dtype)#.permute(1,0,2,3) 
+        u_data = torch.tensor(u_data, dtype=dtype)
+        t_data = torch.tensor(t_data, dtype=dtype)
         amp_data = torch.tensor(shear_amplitude, dtype=dtype)
 
 
         self.data_dim = u_data.shape
         self.solver_dim = solver_dim
 
-        num_t_idx = self.data_dim[0] #- self.solver_dim[0] + 1
+        num_t_idx = self.data_dim[0] 
 
-        self.num_t_idx = num_t_idx//solver_dim[0]  #+ 1
+        self.num_t_idx = num_t_idx//solver_dim[0] 
         self.num_amp_idx = amp_data.shape[0]
-
-        #if self.t_subsample < self.solver_dim[0]:
-        #    self.num_t_idx = self.num_t_idx - self.solver_dim[0]//self.t_subsample
-        #if self.x_subsample < self.solver_dim[1]:
-        #    self.num_t_idx = self.num_t_idx - self.solver_dim[1]//self.x_subsample
-
-        #self.length = self.num_t_idx*self.num_x_idx
 
         self.u_data = u_data
         self.amp_data = amp_data
@@ -125,7 +88,7 @@ class KamaniDataset(Dataset):
         self.length = self.num_t_idx*self.num_amp_idx
 
     def __len__(self):
-        return self.length #self.x_train.shape[0]
+        return self.length 
 
     def __getitem__(self, idx):
         (amp_idx, t_idx) = np.unravel_index(idx, (self.num_amp_idx, self.num_t_idx))
@@ -184,15 +147,12 @@ class Model(nn.Module):
         self.n_ind_dim = 1
         self.n_dim = 1
 
-        #self.param_in = nn.Parameter(torch.randn(1,64))
-
         self.coord_dims = solver_dim
         self.n_time = solver_dim[0]
 
         self.iv_list = [
                         #t=0
                         lambda nt: (0,0, [0],[0]), 
-                        #lambda nt: (0,0, [nt-1],[nt-1]), 
                         ]
 
         #self.pde = MultigridLayer(bs=bs, coord_dims=self.coord_dims, order=2, n_ind_dim=self.n_ind_dim, n_iv=1, 
@@ -208,7 +168,6 @@ class Model(nn.Module):
         self.num_multiindex = self.ode.n_orders
 
 
-        #self.params_u = nn.Parameter(0.5*torch.randn(1,4))
         class ParamNet(nn.Module):
             def __init__(self, n_out=10):
                 super().__init__()
@@ -224,21 +183,21 @@ class Model(nn.Module):
                 y = self.net(self.input)
                 return y
 
-        class TransformNet(nn.Module):
-            def __init__(self, n_time):
-                super().__init__()
-                self.net = nn.Sequential(
-                    nn.Linear(n_time, 1024),
-                    nn.ReLU(),
-                    nn.Linear(1024, 1024),
-                    nn.ReLU(),
-                    nn.Linear(1024, 1024),
-                    nn.ReLU(),
-                    nn.Linear(1024, n_time),
-                )
-            def forward(self, x):
-                y = self.net(x)
-                return y
+        #class TransformNet(nn.Module):
+        #    def __init__(self, n_time):
+        #        super().__init__()
+        #        self.net = nn.Sequential(
+        #            nn.Linear(n_time, 1024),
+        #            nn.ReLU(),
+        #            nn.Linear(1024, 1024),
+        #            nn.ReLU(),
+        #            nn.Linear(1024, 1024),
+        #            nn.ReLU(),
+        #            nn.Linear(1024, n_time),
+        #        )
+        #    def forward(self, x):
+        #        y = self.net(x)
+        #        return y
 
         self.param_net = ParamNet(n_out=4*3)
         self.param_exp_net = ParamNet(n_out=4*2)
@@ -300,12 +259,6 @@ class Model(nn.Module):
         u = u.reshape(bs, self.n_time)
         
         up0 = up[:,0]
-        #up1 = up[:,1]
-        #up2 = up[:,2]
-
-        #vp0 = vp[:,0]
-        #vp1 = vp[:,1]
-        #vp2 = vp[:,2]
 
         ss = shear_list[0]
         ss_d = shear_list[1]
@@ -313,12 +266,6 @@ class Model(nn.Module):
 
         pr = params_list[0]#.reshape(3, -1)
         er = params_list[1]#.reshape(3, -1)
-
-        #basis0 = torch.stack([pr[0,0]*torch.ones_like(ss_d), pr[0,1]*ss_d.abs().pow(er[0,0]), pr[0,2]*ss_d.abs().pow(er[0,1])  ], dim=-1)
-        #basis1 = torch.stack([pr[1,0]*torch.ones_like(ss_d), pr[1,1]*ss_d.abs().pow(er[1,0]), pr[1,2]*ss_d.abs().pow(er[1,1])  ], dim=-1)
-        #basis2 = torch.stack([pr[2,0]*torch.ones_like(ss_d), pr[2,1]*ss_d.abs().pow(er[2,0]), pr[2,2]*ss_d.abs().pow(er[2,1])  ], dim=-1)
-
-
 
         basis0 = torch.stack([pr[0,0]*torch.ones_like(ss_d), pr[0,1]*ss_d.abs().pow(er[0,0]), pr[0,2]*ss_d.abs().pow(er[0,1])  ], dim=-1)
         basis1 = torch.stack([pr[1,0]*torch.ones_like(ss_d), pr[1,1]*ss_d.abs().pow(er[1,0]), pr[1,2]*ss_d.abs().pow(er[1,1])  ], dim=-1)
@@ -330,9 +277,6 @@ class Model(nn.Module):
         p1 = (basis1).sum(dim=-1)
         p2 = (basis2).sum(dim=-1)
         p3 = (basis3).sum(dim=-1)
-        #p4 = (basis*params_list[3]).sum(dim=-1)
-        #q = (basis2*params[...,1,:]).sum(dim=-1)
-
 
         coeffs_u = torch.zeros((bs, self.ode.grid_size, self.ode.n_orders), device=u.device)
 
@@ -356,10 +300,6 @@ class Model(nn.Module):
         # u batch, time, x, y
         u_in = u
 
-        #u_in = u_in.reshape(bs*ts, 1, solver_dim[1], solver_dim[2])
-
-        #up = u_in #  self.transform(u_in)
-        #up = self.transform(u_in)
         up = self.transform(u_in.unsqueeze(1)).squeeze(1)
 
         up = up.reshape(bs,*solver_dim)
@@ -376,10 +316,6 @@ class Model(nn.Module):
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Model(bs=batch_size,solver_dim=solver_dim, steps=(ds.t_step), device=device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
-#optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
-#optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
-#optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
-#optimizer = torch.optim.SGD(model.parameters(), lr=0.0001, momentum =0.9)
 
 if DBL:
     model = model.double()
@@ -449,18 +385,10 @@ def simulate(epoch, pr, er, true_traj):
         p2 = pr[2,0]+ pr[2,1]*np.power(ss_d_abs,er[2,0])+ pr[2,2]*np.power(ss_d_abs,er[2,1])
         p3 = pr[3,0]+ pr[3,1]*np.power(ss_d_abs,er[3,0])+ pr[3,2]*np.power(ss_d_abs,er[3,1])
 
-        #basis1 = torch.stack([pr[1,0]*torch.ones_like(ss_d), pr[1,1]*ss_d.abs().pow(er[1,0]), pr[1,2]*ss_d.abs().pow(er[1,1])  ], dim=-1)
-        #basis2 = torch.stack([pr[2,0]*torch.ones_like(ss_d), pr[2,1]*ss_d.abs().pow(er[2,0]), pr[2,2]*ss_d.abs().pow(er[2,1])  ], dim=-1)
 
         rhs = p1*ss_d + p2*ss_dd - p3*tau
         rhs = rhs/p0
         
-        ## Calculating the RHS for this material (Kamani material)
-        #eps = 1e-10
-        #herschel_term = tau_y/(norm_shear_rate + eps) + k*norm_shear_rate**(n-1)
-        #relaxation_time = (herschel_term + eta_s)/G
-        #rhs =  herschel_term*( shear_rate + (eta_s/G)*shear_rate_rate ) - tau
-        #rhs = rhs/relaxation_time
         return rhs
 
 

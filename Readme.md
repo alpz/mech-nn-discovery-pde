@@ -1,6 +1,6 @@
 # Mechanistic PDE Networks for Discovery of Governing Equations
 
-*Mechanistic PDE Networks for Discovery of Governing Equations*, Adeel Pervez, Efstratios Gavves, Francesco Locatello, *International Conference on Machine Learning (ICML) 2025*. \[[Arxiv](https://arxiv.org/abs/2402.13077)\]
+*Mechanistic PDE Networks for Discovery of Governing Equations*, Adeel Pervez, Efstratios Gavves, Francesco Locatello, *International Conference on Machine Learning (ICML) 2025*. \[[Arxiv](http://arxiv.org/abs/2502.18377)\]
 
 
 ## Running Experiments
